@@ -26,6 +26,7 @@ PassVault is an invitation-only, personal secure text storage application where 
 - **Admin Authentication**: After initial setup, admin authenticates with:
   - Username + Password
   - TOTP code from authenticator app (6-digit code)
+  - > **Environment Note**: In dev and beta environments where TOTP is disabled, the status transitions directly from "pending_first_login" to "active" after password change. The TOTP setup step is skipped entirely. Login requires only username + password (no TOTP code).
 - **Create User Invitation**: Admin creates new users by:
   - Specifying a username
   - System generates a secure one-time password (OTP)
@@ -55,6 +56,7 @@ PassVault is an invitation-only, personal secure text storage application where 
 - **Normal Login**: After initial setup, users authenticate with:
   - Username + Password
   - TOTP code from authenticator app (6-digit code)
+  - > **Environment Note**: In dev and beta environments where TOTP is disabled, the status transitions directly from "pending_first_login" to "active" after password change. The TOTP setup step is skipped entirely. Login requires only username + password (no TOTP code).
 - **Session Management**: Maintain authenticated state during user session
 - **Logout**: Users can end their session
 
@@ -312,6 +314,69 @@ async function apiCall(endpoint, options) {
 
 - No file naming, listing, or deletion UI required
 
+### 2.5 Environment Modes
+
+PassVault supports three deployment environments with different security profiles. All environments are isolated CloudFormation stacks sharing no resources.
+
+#### Environment Comparison
+
+| Feature | Dev | Beta | Prod |
+|---------|-----|------|------|
+| **Purpose** | Developer testing | QA / integration / demos | Live |
+| **TOTP** | Disabled | Disabled | Mandatory |
+| **WAF** | Disabled | Disabled | Enabled |
+| **Proof of Work** | Disabled | Enabled | Enabled |
+| **CloudFront** | Optional (direct S3/APIGW) | Enabled | Enabled |
+| **View timeout** | 5 min | 5 min | 60 sec |
+| **Edit timeout** | 10 min | 10 min | 120 sec |
+| **Admin token expiry** | 24 hours | 24 hours | 8 hours |
+| **User token expiry** | 30 min | 30 min | 5 min |
+| **Lambda memory** | 256 MB | 256 MB | 512 MB |
+| **Log retention** | 1 week | 2 weeks | 30 days |
+| **DynamoDB PITR** | Disabled | Disabled | Enabled |
+| **S3 versioning** | Disabled | Disabled | Enabled |
+| **UI indicator** | "DEV ENVIRONMENT" banner | "BETA ENVIRONMENT" banner | None |
+| **Monthly cost** | ~$0 | ~$0 | ~$8-10 |
+
+#### Dev Environment
+- **Purpose**: Individual developer testing and local development
+- **TOTP**: Disabled — status goes directly from "pending_first_login" → "active" after password change
+- **WAF**: Disabled
+- **Proof of Work**: Disabled — faster iteration
+- **CloudFront**: Optional — can access API Gateway directly
+- **Session timeouts**: Relaxed (5 min view, 10 min edit)
+- **Token expiry**: Relaxed (24h admin, 30m user)
+- **Visual indicator**: "DEV ENVIRONMENT" banner in the UI
+- **DynamoDB**: No point-in-time recovery
+- **S3**: No versioning
+
+#### Beta Environment
+- **Purpose**: QA, integration testing, stakeholder demos
+- **TOTP**: Disabled — same simplified flow as dev
+- **WAF**: Disabled — saves cost, bot protection not needed for internal testing
+- **Proof of Work**: Enabled — validates PoW flow works correctly
+- **CloudFront**: Enabled — matches prod architecture
+- **Session timeouts**: Relaxed (5 min view, 10 min edit)
+- **Token expiry**: Relaxed (24h admin, 30m user)
+- **Visual indicator**: "BETA ENVIRONMENT" banner in the UI
+
+#### Production Environment
+- **Purpose**: Live deployment with full security
+- **TOTP**: Mandatory — all users and admin must complete TOTP setup
+- **WAF**: Enabled — full bot control, rate limiting, CAPTCHA
+- **Proof of Work**: Enabled with production difficulty levels
+- **CloudFront**: Enabled with WAF attached
+- **Session timeouts**: Strict (60s view, 120s edit)
+- **Token expiry**: Strict (8h admin, 5m user)
+- **Visual indicator**: None
+
+#### Environment Configuration
+
+All environment differences are driven by a single `EnvironmentConfig` type. The environment is determined by:
+- **CDK**: `--context env=dev|beta|prod`
+- **Backend**: `ENVIRONMENT` Lambda environment variable
+- **Frontend**: `REACT_APP_ENVIRONMENT` build-time environment variable
+
 ## 3. Technical Architecture
 
 ### 3.1 Frontend
@@ -432,12 +497,14 @@ Protection Layers:
   - After TOTP setup: requires both password and valid TOTP code
   - Returns JWT token with admin role and encryption salt for key derivation
   - Flags if password change or TOTP setup is required
+  - **When TOTP is disabled (dev/beta)**: login never returns `requireTotpSetup: true`; `totpCode` parameter is ignored; normal login requires only username + password
 
 - **POST /admin/change-password** (Requires admin auth)
   - Request: `{ "newPassword": "string" }`
   - Response: `{ "success": true }` or error with policy violations
   - Validates new password against security policy
   - Updates admin password and changes status from "pending_first_login" to "pending_totp_setup"
+  - **When TOTP is disabled (dev/beta)**: status changes directly to "active" instead of "pending_totp_setup"
   - Required on first admin login
 
 - **POST /admin/totp/setup** (Requires admin auth, only accessible if status is "pending_totp_setup")
@@ -453,6 +520,8 @@ Protection Layers:
   - Verifies TOTP code against stored secret
   - If valid, activates TOTP and changes admin status from "pending_totp_setup" to "active"
   - If invalid, returns error (user must retry)
+
+> **TOTP Endpoints (dev/beta)**: When TOTP is disabled, POST /admin/totp/setup and POST /admin/totp/verify return HTTP 404 with `{ "error": "TOTP is not enabled in this environment" }`.
 
 - **POST /admin/users** (Requires admin auth, blocked if admin status is not "active")
   - Request: `{ "username": "string" }`
@@ -479,12 +548,14 @@ Protection Layers:
   - Accepts OTP (first time), or password + TOTP code (subsequent logins)
   - Returns JWT token with user ID and role, plus encryption salt for key derivation
   - Flags if password change or TOTP setup is required
+  - **When TOTP is disabled (dev/beta)**: login never returns `requireTotpSetup: true`; `totpCode` parameter is ignored; normal login requires only username + password
 
 - **POST /auth/change-password** (Requires user auth)
   - Request: `{ "newPassword": "string" }`
   - Response: `{ "success": true }` or error with policy violations
   - Validates new password against security policy
   - Updates user password and changes status from "pending_first_login" to "pending_totp_setup"
+  - **When TOTP is disabled (dev/beta)**: status changes directly to "active" instead of "pending_totp_setup"
   - Invalidates OTP after successful password change
 
 - **POST /auth/totp/setup** (Requires user auth, only accessible if status is "pending_totp_setup")
@@ -500,6 +571,8 @@ Protection Layers:
   - Verifies TOTP code against stored secret
   - If valid, activates TOTP and changes user status from "pending_totp_setup" to "active"
   - If invalid, returns error (user must retry)
+
+> **TOTP Endpoints (dev/beta)**: When TOTP is disabled, POST /auth/totp/setup and POST /auth/totp/verify return HTTP 404 with `{ "error": "TOTP is not enabled in this environment" }`.
 
 ### 4.4 File Operations (Protected Endpoints)
 All endpoints require user authentication via Authorization header (Bearer token).
@@ -925,16 +998,54 @@ Savings: $2,318.40 - $667.40 = $1,651/month (71% cost reduction)
 ### 7.3 Infrastructure as Code (AWS CDK)
 - All infrastructure defined in TypeScript using AWS CDK
 - CDK Stack components:
-  - **StorageConstruct**: DynamoDB tables, S3 buckets
-  - **BackendConstruct**: Lambda functions, API Gateway
-  - **SecurityConstruct**: WAF, IAM roles, security policies
-  - **FrontendConstruct**: CloudFront distribution, S3 static hosting
-  - **MonitoringConstruct**: CloudWatch alarms, dashboards
-- Separate environments via CDK contexts (dev, staging, production)
+  - **StorageConstruct**: DynamoDB tables, S3 buckets (PITR and versioning conditional on environment)
+  - **BackendConstruct**: Lambda functions, API Gateway (memory/timeout from config)
+  - **SecurityConstruct**: WAF, IAM roles, security policies (entire construct conditional on `wafEnabled`)
+  - **FrontendConstruct**: CloudFront distribution, S3 static hosting (CloudFront optional for dev)
+  - **MonitoringConstruct**: CloudWatch alarms, dashboards (log retention from config)
+- Three environments via CDK contexts: `--context env=dev|beta|prod`
+- Each environment deploys as a fully isolated CloudFormation stack (see Section 7.5)
+- Environment configs defined in single file: `cdk/lib/config/environments.ts`
+
+**CDK Entry Point:**
+```typescript
+// bin/passvault.ts
+const app = new cdk.App();
+const env = app.node.tryGetContext('env') || 'dev';
+const config = getEnvironmentConfig(env);
+new PassVaultStack(app, config.stackName, { config });
+```
+
+**Conditional WAF Deployment:**
+```typescript
+// lib/passvault-stack.ts
+if (config.features.wafEnabled) {
+  new SecurityConstruct(this, 'Security', { ... });
+}
+```
+
 - Automated deployment via `cdk deploy` command
 - See [DEPLOYMENT.md](DEPLOYMENT.md) for complete deployment guide
 
-### 7.4 Initial Deployment Setup
+### 7.4 Stack Naming and Isolation
+
+Each environment deploys as a fully independent CloudFormation stack:
+
+| Resource              | Dev                            | Beta                           | Prod                          |
+|-----------------------|--------------------------------|--------------------------------|-------------------------------|
+| Stack name            | PassVault-Dev                  | PassVault-Beta                 | PassVault-Prod                |
+| DynamoDB table        | passvault-users-dev            | passvault-users-beta           | passvault-users-prod          |
+| S3 files bucket       | passvault-files-dev-{hash}     | passvault-files-beta-{hash}    | passvault-files-prod-{hash}   |
+| S3 config bucket      | passvault-config-dev-{hash}    | passvault-config-beta-{hash}   | passvault-config-prod-{hash}  |
+| S3 frontend bucket    | passvault-frontend-dev-{hash}  | passvault-frontend-beta-{hash} | passvault-frontend-prod-{hash}|
+| API Gateway           | passvault-api-dev              | passvault-api-beta             | passvault-api-prod            |
+| CloudFront            | *(optional)*                   | passvault-cdn-beta             | passvault-cdn-prod            |
+| WAF                   | *(not deployed)*               | *(not deployed)*               | passvault-waf-prod            |
+| Lambda functions      | passvault-{fn}-dev             | passvault-{fn}-beta            | passvault-{fn}-prod           |
+
+Stacks share nothing — they can be deployed and destroyed independently.
+
+### 7.5 Initial Deployment Setup
 - **Admin Account Creation**:
   - Generate secure random initial admin password (16+ characters)
   - Create admin user in DynamoDB with username="admin", role="admin", status="pending_first_login"
@@ -951,18 +1062,23 @@ Savings: $2,318.40 - $667.40 = $1,651/month (71% cost reduction)
 ## 8. Development Phases
 
 ### Phase 1: MVP
+- [ ] **Define environment configuration system**:
+  - Define `EnvironmentConfig` type in `shared/config/environments.ts`
+  - Create dev, beta, and prod config objects with feature flags (see Section 2.5)
+  - Pass environment to Lambda via `ENVIRONMENT` env var
+  - Pass environment to frontend via `REACT_APP_ENVIRONMENT` build-time var
 - [ ] **Setup AWS CDK project structure**:
   - Initialize CDK app with TypeScript
   - Define main PassVaultStack
   - Create construct library (Storage, Backend, Security, Frontend, Monitoring)
-  - Configure environment-specific settings (dev, staging, prod)
+  - Configure environment-specific settings (dev, beta, prod) — see Section 2.5
   - See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed structure
-- [ ] **Implement CDK Constructs**:
-  - StorageConstruct: DynamoDB users table, S3 buckets (files, config, frontend)
-  - BackendConstruct: Lambda functions, API Gateway, IAM roles
-  - SecurityConstruct: WAF Web ACL, security groups, encryption policies
-  - FrontendConstruct: CloudFront distribution, S3 static hosting, OAI
-  - MonitoringConstruct: CloudWatch alarms, dashboards, log groups
+- [ ] **Implement CDK Constructs (environment-aware)**:
+  - StorageConstruct: DynamoDB users table, S3 buckets (PITR and versioning conditional on environment)
+  - BackendConstruct: Lambda functions, API Gateway, IAM roles (memory/timeout from config)
+  - SecurityConstruct: WAF Web ACL, security groups, encryption policies (only instantiated when `wafEnabled=true`)
+  - FrontendConstruct: CloudFront distribution, S3 static hosting, OAI (CloudFront optional for dev)
+  - MonitoringConstruct: CloudWatch alarms, dashboards, log groups (retention from config)
 - [ ] **Setup AWS WAF for bot protection**:
   - Create WAF Web ACL with Bot Control managed rules
   - Configure rate-based rules (100 requests per 5 minutes per IP)
@@ -1005,18 +1121,18 @@ Savings: $2,318.40 - $667.40 = $1,651/month (71% cost reduction)
   - QR code generation (otpauth:// URI)
   - TOTP verification with time window tolerance
   - TOTP secret encryption/decryption
-- [ ] Implement admin endpoints:
-  - POST /admin/login (handle initial password, regular password+TOTP, return requirePasswordChange/requireTotpSetup flags)
-  - POST /admin/change-password (with policy validation, changes status to pending_totp_setup)
-  - POST /admin/totp/setup (generate TOTP secret and QR code)
-  - POST /admin/totp/verify (verify TOTP code, activate TOTP, change status to active)
+- [ ] Implement admin endpoints (with environment-conditional TOTP):
+  - POST /admin/login (handle initial password, regular password+TOTP, return requirePasswordChange/requireTotpSetup flags; skip TOTP when disabled)
+  - POST /admin/change-password (with policy validation; set status to "active" directly when TOTP disabled, otherwise "pending_totp_setup")
+  - POST /admin/totp/setup (generate TOTP secret and QR code; return 404 when TOTP disabled)
+  - POST /admin/totp/verify (verify TOTP code, activate TOTP, change status to active; return 404 when TOTP disabled)
   - POST /admin/users (create user invitation with OTP generation, blocked if admin not active)
   - GET /admin/users (list all users, blocked if admin not active)
-- [ ] Implement user authentication endpoints:
-  - POST /auth/login (handle OTP, regular password+TOTP, return requirePasswordChange/requireTotpSetup flags)
-  - POST /auth/change-password (with policy validation, changes status to pending_totp_setup)
-  - POST /auth/totp/setup (generate TOTP secret and QR code)
-  - POST /auth/totp/verify (verify TOTP code, activate TOTP, change status to active)
+- [ ] Implement user authentication endpoints (with environment-conditional TOTP):
+  - POST /auth/login (handle OTP, regular password+TOTP, return requirePasswordChange/requireTotpSetup flags; skip TOTP when disabled)
+  - POST /auth/change-password (with policy validation; set status to "active" directly when TOTP disabled, otherwise "pending_totp_setup")
+  - POST /auth/totp/setup (generate TOTP secret and QR code; return 404 when TOTP disabled)
+  - POST /auth/totp/verify (verify TOTP code, activate TOTP, change status to active; return 404 when TOTP disabled)
 - [ ] Implement vault endpoints:
   - GET /vault (read user's file)
   - PUT /vault (update user's file)
@@ -1046,9 +1162,15 @@ Savings: $2,318.40 - $667.40 = $1,651/month (71% cost reduction)
   - Immediate logout after cancel operation (with confirmation dialog)
   - Unsaved changes warning in cancel confirmation
   - Auth state management (admin vs user contexts, track TOTP setup status)
+  - Environment-conditional TOTP:
+    - Skip TOTP setup screen when TOTP is disabled (dev/beta)
+    - Hide TOTP code field on login form when TOTP is disabled
+  - Environment banner:
+    - Show "DEV ENVIRONMENT" or "BETA ENVIRONMENT" banner when not in prod
+    - No banner in prod
   - Route guards:
     - Redirect pending_first_login users/admin to password change page
-    - Redirect pending_totp_setup users/admin to TOTP setup page
+    - Redirect pending_totp_setup users/admin to TOTP setup page (prod only)
     - Block vault/dashboard access until status is "active"
 - [ ] Connect frontend to backend APIs
 - [ ] Basic error handling and validation feedback
@@ -1064,13 +1186,14 @@ Savings: $2,318.40 - $667.40 = $1,651/month (71% cost reduction)
 ### Phase 3: Deployment
 - [ ] **CDK Deployment Preparation**:
   - Configure AWS credentials and CDK bootstrap
-  - Create environment-specific configuration files
+  - Environment configs defined in `cdk/lib/config/environments.ts`
   - Test CDK synthesis (`cdk synth`)
   - Review generated CloudFormation templates
 - [ ] **Infrastructure Deployment**:
-  - Deploy to development: `cdk deploy --context env=dev`
-  - Deploy to staging: `cdk deploy --context env=staging`
-  - Deploy to production: `cdk deploy --context env=prod`
+  - Deploy dev stack: `cdk deploy PassVault-Dev --context env=dev`
+  - Deploy beta stack: `cdk deploy PassVault-Beta --context env=beta`
+  - Deploy prod stack: `cdk deploy PassVault-Prod --context env=prod --require-approval broadening`
+  - Deploy all stacks: `cdk deploy --all`
   - Verify all resources created successfully
 - [ ] **Application Deployment**:
   - Run admin initialization script (create admin user, generate password)
@@ -1079,12 +1202,12 @@ Savings: $2,318.40 - $667.40 = $1,651/month (71% cost reduction)
   - Invalidate CloudFront cache
 - [ ] **Setup CI/CD pipeline** (optional):
   - GitHub Actions for automated deployments
-  - Separate workflows for dev/staging/prod
+  - Separate workflows for dev/beta/prod
   - Automated testing before deployment
   - Slack/email notifications on deployment status
 - [ ] **Setup monitoring**:
   - CloudWatch dashboards (via MonitoringConstruct)
-  - Cost alerts (threshold: $50/month)
+  - Cost alerts (threshold: $20/month)
   - Error rate alerts (threshold: 5%)
   - WAF blocked request alerts
   - Lambda error and throttle alarms
@@ -1215,8 +1338,16 @@ Savings: $2,318.40 - $667.40 = $1,651/month (71% cost reduction)
 - **PoW challenge fetch**: < 200ms (cached on server, minimal computation)
 
 ### 10.4 Session Timeouts
-- **View Mode Auto-Logout**: Exactly 60 seconds from login or returning to view mode
-- **Edit Mode Auto-Logout**: Exactly 120 seconds from entering edit mode
+
+Session timeouts vary by environment (see Section 2.5):
+
+| Timeout | Dev/Beta | Prod |
+|---------|----------|------|
+| View Mode Auto-Logout | 5 minutes | 60 seconds |
+| Edit Mode Auto-Logout | 10 minutes | 120 seconds |
+| Admin Token Expiry | 24 hours | 8 hours |
+| User Token Expiry | 30 minutes | 5 minutes |
+
 - **Post-Save Logout**: Immediate logout after successful save (< 1 second)
 - **Post-Cancel Logout**: Immediate logout after canceling edit mode (< 1 second)
 - **Timer Accuracy**: Countdown timer must be accurate within ±1 second
