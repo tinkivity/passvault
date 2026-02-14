@@ -15,10 +15,11 @@ PassVault is a privacy-focused, serverless password vault where:
 - **Client-side encryption** ensures the server never sees your data
 - **Post-quantum cryptography** (Argon2id + AES-256-GCM) protects against future threats
 - **Multi-layer bot protection** prevents AWS cost abuse
-- **TOTP-based 2FA** for all accounts
+- **TOTP-based 2FA** for all accounts (prod; disabled in dev/beta)
 - **Zero-knowledge architecture** - even admins can't access user data
+- **Three environments** - dev, beta, and prod with feature flags
 
-**Monthly Cost:** ~$8-10 for 3-100 users (primarily AWS WAF costs)
+**Monthly Cost:** ~$0 for dev/beta, ~$8-10 for prod (3-100 users)
 
 ---
 
@@ -27,21 +28,21 @@ PassVault is a privacy-focused, serverless password vault where:
 ### Security
 - ✅ **End-to-end encryption** - Files encrypted on client, server stores only encrypted blobs
 - ✅ **Post-quantum safe** - Argon2id + AES-256-GCM with 256-bit keys
-- ✅ **TOTP 2FA** - Mandatory two-factor authentication for all users
+- ✅ **TOTP 2FA** - Mandatory two-factor authentication (prod; disabled in dev/beta)
 - ✅ **Zero-knowledge** - Admin cannot decrypt user files
 - ✅ **Bot protection** - Multi-layer defense against automated attacks
 - ✅ **Offline recovery** - Decrypt your file without the application
 
 ### User Experience
-- ⏱️ **View mode** - Read-only with 60-second auto-logout
-- ✏️ **Edit mode** - Explicit activation with 120-second auto-logout
+- ⏱️ **View mode** - Read-only with auto-logout (60s prod, 5min dev/beta)
+- ✏️ **Edit mode** - Explicit activation with auto-logout (120s prod, 10min dev/beta)
 - 📋 **Copy to clipboard** - One-click copy functionality
 - 💾 **Download encrypted backup** - Full recovery package with metadata
 
 ### Infrastructure
 - 🚀 **Serverless** - AWS Lambda + API Gateway + S3 + DynamoDB
 - 📊 **Cost-effective** - ~$8/month for up to 100 users
-- 🔒 **AWS WAF** - Bot Control with CAPTCHA challenges
+- 🔒 **AWS WAF** - Bot Control with CAPTCHA challenges (prod only)
 - 🌍 **CloudFront CDN** - Global content delivery
 - 📈 **Scalable** - Handles 1,000+ users with minimal cost increase
 
@@ -114,8 +115,17 @@ cd ../frontend && npm install
 # Bootstrap CDK (one-time setup)
 cdk bootstrap aws://ACCOUNT-ID/REGION
 
-# Deploy infrastructure
+# Deploy dev stack (no WAF, no TOTP, ~$0/month)
 cd cdk
+cdk deploy PassVault-Dev --context env=dev
+
+# Deploy beta stack (no WAF, no TOTP, with CloudFront, ~$0/month)
+cdk deploy PassVault-Beta --context env=beta
+
+# Deploy prod stack (full security, ~$8-10/month)
+cdk deploy PassVault-Prod --context env=prod
+
+# Or deploy all stacks at once
 cdk deploy --all
 
 # Follow post-deployment steps in DEPLOYMENT.md
@@ -127,6 +137,10 @@ For complete deployment instructions, see **[DEPLOYMENT.md](DEPLOYMENT.md)**.
 
 ## 💰 Cost Breakdown
 
+**Dev/Beta:** ~$0/month (WAF disabled, runs within AWS free tier)
+
+**Prod (Year 2+):**
+
 | Users | Monthly Cost | Per User/Month | Annual Cost |
 |-------|--------------|----------------|-------------|
 | 3     | $8.17        | $2.72          | $98         |
@@ -135,7 +149,7 @@ For complete deployment instructions, see **[DEPLOYMENT.md](DEPLOYMENT.md)**.
 | 100   | $10.01       | $0.10          | $120        |
 | 500   | $17.40       | $0.035         | $209        |
 
-**Primary cost driver:** AWS WAF (~80-90% of total costs)
+**Primary cost driver (prod):** AWS WAF (~80-90% of total costs)
 
 **Compared to alternatives:**
 - 1Password Business: $799/month for 100 users
@@ -175,7 +189,7 @@ See **[COSTS.md](COSTS.md)** for detailed analysis.
 1. Deploy PassVault to AWS using CDK
 2. Retrieve initial admin password from S3
 3. Log in and change password
-4. Set up TOTP (scan QR code)
+4. Set up TOTP (scan QR code) — *prod only, skipped in dev/beta*
 5. Create user accounts (system generates OTPs)
 6. Share credentials with users securely
 
@@ -183,9 +197,9 @@ See **[COSTS.md](COSTS.md)** for detailed analysis.
 1. Receive username + OTP from admin
 2. Log in with OTP
 3. Change password (must meet security policy)
-4. Set up TOTP (scan QR code)
-5. Access vault in view mode (60s auto-logout)
-6. Click "Edit" to modify (120s auto-logout)
+4. Set up TOTP (scan QR code) — *prod only, skipped in dev/beta*
+5. Access vault in view mode (auto-logout)
+6. Click "Edit" to modify (extended auto-logout)
 7. Save changes (immediate logout)
 
 ### File Encryption
@@ -205,7 +219,7 @@ See **[COSTS.md](COSTS.md)** for detailed analysis.
 - ✅ Database breach (encrypted files + hashed passwords)
 - ✅ Man-in-the-middle (HTTPS + authenticated encryption)
 - ✅ Bot attacks (multi-layer defense)
-- ✅ Brute force (TOTP + progressive challenges)
+- ✅ Brute force (TOTP in prod + progressive challenges)
 - ✅ Quantum computers (post-quantum cryptography)
 
 **Does NOT Protect Against:**

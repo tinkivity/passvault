@@ -13,6 +13,22 @@ This document provides a comprehensive breakdown of PassVault's monthly operatio
 
 ---
 
+## Cost by Environment
+
+PassVault supports three deployment environments (see [SPECIFICATION.md Section 2.5](SPECIFICATION.md) for details). Dev and beta disable WAF and TOTP, running entirely within AWS free tier:
+
+| Environment | WAF | TOTP | CloudFront | Other Services | **Monthly Total** |
+|-------------|-----|------|------------|----------------|-------------------|
+| **Dev** | $0 *(disabled)* | N/A *(disabled)* | $0 *(optional)* | ~$0 *(free tier)* | **~$0.00** |
+| **Beta** | $0 *(disabled)* | N/A *(disabled)* | ~$0 *(free tier)* | ~$0 *(free tier)* | **~$0.00** |
+| **Prod** | $8.00 | N/A | $0-5.22 | $0-1.78 | **$8-10** |
+
+**Running all three stacks:** ~$8-10/month total (only prod incurs meaningful costs)
+
+> All cost breakdowns below apply to the **prod** environment. Dev and beta costs are negligible.
+
+---
+
 ## Table of Contents
 
 1. [Cost Breakdown by Service](#1-cost-breakdown-by-service)
@@ -206,7 +222,9 @@ Cost: 18 GB × $0.085 = $1.53/month
 
 ---
 
-### 1.6 AWS WAF (Web Application Firewall)
+### 1.6 AWS WAF (Web Application Firewall) — Prod Only
+
+> WAF is only deployed in the prod environment. Dev and beta stacks do not include WAF.
 
 **Pricing Model:**
 - Web ACL: $5.00 per month
@@ -489,32 +507,20 @@ Savings vs no protection: $2,678.40 - $209.60 = $2,468.80/month (92% savings)
 
 ## 5. Cost Optimization Strategies
 
-### 5.1 Development Environment Optimizations
+### 5.1 Dev and Beta Environment Optimizations
 
-**Disable WAF in Dev:**
-```typescript
-// cdk/lib/config/dev.ts
-waf: {
-  enabled: false  // Save $8/month in dev
-}
-```
-**Savings:** $8/month per dev environment
+Dev and beta environments are pre-configured to minimize costs via the environment config system (see [SPECIFICATION.md Section 2.5](SPECIFICATION.md)):
 
-**Reduce Lambda Memory:**
-```typescript
-lambda: {
-  memorySize: 256  // Down from 512 MB
-}
-```
-**Savings:** ~50% reduction in Lambda compute costs (minimal at low usage)
+| Setting | Dev/Beta | Prod |
+|---------|----------|------|
+| WAF | Disabled (saves $8/month) | Enabled |
+| TOTP | Disabled | Mandatory |
+| Lambda memory | 256 MB | 512 MB |
+| Log retention | 1 week (dev) / 2 weeks (beta) | 30 days |
+| DynamoDB PITR | Disabled | Enabled |
+| S3 versioning | Disabled | Enabled |
 
-**Shorter Log Retention:**
-```typescript
-logRetention: RetentionDays.ONE_WEEK  // Down from 30 days
-```
-**Savings:** Minimal but reduces clutter
-
-**Total Dev Savings:** ~$8/month per environment
+**Result:** Dev and beta stacks run at ~$0/month within AWS free tier. No manual cost optimization needed.
 
 ---
 
@@ -624,13 +630,13 @@ reservedConcurrentExecutions: 5
 ```bash
 aws cloudwatch put-metric-alarm \
   --alarm-name passvault-monthly-cost \
-  --alarm-description "Alert when monthly costs exceed $50" \
+  --alarm-description "Alert when monthly costs exceed $20" \
   --metric-name EstimatedCharges \
   --namespace AWS/Billing \
   --statistic Maximum \
   --period 21600 \
   --evaluation-periods 1 \
-  --threshold 50 \
+  --threshold 20 \
   --comparison-operator GreaterThanThreshold \
   --alarm-actions <SNS-TOPIC-ARN>
 ```
@@ -790,11 +796,11 @@ aws budgets create-budget \
 
 ### Recommendations
 
-✅ **Always enable WAF** - $8/month prevents $100-1,000s in attack costs
+✅ **Always enable WAF in prod** - $8/month prevents $100-1,000s in attack costs
 ✅ **Enable CloudFront compression** - 60-80% data transfer savings
 ✅ **Use S3 + CloudFront hosting** - Leverages AWS free tier maximally
-✅ **Monitor costs weekly** - Set up CloudWatch alarms at $50/month threshold
-✅ **Disable WAF in dev environments** - Save $8/month per environment
+✅ **Monitor costs weekly** - Set up CloudWatch alarms at $20/month threshold
+✅ **Use dev/beta stacks for development** - WAF and TOTP disabled by default, ~$0/month
 ✅ **Start with default settings** - Optimize only if costs exceed $20/month
 
 ### Cost-Effectiveness

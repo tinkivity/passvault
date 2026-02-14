@@ -2,16 +2,20 @@
 
 ## Overview
 
-This guide provides complete instructions for deploying PassVault to AWS using AWS Cloud Development Kit (CDK). The deployment creates a production-ready serverless application with comprehensive bot protection and security features.
+This guide provides complete instructions for deploying PassVault to AWS using AWS Cloud Development Kit (CDK). PassVault supports three deployment environments — **dev**, **beta**, and **prod** — each deployed as a fully isolated CloudFormation stack.
 
 **Architecture:**
 - Frontend: React SPA hosted on S3 + CloudFront
 - Backend: API Gateway + Lambda functions (Node.js)
 - Storage: S3 (encrypted files) + DynamoDB (user metadata)
-- Security: AWS WAF with Bot Control, TOTP-based 2FA
+- Security: AWS WAF with Bot Control, TOTP-based 2FA (prod only)
 - Encryption: Client-side end-to-end encryption (Argon2id + AES-256-GCM)
 
-**Estimated Monthly Cost:** $8-10 for 3-10 users (primarily AWS WAF costs)
+**Estimated Monthly Cost:**
+- Dev/Beta: ~$0 (no WAF, no TOTP, within AWS free tier)
+- Prod: $8-10 for 3-10 users (primarily AWS WAF costs)
+
+See [SPECIFICATION.md Section 2.5](SPECIFICATION.md) for full environment comparison.
 
 ---
 
@@ -88,9 +92,7 @@ passvault/
 │   │   │   ├── security.ts       # WAF + security construct
 │   │   │   └── monitoring.ts     # CloudWatch alarms construct
 │   │   └── config/
-│   │       ├── dev.ts            # Dev environment config
-│   │       ├── staging.ts        # Staging environment config
-│   │       └── prod.ts           # Production environment config
+│   │       └── environments.ts   # All environment configs (dev, beta, prod)
 │   ├── package.json
 │   ├── tsconfig.json
 │   └── cdk.json
@@ -193,13 +195,13 @@ cdk bootstrap aws://ACCOUNT-ID/eu-west-1
 
 ### Main Stack Components
 
-The PassVault CDK stack (`PassVaultStack`) consists of multiple constructs:
+The PassVault CDK stack (`PassVaultStack`) consists of multiple constructs, some conditional on environment:
 
-1. **StorageConstruct**: DynamoDB tables and S3 buckets
-2. **BackendConstruct**: Lambda functions and API Gateway
-3. **SecurityConstruct**: WAF, IAM roles, and security policies
-4. **FrontendConstruct**: CloudFront distribution and S3 static hosting
-5. **MonitoringConstruct**: CloudWatch alarms and dashboards
+1. **StorageConstruct**: DynamoDB tables and S3 buckets (PITR/versioning: prod only)
+2. **BackendConstruct**: Lambda functions and API Gateway (memory/timeout from config)
+3. **SecurityConstruct**: WAF, IAM roles, and security policies (**prod only** — not deployed in dev/beta)
+4. **FrontendConstruct**: CloudFront distribution and S3 static hosting (CloudFront optional in dev)
+5. **MonitoringConstruct**: CloudWatch alarms and dashboards (log retention from config)
 
 ### Stack Dependencies
 
@@ -299,7 +301,7 @@ FrontendConstruct ← MonitoringConstruct
 - Usage Plans:
   - Free tier: Default (no API key required)
   - Admin tier: Higher limits
-- Stages: `dev`, `staging`, `prod`
+- Stages: `dev`, `beta`, `prod`
 
 **Endpoints:**
 ```
@@ -323,9 +325,11 @@ PUT  /vault              → Vault Lambda
 GET  /vault/download     → Vault Lambda
 ```
 
-### 5.5 AWS WAF
+### 5.5 AWS WAF (Prod Only)
 
-**Web ACL Name:** `passvault-waf-{environment}`
+**Web ACL Name:** `passvault-waf-prod`
+
+> **Note**: WAF is only deployed in the prod environment. Dev and beta stacks do not include WAF to save costs (~$8/month).
 
 **Attached to:** CloudFront distribution
 
@@ -381,50 +385,39 @@ GET  /vault/download     → Vault Lambda
 
 ### Step 1: Configure Environment
 
-```bash
-cd cdk
+All environment configs are defined in `cdk/lib/config/environments.ts`. The file exports dev, beta, and prod configurations:
 
-# Create environment configuration (if not exists)
-cat > lib/config/prod.ts << 'EOF'
-export const prodConfig = {
+```typescript
+// cdk/lib/config/environments.ts (excerpt — prod config)
+export const prodConfig: EnvironmentConfig = {
+  stackName: 'PassVault-Prod',
   environment: 'prod',
   region: 'us-east-1',
   adminUsername: 'admin',
 
-  // WAF configuration
-  waf: {
-    enabled: true,
-    rateLimitPerIP: 100, // requests per 5 minutes
-    geoRestrictions: [], // ['US', 'CA', 'GB'] to allow only these
+  features: {
+    totpRequired: true,      // Mandatory in prod
+    wafEnabled: true,         // Enabled in prod
+    powEnabled: true,
+    honeypotEnabled: true,
   },
 
-  // Lambda configuration
-  lambda: {
-    memorySize: 512,
-    timeout: 15,
+  session: {
+    viewModeTimeoutSeconds: 60,
+    editModeTimeoutSeconds: 120,
+    adminTokenExpiryHours: 8,
+    userTokenExpiryMinutes: 5,
   },
 
-  // API Gateway configuration
-  apiGateway: {
-    throttleBurstLimit: 20,
-    throttleRateLimit: 10,
-  },
-
-  // Domain configuration (optional)
-  customDomain: {
-    enabled: false,
-    domainName: 'passvault.example.com',
-    certificateArn: 'arn:aws:acm:...',
-  },
-
-  // Monitoring configuration
-  monitoring: {
-    enableDetailedLogs: true,
-    costAlertThreshold: 50, // USD per month
-    errorRateAlertThreshold: 0.05, // 5%
-  },
+  lambda: { memorySize: 512, timeout: 15 },
+  monitoring: { logRetentionDays: 30, costAlertThreshold: 20 },
 };
-EOF
+
+// Dev and beta configs override specific values:
+// - features.totpRequired = false
+// - features.wafEnabled = false
+// - Relaxed session timeouts (5min view, 10min edit)
+// - Smaller Lambda memory (256 MB)
 ```
 
 ### Step 2: Synthesize CDK Stack
@@ -443,29 +436,32 @@ cdk doctor
 ### Step 3: Deploy Infrastructure
 
 ```bash
-# Deploy to AWS (development)
-cdk deploy --all --profile default
+# Deploy dev stack (no WAF, no TOTP, no CloudFront required)
+cdk deploy PassVault-Dev --context env=dev
 
-# Deploy to specific environment
-cdk deploy --context env=prod --all
+# Deploy beta stack (no WAF, no TOTP, with CloudFront)
+cdk deploy PassVault-Beta --context env=beta
 
-# Deploy with approval required for security changes
-cdk deploy --require-approval broadening
+# Deploy prod stack (full security — WAF, TOTP, CloudFront)
+cdk deploy PassVault-Prod --context env=prod --require-approval broadening
 
-# Deploy and show progress
-cdk deploy --all --progress events
+# Deploy all stacks
+cdk deploy --all
 
-# Expected output:
-# ✅ PassVaultStack
+# Deploy with progress output
+cdk deploy PassVault-Prod --context env=prod --progress events
+
+# Expected output (prod example):
+# ✅ PassVault-Prod
 #
 # Outputs:
-# PassVaultStack.ApiEndpoint = https://abc123.execute-api.us-east-1.amazonaws.com/prod
-# PassVaultStack.CloudFrontURL = https://d1234567890.cloudfront.net
-# PassVaultStack.ConfigBucket = passvault-config-prod-xyz123
-# PassVaultStack.AdminPasswordS3Key = admin-initial-password.txt
+# PassVault-Prod.ApiEndpoint = https://abc123.execute-api.us-east-1.amazonaws.com/prod
+# PassVault-Prod.CloudFrontURL = https://d1234567890.cloudfront.net
+# PassVault-Prod.ConfigBucket = passvault-config-prod-xyz123
+# PassVault-Prod.AdminPasswordS3Key = admin-initial-password.txt
 ```
 
-**Deployment time:** ~15-20 minutes for first deployment
+**Deployment time:** ~15-20 minutes for first prod deployment, ~5-10 minutes for dev/beta (no WAF)
 
 ### Step 4: Initialize Admin Account
 
@@ -550,15 +546,17 @@ open https://d1234567890.cloudfront.net
 
 ### 7.1 Admin First Login
 
-1. Navigate to CloudFront URL
+1. Navigate to CloudFront URL (or API Gateway URL for dev)
 2. Click "Admin Login" (or use `/admin` route)
 3. Enter credentials:
    - Username: `admin`
    - Password: (from S3 config bucket)
 4. Change password immediately
-5. Set up TOTP (scan QR code with authenticator app)
-6. Verify TOTP code
+5. **Prod only**: Set up TOTP (scan QR code with authenticator app)
+6. **Prod only**: Verify TOTP code
 7. Access admin dashboard
+
+> In dev/beta environments, TOTP setup is skipped — admin goes directly to the dashboard after changing the password.
 
 ### 7.2 Create User Accounts
 
@@ -575,13 +573,13 @@ From admin dashboard:
 # Set up cost alert
 aws cloudwatch put-metric-alarm \
   --alarm-name passvault-cost-alert \
-  --alarm-description "Alert when monthly costs exceed $50" \
+  --alarm-description "Alert when monthly costs exceed $20" \
   --metric-name EstimatedCharges \
   --namespace AWS/Billing \
   --statistic Maximum \
   --period 21600 \
   --evaluation-periods 1 \
-  --threshold 50 \
+  --threshold 20 \
   --comparison-operator GreaterThanThreshold
 
 # Set up error rate alert
@@ -618,45 +616,43 @@ aws logs tail /aws/wafv2/passvault-waf-prod --follow
 
 ### 8.1 Multiple Environments
 
-Deploy separate stacks for dev, staging, and production:
+Deploy separate, fully isolated stacks for dev, beta, and production:
 
 ```bash
-# Deploy to development
-cdk deploy --context env=dev --all
+# Deploy dev stack (~$0/month, no WAF, no TOTP)
+cdk deploy PassVault-Dev --context env=dev
 
-# Deploy to staging
-cdk deploy --context env=staging --all
+# Deploy beta stack (~$0/month, no WAF, no TOTP, with CloudFront)
+cdk deploy PassVault-Beta --context env=beta
 
-# Deploy to production
-cdk deploy --context env=prod --all
+# Deploy prod stack (~$8-10/month, full security)
+cdk deploy PassVault-Prod --context env=prod --require-approval broadening
+
+# Deploy all stacks at once
+cdk deploy --all
+
+# Destroy a specific stack
+cdk destroy PassVault-Dev --context env=dev
 ```
 
-### 8.2 Environment-Specific Configuration
+### 8.2 Environment Configuration
 
-Create separate config files:
+All environments are defined in a single file (`cdk/lib/config/environments.ts`):
 
 ```typescript
-// lib/config/dev.ts
-export const devConfig = {
-  environment: 'dev',
-  waf: { enabled: false }, // Disable WAF in dev to save costs
-  monitoring: { enableDetailedLogs: false },
-};
-
-// lib/config/staging.ts
-export const stagingConfig = {
-  environment: 'staging',
-  waf: { enabled: true },
-  monitoring: { enableDetailedLogs: true },
-};
-
-// lib/config/prod.ts
-export const prodConfig = {
-  environment: 'prod',
-  waf: { enabled: true },
-  monitoring: { enableDetailedLogs: true, costAlertThreshold: 50 },
-};
+// Key differences between environments:
+//
+// Dev:  totpRequired=false, wafEnabled=false, powEnabled=false
+//       cloudFrontEnabled=false, relaxed timeouts, 256MB Lambda
+//
+// Beta: totpRequired=false, wafEnabled=false, powEnabled=true
+//       cloudFrontEnabled=true, relaxed timeouts, 256MB Lambda
+//
+// Prod: totpRequired=true, wafEnabled=true, powEnabled=true
+//       cloudFrontEnabled=true, strict timeouts, 512MB Lambda
 ```
+
+See [SPECIFICATION.md Section 2.5](SPECIFICATION.md) for the full environment comparison table.
 
 ---
 
@@ -848,19 +844,18 @@ aws s3 sync s3://passvault-files-prod-xyz123/ \
 
 ## 12. Cost Optimization
 
-### 12.1 Reduce Costs in Development
+### 12.1 Dev and Beta Environments
 
-```bash
-# Disable WAF in dev environment
-# In lib/config/dev.ts:
-waf: { enabled: false }
+Dev and beta stacks are designed to run at ~$0/month by default:
 
-# Use smaller Lambda memory sizes
-lambda: { memorySize: 256 }
+- **WAF**: Disabled (saves $8/month per stack)
+- **TOTP**: Disabled (no authenticator app needed during development)
+- **Lambda memory**: 256 MB (reduced from 512 MB)
+- **CloudWatch log retention**: 1 week (dev) / 2 weeks (beta)
+- **DynamoDB PITR**: Disabled
+- **S3 versioning**: Disabled
 
-# Reduce CloudWatch log retention
-logRetention: RetentionDays.ONE_WEEK
-```
+These settings are built into the environment configs — no manual tuning needed.
 
 ### 12.2 Production Cost Optimization
 
