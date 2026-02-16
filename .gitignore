@@ -3,11 +3,11 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+package-lock.json
 
 # Production builds
 build/
 dist/
-*.js.map
 
 # Environment variables
 .env
@@ -27,9 +27,6 @@ dist/
 
 # CDK
 cdk.out/
-*.d.ts
-*.js
-!jest.config.js
 
 # Testing
 coverage/
@@ -50,7 +47,6 @@ temp/
 
 # Secrets (DO NOT COMMIT)
 *.key
-*.pem
 secrets/
 admin-initial-password.txt
 

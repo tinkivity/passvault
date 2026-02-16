@@ -51,6 +51,7 @@ PassVault is a privacy-focused, serverless password vault where:
 ## 📚 Documentation
 
 - **[SPECIFICATION.md](SPECIFICATION.md)** - Complete technical specification
+- **[IMPLEMENTATION.md](IMPLEMENTATION.md)** - Build plan and architecture
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** - AWS CDK deployment guide
 - **[RECOVERY.md](RECOVERY.md)** - Offline file recovery manual
 - **[COSTS.md](COSTS.md)** - Detailed cost analysis and projections
@@ -87,7 +88,7 @@ Lambda Functions (PoW Validation)
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 22+
 - AWS CLI configured
 - AWS CDK v2
 - AWS account with admin access
@@ -99,14 +100,8 @@ Lambda Functions (PoW Validation)
 git clone https://github.com/yourusername/passvault.git
 cd passvault
 
-# Install CDK dependencies
-cd cdk && npm install
-
-# Install backend dependencies
-cd ../backend && npm install
-
-# Install frontend dependencies
-cd ../frontend && npm install
+# Install all dependencies (monorepo — npm workspaces)
+npm install
 ```
 
 ### Deployment
