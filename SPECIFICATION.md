@@ -130,7 +130,7 @@ PassVault is an invitation-only, personal secure text storage application where 
   - Suspected bots → CAPTCHA challenge (AWS WAF CAPTCHA)
   - Known bad bots → Block immediately
   - Rate limit violators → Temporary block (1 hour)
-- **Cost Optimization**: WAF costs ~$5-10/month baseline, saves potentially $100s in Lambda/API costs
+- **Cost Optimization**: WAF costs ~$8/month baseline, saves potentially $100s in Lambda/API costs
 
 **Layer 3: API Gateway Rate Limiting**
 - **Per-IP Throttling**:
@@ -326,6 +326,7 @@ PassVault supports three deployment environments with different security profile
 | **TOTP** | Disabled | Disabled | Mandatory |
 | **WAF** | Disabled | Disabled | Enabled |
 | **Proof of Work** | Disabled | Enabled | Enabled |
+| **Honeypot** | Enabled | Enabled | Enabled |
 | **CloudFront** | Optional (direct S3/APIGW) | Enabled | Enabled |
 | **View timeout** | 5 min | 5 min | 60 sec |
 | **Edit timeout** | 10 min | 10 min | 120 sec |
@@ -335,6 +336,7 @@ PassVault supports three deployment environments with different security profile
 | **Log retention** | 1 week | 2 weeks | 30 days |
 | **DynamoDB PITR** | Disabled | Disabled | Enabled |
 | **S3 versioning** | Disabled | Disabled | Enabled |
+| **Monitoring** | Disabled (logs only) | Disabled (logs only) | Dashboard + alarms |
 | **UI indicator** | "DEV ENVIRONMENT" banner | "BETA ENVIRONMENT" banner | None |
 | **Monthly cost** | ~$0 | ~$0 | ~$8-10 |
 
@@ -375,7 +377,7 @@ PassVault supports three deployment environments with different security profile
 All environment differences are driven by a single `EnvironmentConfig` type. The environment is determined by:
 - **CDK**: `--context env=dev|beta|prod`
 - **Backend**: `ENVIRONMENT` Lambda environment variable
-- **Frontend**: `REACT_APP_ENVIRONMENT` build-time environment variable
+- **Frontend**: `VITE_ENVIRONMENT` build-time environment variable
 
 ## 3. Technical Architecture
 
@@ -388,7 +390,7 @@ All environment differences are driven by a single `EnvironmentConfig` type. The
   - Unsaved changes tracking
   - Encryption key management (derived from password, held in memory during session)
 - **HTTP Client**: Fetch API or Axios
-- **Styling**: CSS Modules or styled-components (to be decided)
+- **Styling**: Tailwind CSS v4
 - **Routing**: React Router (or simple conditional rendering for login/register/editor views)
 - **Client-Side Encryption**:
   - **Cryptography Library**: Web Crypto API (native browser support)
@@ -527,7 +529,7 @@ Protection Layers:
   - Request: `{ "username": "string" }`
   - Response: `{ "success": true, "username": "string", "oneTimePassword": "string", "userId": "string" }`
   - Creates new user invitation
-  - Generates secure random one-time password (min 12 characters)
+  - Generates secure random one-time password (min 16 characters)
   - Generates unique encryption salt for user (256-bit random, base64)
   - Creates empty encrypted S3 file for user (encrypted with temporary key or empty blob)
   - User status set to "pending_first_login"
@@ -595,9 +597,9 @@ All endpoints require user authentication via Authorization header (Bearer token
   - Blocked if user status is not "active" (must complete password change and TOTP setup)
 
 - **GET /vault/download**
-  - Response: `{ "encryptedContent": "string (base64)", "encryptionSalt": "string (base64)", "algorithm": "Argon2id+AES-256-GCM", "parameters": {...}, "lastModified": "timestamp", "username": "string" }`
+  - Response: `{ "encryptedContent": "string (base64)", "encryptionSalt": "string (base64)", "algorithm": "argon2id+aes-256-gcm", "parameters": { "argon2": { "memory": 65536, "iterations": 3, "parallelism": 4, "hashLength": 32 }, "aes": { "keySize": 256, "ivSize": 96, "tagSize": 128 } }, "lastModified": "timestamp", "username": "string" }`
   - Returns complete recovery package with encrypted file and all metadata needed for offline decryption
-  - Includes: encrypted content, salt, algorithm details, Argon2id parameters
+  - Includes: encrypted content, salt, algorithm details, Argon2id + AES parameters (nested)
   - User ID extracted from auth token
   - Blocked if user status is not "active"
 
@@ -671,7 +673,7 @@ s3://passvault-files/
   - 1 lowercase letter (a-z)
   - 1 number (0-9)
   - 1 special character (!@#$%^&*()_+-=[]{}|;:,.<>?)
-- Cannot be the same as username
+- Cannot contain the username
 - Cannot contain common patterns (e.g., "password", "12345")
 - Validated on both frontend (real-time feedback) and backend (enforcement)
 
@@ -823,8 +825,8 @@ PassVault implements **complete separation** between admin privileges and user d
   - Vault operations blocked if user status is not "active"
   - User must complete both password change and TOTP setup before accessing vault
   - **Critical**: Users can ONLY access files matching their user ID
-    - GET /vault → reads `user-{tokenUserId}.txt`
-    - PUT /vault → writes `user-{tokenUserId}.txt`
+    - GET /vault → reads `user-{tokenUserId}.enc`
+    - PUT /vault → writes `user-{tokenUserId}.enc`
 
 - **Admin Authorization**:
   - All /admin/* endpoints (except login, change-password, totp/setup, totp/verify) require valid admin authentication
@@ -1002,18 +1004,19 @@ Savings: $2,318.40 - $667.40 = $1,651/month (71% cost reduction)
   - **BackendConstruct**: Lambda functions, API Gateway (memory/timeout from config)
   - **SecurityConstruct**: WAF, IAM roles, security policies (entire construct conditional on `wafEnabled`)
   - **FrontendConstruct**: CloudFront distribution, S3 static hosting (CloudFront optional for dev)
-  - **MonitoringConstruct**: CloudWatch alarms, dashboards (log retention from config)
+  - **MonitoringConstruct**: CloudWatch alarms, dashboards (**prod only** — not deployed in dev/beta; log retention still applied per-function in all environments)
 - Three environments via CDK contexts: `--context env=dev|beta|prod`
 - Each environment deploys as a fully isolated CloudFormation stack (see Section 7.5)
-- Environment configs defined in single file: `cdk/lib/config/environments.ts`
+- Environment configs defined in single file: `shared/src/config/environments.ts`
 
 **CDK Entry Point:**
 ```typescript
 // bin/passvault.ts
 const app = new cdk.App();
-const env = app.node.tryGetContext('env') || 'dev';
+const env = app.node.tryGetContext('env');
+if (!env) throw new Error('Missing required context: --context env=dev|beta|prod');
 const config = getEnvironmentConfig(env);
-new PassVaultStack(app, config.stackName, { config });
+new PassVaultStack(app, config.stackName, config, { env: { region: config.region } });
 ```
 
 **Conditional WAF Deployment:**
@@ -1066,7 +1069,7 @@ Stacks share nothing — they can be deployed and destroyed independently.
   - Define `EnvironmentConfig` type in `shared/config/environments.ts`
   - Create dev, beta, and prod config objects with feature flags (see Section 2.5)
   - Pass environment to Lambda via `ENVIRONMENT` env var
-  - Pass environment to frontend via `REACT_APP_ENVIRONMENT` build-time var
+  - Pass environment to frontend via `VITE_ENVIRONMENT` build-time var
 - [ ] **Setup AWS CDK project structure**:
   - Initialize CDK app with TypeScript
   - Define main PassVaultStack
@@ -1186,7 +1189,7 @@ Stacks share nothing — they can be deployed and destroyed independently.
 ### Phase 3: Deployment
 - [ ] **CDK Deployment Preparation**:
   - Configure AWS credentials and CDK bootstrap
-  - Environment configs defined in `cdk/lib/config/environments.ts`
+  - Environment configs defined in `shared/src/config/environments.ts`
   - Test CDK synthesis (`cdk synth`)
   - Review generated CloudFormation templates
 - [ ] **Infrastructure Deployment**:
@@ -1226,11 +1229,11 @@ Stacks share nothing — they can be deployed and destroyed independently.
 ## 9. Technical Decisions Needed
 
 ### Bot Protection & Cost Mitigation
-- [ ] **PoW (Proof of Work) difficulty levels**:
-  - Login/auth endpoints: 4-6 leading zeros (~100-200ms on average device)
-  - Vault operations: 6-8 leading zeros (~200-500ms)
-  - Admin operations: 6-8 leading zeros (~200-500ms)
-  - Public endpoints: 2-4 leading zeros (~50-100ms)
+- [x] **PoW (Proof of Work) difficulty levels** (leading zero bits in SHA-256 hash):
+  - Login/auth endpoints: MEDIUM (18 bits, ~200ms on average device)
+  - Vault operations: HIGH (20 bits, ~500ms)
+  - Admin operations: HIGH (20 bits, ~500ms)
+  - Public endpoints: LOW (16 bits, ~100ms)
   - Balance: security vs user experience (aim for < 500ms delay)
 - [ ] **AWS WAF configuration**:
   - Enable Bot Control (adds ~$10/month + $1 per million requests)
@@ -1260,7 +1263,7 @@ Stacks share nothing — they can be deployed and destroyed independently.
   - Tracking method: DynamoDB table vs in-memory (trade-off: persistence vs cost)
 
 ### General Infrastructure
-- [ ] Choose specific CSS solution (CSS Modules, styled-components, Tailwind, etc.)
+- [x] **CSS solution: Tailwind CSS v4** with `@tailwindcss/vite` plugin
 - [x] **Deployment/IaC tool: AWS CDK (TypeScript)**
   - Type-safe infrastructure definitions
   - Reusable constructs for common patterns

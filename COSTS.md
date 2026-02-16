@@ -63,7 +63,8 @@ PassVault supports three deployment environments (see [SPECIFICATION.md Section 
 | 1,000 users| 510,000         | 51,000           | ✅ Yes    | **$0.85**    |
 
 **Configuration:**
-- Memory: 512 MB (0.5 GB)
+- Memory: 512 MB prod / 256 MB dev+beta (0.5 / 0.25 GB)
+- Architecture: ARM64 (Graviton) — ~20% cheaper than x86
 - Average execution time: 200ms per request
 - Requests per user per month: ~510 (4 logins/day × 30 days)
 

@@ -40,7 +40,7 @@ See [SPECIFICATION.md Section 2.5](SPECIFICATION.md) for full environment compar
 
 ### Required Software
 
-- **Node.js**: v18.x or higher
+- **Node.js**: v22.x or higher
 - **npm**: v8.x or higher
 - **AWS CLI**: v2.x configured with credentials
 - **AWS CDK**: v2.x
@@ -91,8 +91,7 @@ passvault/
 │   │   │   ├── storage.ts        # S3 + DynamoDB construct
 │   │   │   ├── security.ts       # WAF + security construct
 │   │   │   └── monitoring.ts     # CloudWatch alarms construct
-│   │   └── config/
-│   │       └── environments.ts   # All environment configs (dev, beta, prod)
+│   │   # Note: Environment configs live in shared/src/config/environments.ts
 │   ├── package.json
 │   ├── tsconfig.json
 │   └── cdk.json
@@ -155,20 +154,8 @@ passvault/
 git clone <repository-url>
 cd passvault
 
-# Install CDK dependencies
-cd cdk
+# Install all dependencies (monorepo — npm workspaces)
 npm install
-
-# Install backend dependencies
-cd ../backend
-npm install
-
-# Install frontend dependencies
-cd ../frontend
-npm install
-
-# Return to root
-cd ..
 ```
 
 ### CDK Bootstrap
@@ -201,7 +188,7 @@ The PassVault CDK stack (`PassVaultStack`) consists of multiple constructs, some
 2. **BackendConstruct**: Lambda functions and API Gateway (memory/timeout from config)
 3. **SecurityConstruct**: WAF, IAM roles, and security policies (**prod only** — not deployed in dev/beta)
 4. **FrontendConstruct**: CloudFront distribution and S3 static hosting (CloudFront optional in dev)
-5. **MonitoringConstruct**: CloudWatch alarms and dashboards (log retention from config)
+5. **MonitoringConstruct**: CloudWatch alarms and dashboards (**prod only** — log retention still applied per-function in all environments)
 
 ### Stack Dependencies
 
@@ -233,7 +220,7 @@ FrontendConstruct ← MonitoringConstruct
   ],
   billingMode: BillingMode.PAY_PER_REQUEST,  // On-demand pricing
   encryption: TableEncryption.AWS_MANAGED,   // Encryption at rest
-  pointInTimeRecovery: true,                 // Backup enabled
+  pointInTimeRecovery: true,                 // Prod only (disabled in dev/beta)
   removalPolicy: RemovalPolicy.RETAIN        // Don't delete on stack destroy
 }
 ```
@@ -242,7 +229,7 @@ FrontendConstruct ← MonitoringConstruct
 
 **User Files Bucket:** `passvault-files-{environment}-{random}`
 - Encrypted user vault files
-- Versioning enabled
+- Versioning enabled (prod only; disabled in dev/beta)
 - Block all public access
 - Lifecycle policy: None (user files retained indefinitely)
 
@@ -259,33 +246,42 @@ FrontendConstruct ← MonitoringConstruct
 
 ### 5.3 Lambda Functions
 
+All Lambda functions use **ARM_64 (Graviton)** architecture for ~20% cost savings.
+
 **Challenge Function:** `passvault-challenge-{env}`
-- Runtime: Node.js 18.x
-- Memory: 256MB
+- Runtime: Node.js 22.x (ARM64)
+- Memory: 256 MB (all environments)
 - Timeout: 5 seconds
 - Handler: `challenge.handler`
 - Purpose: Generate PoW challenges
 
-**Auth Functions:** `passvault-auth-{env}`
-- Runtime: Node.js 18.x
-- Memory: 512MB
+**Auth Function:** `passvault-auth-{env}`
+- Runtime: Node.js 22.x (ARM64)
+- Memory: 256 MB (dev/beta) / 512 MB (prod)
 - Timeout: 10 seconds
 - Handler: `auth.handler`
 - Purpose: Login, password change, TOTP setup/verify
 
-**Admin Functions:** `passvault-admin-{env}`
-- Runtime: Node.js 18.x
-- Memory: 512MB
+**Admin Function:** `passvault-admin-{env}`
+- Runtime: Node.js 22.x (ARM64)
+- Memory: 256 MB (dev/beta) / 512 MB (prod)
 - Timeout: 10 seconds
 - Handler: `admin.handler`
 - Purpose: User creation, admin management
 
-**Vault Functions:** `passvault-vault-{env}`
-- Runtime: Node.js 18.x
-- Memory: 512MB
+**Vault Function:** `passvault-vault-{env}`
+- Runtime: Node.js 22.x (ARM64)
+- Memory: 256 MB (dev/beta) / 512 MB (prod)
 - Timeout: 15 seconds
 - Handler: `vault.handler`
 - Purpose: File read/write operations
+
+**Health Function:** `passvault-health-{env}`
+- Runtime: Node.js 22.x (ARM64)
+- Memory: 128 MB (all environments)
+- Timeout: 5 seconds
+- Handler: `health.handler`
+- Purpose: Health check endpoint
 
 ### 5.4 API Gateway
 
@@ -372,11 +368,12 @@ GET  /vault/download     → Vault Lambda
   - 403 → /index.html
 
 **Behaviors:**
-- `/` → S3 bucket (frontend)
-- `/api/*` → API Gateway (backend)
+- Default (`*`) → S3 bucket (frontend)
+- `/challenge`, `/health` → API Gateway (GET only)
+- `/auth/*`, `/admin/*`, `/vault/*`, `/vault` → API Gateway (backend)
 - Cache policies:
   - Static assets: 1 year
-  - API responses: No cache
+  - API responses: No cache (CacheDisabled)
   - HTML: 5 minutes
 
 ---
@@ -385,10 +382,10 @@ GET  /vault/download     → Vault Lambda
 
 ### Step 1: Configure Environment
 
-All environment configs are defined in `cdk/lib/config/environments.ts`. The file exports dev, beta, and prod configurations:
+All environment configs are defined in `shared/src/config/environments.ts`. The file exports dev, beta, and prod configurations:
 
 ```typescript
-// cdk/lib/config/environments.ts (excerpt — prod config)
+// shared/src/config/environments.ts (excerpt — prod config)
 export const prodConfig: EnvironmentConfig = {
   stackName: 'PassVault-Prod',
   environment: 'prod',
@@ -498,20 +495,17 @@ npm run init-admin
 ```bash
 cd ../frontend
 
-# Install dependencies (if not already done)
-npm install
-
-# Configure API endpoint
+# Configure API endpoint (Vite uses VITE_ prefix)
 cat > .env.production << EOF
-REACT_APP_API_ENDPOINT=https://abc123.execute-api.us-east-1.amazonaws.com/prod
-REACT_APP_CLOUDFRONT_URL=https://d1234567890.cloudfront.net
+VITE_ENVIRONMENT=prod
+VITE_API_ENDPOINT=https://abc123.execute-api.us-east-1.amazonaws.com/prod
 EOF
 
 # Build production bundle
 npm run build
 
 # Deploy to S3
-aws s3 sync build/ s3://passvault-frontend-prod-xyz123/ --delete
+aws s3 sync dist/ s3://passvault-frontend-prod-xyz123/ --delete
 
 # Invalidate CloudFront cache
 aws cloudfront create-invalidation \
@@ -524,17 +518,17 @@ aws cloudfront create-invalidation \
 ### Step 6: Verify Deployment
 
 ```bash
-# Test health endpoint
-curl https://d1234567890.cloudfront.net/api/health
+# Test health endpoint (no /api/ prefix — CloudFront routes directly)
+curl https://d1234567890.cloudfront.net/health
 
 # Expected response:
 # {"status":"ok"}
 
 # Test challenge endpoint
-curl https://d1234567890.cloudfront.net/api/challenge
+curl https://d1234567890.cloudfront.net/challenge
 
 # Expected response:
-# {"nonce":"...","difficulty":4,"timestamp":1234567890,"ttl":60}
+# {"nonce":"...","difficulty":16,"timestamp":1234567890,"ttl":60}
 
 # Open frontend in browser
 open https://d1234567890.cloudfront.net
@@ -637,7 +631,7 @@ cdk destroy PassVault-Dev --context env=dev
 
 ### 8.2 Environment Configuration
 
-All environments are defined in a single file (`cdk/lib/config/environments.ts`):
+All environments are defined in a single file (`shared/src/config/environments.ts`):
 
 ```typescript
 // Key differences between environments:
@@ -660,17 +654,14 @@ See [SPECIFICATION.md Section 2.5](SPECIFICATION.md) for the full environment co
 
 ### 9.1 CloudWatch Dashboards
 
-The CDK stack automatically creates dashboards:
+> **Note**: CloudWatch dashboards and alarms are only deployed in the **prod** environment. All environments still get per-Lambda log retention via the `logRetention` property.
 
-**Main Dashboard:** `passvault-{env}-dashboard`
+**Main Dashboard:** `passvault-prod-dashboard`
 
 Metrics monitored:
-- API Gateway: Request count, latency, 4xx/5xx errors
-- Lambda: Invocations, duration, errors, throttles
+- API Gateway: Request count, latency (p50/p99)
+- Lambda: Invocations, errors, duration, throttles
 - DynamoDB: Read/write capacity, throttled requests
-- S3: Bucket size, request count
-- WAF: Blocked requests, allowed requests, rate limit hits
-- CloudFront: Requests, bytes downloaded, cache hit rate
 
 ### 9.2 Log Groups
 
@@ -790,16 +781,7 @@ aws cloudwatch get-metric-statistics \
 ### 11.1 Updates and Patches
 
 ```bash
-# Update CDK dependencies
-cd cdk
-npm update
-
-# Update backend dependencies
-cd ../backend
-npm update
-
-# Update frontend dependencies
-cd ../frontend
+# Update all dependencies (monorepo — npm workspaces)
 npm update
 
 # Check for security vulnerabilities
@@ -809,9 +791,9 @@ npm audit fix
 
 ### 11.2 Backup Strategy
 
-**Automated Backups:**
-- DynamoDB: Point-in-time recovery (enabled by default)
-- S3: Versioning enabled on user files bucket
+**Automated Backups (Prod Only):**
+- DynamoDB: Point-in-time recovery (prod only; disabled in dev/beta)
+- S3: Versioning enabled on user files bucket (prod only; disabled in dev/beta)
 
 **Manual Backups:**
 
@@ -903,7 +885,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '18'
+          node-version: '22'
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v2
@@ -912,24 +894,25 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
+      - name: Install Dependencies
+        run: npm ci
+
       - name: Install CDK
         run: npm install -g aws-cdk
 
       - name: Deploy Infrastructure
         run: |
           cd cdk
-          npm ci
           cdk deploy --all --require-approval never
 
       - name: Build Frontend
         run: |
           cd frontend
-          npm ci
           npm run build
 
       - name: Deploy Frontend
         run: |
-          aws s3 sync frontend/build/ s3://${{ secrets.FRONTEND_BUCKET }}/ --delete
+          aws s3 sync frontend/dist/ s3://${{ secrets.FRONTEND_BUCKET }}/ --delete
           aws cloudfront create-invalidation --distribution-id ${{ secrets.CLOUDFRONT_ID }} --paths "/*"
 ```
 

@@ -39,7 +39,7 @@ This manual explains how to decrypt your PassVault encrypted file **independentl
 {
   "encryptedContent": "base64-encoded-encrypted-data",
   "encryptionSalt": "base64-encoded-salt",
-  "algorithm": "Argon2id+AES-256-GCM",
+  "algorithm": "argon2id+aes-256-gcm",
   "parameters": {
     "argon2": {
       "memory": 65536,
@@ -226,7 +226,7 @@ python decrypt_passvault.py
 ### Method C: Using Node.js Script
 
 **Prerequisites:**
-- Node.js 16 or higher
+- Node.js 22 or higher
 - npm package manager
 
 **Step 1: Install Dependencies**
