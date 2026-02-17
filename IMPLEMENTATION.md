@@ -57,12 +57,12 @@ shared/src/
 ├── config/
 │   ├── environments.ts   # devConfig, betaConfig, prodConfig, getEnvironmentConfig()
 │   ├── password-policy.ts# PASSWORD_MIN_LENGTH, validatePassword()
-│   └── crypto-params.ts  # ARGON2_PARAMS, AES_PARAMS, SALT_LENGTH, IV_LENGTH
+│   └── crypto-params.ts  # ARGON2_PARAMS, AES_PARAMS, SALT_LENGTH, ENCRYPTION_ALGORITHM
 ├── constants.ts          # API paths, header names, error messages
 └── index.ts              # barrel export
 ```
 
-Also: root `package.json` (workspaces), `tsconfig.base.json`, ESLint/Prettier config, all package scaffolding (empty dirs + package.json + tsconfig for backend/frontend/cdk).
+Also: root `package.json` (workspaces), `tsconfig.base.json`, all package scaffolding (package.json + tsconfig for backend/frontend/cdk).
 
 **Done when**: `npm install` works, `tsc --noEmit` passes on shared, all other packages can `import { EnvironmentConfig } from '@passvault/shared'`.
 
@@ -107,7 +107,7 @@ backend/src/
 │   ├── jwt.ts            # signToken(), verifyToken(), token payload types
 │   ├── s3.ts             # getVaultFile(), putVaultFile(), getAdminPassword()
 │   ├── dynamodb.ts       # DynamoDB client, getUserByUsername(), getUserById(), createUser(), updateUser()
-│   └── response.ts       # success(), error(), cors() Lambda response builders
+│   └── response.ts       # success(), error() Lambda response builders with CORS headers
 ├── config.ts             # loads EnvironmentConfig from ENVIRONMENT env var
 └── package.json
 ```

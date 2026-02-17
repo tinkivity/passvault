@@ -80,65 +80,74 @@ aws sts get-caller-identity
 
 ```
 passvault/
+├── shared/                       # Contract layer (types, configs, constants)
+│   ├── src/
+│   │   ├── types/                # EnvironmentConfig, User, Auth, Admin, Vault, Challenge, Api types
+│   │   ├── config/               # Environment configs, password policy, crypto params
+│   │   ├── constants.ts          # API paths, PoW config, TOTP config, error messages, limits
+│   │   └── index.ts              # Barrel export
+│   ├── package.json
+│   └── tsconfig.json
 ├── cdk/                          # CDK infrastructure code
 │   ├── bin/
 │   │   └── passvault.ts          # CDK app entry point
 │   ├── lib/
 │   │   ├── passvault-stack.ts    # Main stack definition
-│   │   ├── constructs/
-│   │   │   ├── frontend.ts       # CloudFront + S3 construct
-│   │   │   ├── backend.ts        # API Gateway + Lambda construct
-│   │   │   ├── storage.ts        # S3 + DynamoDB construct
-│   │   │   ├── security.ts       # WAF + security construct
-│   │   │   └── monitoring.ts     # CloudWatch alarms construct
-│   │   # Note: Environment configs live in shared/src/config/environments.ts
+│   │   └── constructs/
+│   │       ├── storage.ts        # DynamoDB + 3 S3 buckets
+│   │       ├── backend.ts        # 5 Lambdas + API Gateway + IAM
+│   │       ├── security.ts       # WAF (prod only)
+│   │       ├── frontend.ts       # CloudFront + S3 static hosting
+│   │       └── monitoring.ts     # CloudWatch dashboards + alarms (prod only)
 │   ├── package.json
 │   ├── tsconfig.json
 │   └── cdk.json
 ├── backend/                      # Lambda function code
 │   ├── src/
 │   │   ├── handlers/
-│   │   │   ├── auth.ts           # Authentication handlers
-│   │   │   ├── admin.ts          # Admin handlers
-│   │   │   ├── vault.ts          # File operations handlers
-│   │   │   └── challenge.ts      # PoW challenge handler
+│   │   │   ├── auth.ts           # POST /auth/login, change-password, totp/*
+│   │   │   ├── admin.ts          # POST /admin/login, change-password, totp/*, users; GET /admin/users
+│   │   │   ├── vault.ts          # GET/PUT /vault, GET /vault/download
+│   │   │   ├── challenge.ts      # GET /challenge
+│   │   │   └── health.ts         # GET /health
+│   │   ├── services/
+│   │   │   ├── auth.ts           # login(), changePassword()
+│   │   │   ├── admin.ts          # adminLogin(), createUserInvitation(), listUsers()
+│   │   │   ├── totp.ts           # generateSecret(), generateQrUri(), verifyCode()
+│   │   │   ├── vault.ts          # getVault(), putVault(), downloadVault()
+│   │   │   └── challenge.ts      # generateChallenge(), validateSolution()
 │   │   ├── middleware/
-│   │   │   ├── auth.ts           # JWT validation
+│   │   │   ├── auth.ts           # JWT extraction + validation
 │   │   │   ├── pow.ts            # Proof of Work validation
-│   │   │   └── rate-limit.ts     # Rate limiting
+│   │   │   └── honeypot.ts       # Hidden field bot detection
 │   │   ├── utils/
-│   │   │   ├── crypto.ts         # Encryption utilities
-│   │   │   ├── totp.ts           # TOTP generation/validation
-│   │   │   ├── password.ts       # Password hashing/validation
-│   │   │   └── s3.ts             # S3 helper functions
-│   │   └── config.ts             # Configuration constants
+│   │   │   ├── crypto.ts         # bcrypt hash/verify, OTP generation, salt generation
+│   │   │   ├── password.ts       # Password policy validation (calls shared)
+│   │   │   ├── jwt.ts            # signToken(), verifyToken()
+│   │   │   ├── s3.ts             # getVaultFile(), putVaultFile(), getAdminPassword()
+│   │   │   ├── dynamodb.ts       # getUserByUsername(), getUserById(), createUser(), updateUser()
+│   │   │   └── response.ts       # success(), error() Lambda response builders
+│   │   └── config.ts             # Loads EnvironmentConfig from ENVIRONMENT env var
+│   ├── build.mjs                 # esbuild bundling script
 │   ├── package.json
 │   └── tsconfig.json
-├── frontend/                     # React application
-│   ├── public/
+├── frontend/                     # React application (pending implementation)
 │   ├── src/
-│   │   ├── components/
-│   │   │   ├── Login.tsx
-│   │   │   ├── PasswordChange.tsx
-│   │   │   ├── TotpSetup.tsx
-│   │   │   ├── Vault.tsx
-│   │   │   └── AdminDashboard.tsx
-│   │   ├── utils/
-│   │   │   ├── crypto.ts         # Client-side encryption
-│   │   │   ├── pow.ts            # PoW solver
-│   │   │   ├── api.ts            # API wrapper with PoW
-│   │   │   └── honeypot.ts       # Bot trap utilities
+│   │   ├── services/             # crypto, api, pow-solver, honeypot
+│   │   ├── context/              # AuthContext, EncryptionContext
+│   │   ├── hooks/                # useAuth, useEncryption, useAutoLogout, useVault, useAdmin
+│   │   ├── components/           # auth/, vault/, admin/, layout/
 │   │   ├── App.tsx
 │   │   └── index.tsx
 │   ├── package.json
 │   └── tsconfig.json
-├── scripts/
-│   ├── init-admin.ts             # Generate initial admin password
-│   ├── deploy.sh                 # Deployment automation script
-│   └── post-deploy.ts            # Post-deployment tasks
+├── package.json                  # Root monorepo (npm workspaces)
+├── tsconfig.base.json
+├── SPECIFICATION.md              # Complete technical specification
+├── IMPLEMENTATION.md             # 8-step build plan
 ├── DEPLOYMENT.md                 # This file
-├── SPECIFICATION.md              # Technical specification
 ├── RECOVERY.md                   # File recovery manual
+├── COSTS.md                      # Cost analysis and projections
 ├── LICENSE                       # MIT License
 └── README.md                     # Project overview
 ```
@@ -397,6 +406,7 @@ export const prodConfig: EnvironmentConfig = {
     wafEnabled: true,         // Enabled in prod
     powEnabled: true,
     honeypotEnabled: true,
+    cloudFrontEnabled: true,
   },
 
   session: {
@@ -522,13 +532,13 @@ aws cloudfront create-invalidation \
 curl https://d1234567890.cloudfront.net/health
 
 # Expected response:
-# {"status":"ok"}
+# {"success":true,"data":{"status":"ok","environment":"prod","timestamp":"2026-02-17T..."}}
 
 # Test challenge endpoint
 curl https://d1234567890.cloudfront.net/challenge
 
 # Expected response:
-# {"nonce":"...","difficulty":16,"timestamp":1234567890,"ttl":60}
+# {"success":true,"data":{"nonce":"...","difficulty":16,"timestamp":1234567890,"ttl":60}}
 
 # Open frontend in browser
 open https://d1234567890.cloudfront.net
