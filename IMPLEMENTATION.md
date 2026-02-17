@@ -114,7 +114,7 @@ backend/src/
 
 **Done when**: each utility has unit tests with mocked AWS SDK. `npm test` passes.
 
-**Status**: Pending
+**Status**: Complete
 
 ---
 
@@ -131,7 +131,7 @@ backend/src/middleware/
 
 **Done when**: middleware functions are tested with mock events. Auth middleware correctly rejects expired/invalid tokens. PoW middleware validates solutions against difficulty target.
 
-**Status**: Pending
+**Status**: Complete
 
 ---
 
@@ -152,7 +152,7 @@ Each service is a module of pure-ish functions that orchestrate utils. No Lambda
 
 **Done when**: services are unit-tested with mocked DynamoDB/S3. Auth flow (OTP login → password change → TOTP setup → active) works in tests for both TOTP-enabled and TOTP-disabled configs.
 
-**Status**: Pending
+**Status**: Complete
 
 ---
 
@@ -173,7 +173,7 @@ Each handler is a router: parses `event.httpMethod` + `event.path`, delegates to
 
 **Done when**: handlers tested with mock API Gateway events. `esbuild` bundles each handler into a single JS file for Lambda. Deploy to dev with `cdk deploy PassVault-Dev --context env=dev` and smoke-test all endpoints with curl.
 
-**Status**: Pending
+**Status**: Complete
 
 ---
 
