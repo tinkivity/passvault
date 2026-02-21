@@ -1,6 +1,9 @@
 import * as cdk from 'aws-cdk-lib';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
+import * as route53 from 'aws-cdk-lib/aws-route53';
+import * as targets from 'aws-cdk-lib/aws-route53-targets';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
@@ -12,6 +15,8 @@ interface FrontendConstructProps {
   frontendBucket: s3.Bucket;
   api: apigateway.RestApi;
   webAcl?: wafv2.CfnWebACL;
+  certificate?: acm.ICertificate;
+  domain?: string;
 }
 
 export class FrontendConstruct extends Construct {
@@ -20,8 +25,9 @@ export class FrontendConstruct extends Construct {
   constructor(scope: Construct, id: string, props: FrontendConstructProps) {
     super(scope, id);
 
-    const { config, frontendBucket, api, webAcl } = props;
+    const { config, frontendBucket, api, webAcl, certificate, domain } = props;
     const env = config.environment;
+    const fullDomain = domain ? `${config.subdomain}.${domain}` : undefined;
 
     // API Gateway origin — strip the stage name from the path
     const apiDomainName = `${api.restApiId}.execute-api.${config.region}.amazonaws.com`;
@@ -36,6 +42,7 @@ export class FrontendConstruct extends Construct {
       minimumProtocolVersion: cloudfront.SecurityPolicyProtocol.TLS_V1_2_2021,
       httpVersion: cloudfront.HttpVersion.HTTP2_AND_3,
       webAclId: webAcl?.attrArn,
+      ...(fullDomain && certificate ? { domainNames: [fullDomain], certificate } : {}),
 
       defaultBehavior: {
         origin: origins.S3BucketOrigin.withOriginAccessControl(frontendBucket),
@@ -106,5 +113,17 @@ export class FrontendConstruct extends Construct {
         },
       ],
     });
+
+    if (fullDomain && domain) {
+      const hostedZone = route53.HostedZone.fromLookup(this, 'HostedZone', {
+        domainName: domain,
+      });
+      const record = new route53.ARecord(this, 'DnsRecord', {
+        zone: hostedZone,
+        recordName: config.subdomain,
+        target: route53.RecordTarget.fromAlias(new targets.CloudFrontTarget(this.distribution)),
+      });
+      record.applyRemovalPolicy(cdk.RemovalPolicy.DESTROY);
+    }
   }
 }

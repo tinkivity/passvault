@@ -1,4 +1,5 @@
 import * as cdk from 'aws-cdk-lib';
+import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import { Construct } from 'constructs';
 import type { EnvironmentConfig } from '@passvault/shared';
@@ -9,8 +10,13 @@ import { FrontendConstruct } from './constructs/frontend.js';
 import { MonitoringConstruct } from './constructs/monitoring.js';
 import { KillSwitchConstruct } from './constructs/kill-switch.js';
 
+interface PassVaultStackProps extends cdk.StackProps {
+  certificate?: acm.ICertificate;
+  domain?: string;
+}
+
 export class PassVaultStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, config: EnvironmentConfig, props?: cdk.StackProps) {
+  constructor(scope: Construct, id: string, config: EnvironmentConfig, props?: PassVaultStackProps) {
     super(scope, id, props);
 
     // Alert email for SNS subscription. Provide via:
@@ -39,6 +45,8 @@ export class PassVaultStack extends cdk.Stack {
         frontendBucket: storage.frontendBucket,
         api: backend.api,
         webAcl: security?.webAcl,
+        certificate: props?.certificate,
+        domain: props?.domain,
       });
     }
 

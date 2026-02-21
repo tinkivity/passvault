@@ -4,6 +4,7 @@ export const devConfig: EnvironmentConfig = {
   stackName: 'PassVault-Dev',
   environment: 'dev',
   region: 'eu-central-1',
+  subdomain: 'dev.pv',
   adminUsername: 'admin',
   features: {
     totpRequired: false,
@@ -26,6 +27,7 @@ export const betaConfig: EnvironmentConfig = {
   stackName: 'PassVault-Beta',
   environment: 'beta',
   region: 'eu-central-1',
+  subdomain: 'beta.pv',
   adminUsername: 'admin',
   features: {
     totpRequired: false,
@@ -48,6 +50,7 @@ export const prodConfig: EnvironmentConfig = {
   stackName: 'PassVault-Prod',
   environment: 'prod',
   region: 'eu-central-1',
+  subdomain: 'pv',
   adminUsername: 'admin',
   features: {
     totpRequired: true,
