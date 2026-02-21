@@ -5,6 +5,7 @@ import { validatePow } from '../middleware/pow.js';
 import { validateHoneypot } from '../middleware/honeypot.js';
 import { requireAuth } from '../middleware/auth.js';
 import { adminLogin, adminChangePassword, createUserInvitation, listUsers } from '../services/admin.js';
+import { downloadVault } from '../services/vault.js';
 import * as totpService from '../services/totp.js';
 import { getUserById, updateUser } from '../utils/dynamodb.js';
 import { config } from '../config.js';
@@ -37,6 +38,10 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // GET /admin/users
     if (path === API_PATHS.ADMIN_USERS && method === 'GET') {
       return handleListUsers(event);
+    }
+    // GET /admin/vault?userId=...
+    if (path === API_PATHS.ADMIN_USER_VAULT && method === 'GET') {
+      return handleDownloadUserVault(event);
     }
 
     return error('Not found', 404);
@@ -187,4 +192,30 @@ async function handleListUsers(event: APIGatewayProxyEvent): Promise<APIGatewayP
 
   const result = await listUsers();
   return success(result);
+}
+
+async function handleDownloadUserVault(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
+  if (pow.errorResponse) return pow.errorResponse;
+
+  const { user, errorResponse } = requireAuth(event);
+  if (errorResponse) return errorResponse;
+
+  if (user!.role !== 'admin') {
+    return error(ERRORS.FORBIDDEN, 403);
+  }
+  if (user!.status !== 'active') {
+    return error(ERRORS.ADMIN_NOT_ACTIVE, 403);
+  }
+
+  const userId = event.queryStringParameters?.userId;
+  if (!userId) {
+    return error('Missing userId query parameter', 400);
+  }
+
+  const result = await downloadVault(userId);
+  if (result.error) {
+    return error(result.error, result.statusCode || 500);
+  }
+  return success(result.response);
 }

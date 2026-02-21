@@ -2,6 +2,7 @@ import * as cdk from 'aws-cdk-lib';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Construct } from 'constructs';
 import type { EnvironmentConfig } from '@passvault/shared';
 import type { StorageConstruct } from './storage.js';
@@ -24,6 +25,16 @@ export class BackendConstruct extends Construct {
 
     const { config, storage } = props;
     const env = config.environment;
+
+    // JWT signing secret — auto-generated once; stable across redeployments
+    const jwtSecret = new secretsmanager.Secret(this, 'JwtSecret', {
+      secretName: `passvault-jwt-secret-${env}`,
+      description: `JWT signing key for PassVault ${env}`,
+      generateSecretString: {
+        excludePunctuation: true,
+        passwordLength: 64,
+      },
+    });
 
     const commonEnv: Record<string, string> = {
       ENVIRONMENT: env,
@@ -104,6 +115,16 @@ export class BackendConstruct extends Construct {
       logRetention,
     });
 
+    // JWT_SECRET: inject auto-generated secret into the Lambdas that sign/verify tokens
+    // CloudFormation resolves the dynamic reference at deploy time; value stored in Lambda config
+    const jwtSecretValue = jwtSecret.secretValue.unsafeUnwrap();
+    this.authFn.addEnvironment('JWT_SECRET', jwtSecretValue);
+    this.adminFn.addEnvironment('JWT_SECRET', jwtSecretValue);
+    this.vaultFn.addEnvironment('JWT_SECRET', jwtSecretValue);
+    jwtSecret.grantRead(this.authFn);
+    jwtSecret.grantRead(this.adminFn);
+    jwtSecret.grantRead(this.vaultFn);
+
     // IAM: grant DynamoDB access to auth, admin, vault
     storage.usersTable.grantReadWriteData(this.authFn);
     storage.usersTable.grantReadWriteData(this.adminFn);
@@ -111,6 +132,9 @@ export class BackendConstruct extends Construct {
 
     // IAM: grant S3 file access to vault
     storage.filesBucket.grantReadWrite(this.vaultFn);
+
+    // IAM: grant S3 file read+write to admin (creates empty vault on invite, downloads vault for backup)
+    storage.filesBucket.grantReadWrite(this.adminFn);
 
     // IAM: grant S3 config read to admin (initial password)
     storage.configBucket.grantRead(this.adminFn);
@@ -134,6 +158,21 @@ export class BackendConstruct extends Construct {
           'X-Pow-Timestamp',
         ],
       },
+    });
+
+    // Add CORS headers to gateway-level error responses (e.g. 502, 429, 403 from APIGW itself)
+    // Without this, browser sees "Failed to fetch" for gateway errors (no Lambda CORS headers)
+    const corsHeaders = {
+      'Access-Control-Allow-Origin': "'*'",
+      'Access-Control-Allow-Headers': "'Content-Type,Authorization,X-Pow-Solution,X-Pow-Nonce,X-Pow-Timestamp'",
+    };
+    this.api.addGatewayResponse('GatewayResponse4xx', {
+      type: apigateway.ResponseType.DEFAULT_4XX,
+      responseHeaders: corsHeaders,
+    });
+    this.api.addGatewayResponse('GatewayResponse5xx', {
+      type: apigateway.ResponseType.DEFAULT_5XX,
+      responseHeaders: corsHeaders,
     });
 
     // Routes
@@ -167,6 +206,8 @@ export class BackendConstruct extends Construct {
     const adminUsers = admin.addResource('users');
     adminUsers.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
     adminUsers.addMethod('GET', new apigateway.LambdaIntegration(this.adminFn));
+    const adminVault = admin.addResource('vault');
+    adminVault.addMethod('GET', new apigateway.LambdaIntegration(this.adminFn));
 
     const vault = this.api.root.addResource('vault');
     vault.addMethod('GET', new apigateway.LambdaIntegration(this.vaultFn));

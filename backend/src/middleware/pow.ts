@@ -4,6 +4,20 @@ import { POW_HEADERS, POW_CONFIG, ERRORS } from '@passvault/shared';
 import { error } from '../utils/response.js';
 import { config } from '../config.js';
 
+function hashMeetsDifficulty(hash: string, difficulty: number): boolean {
+  const fullNibbles = Math.floor(difficulty / 4);
+  for (let i = 0; i < fullNibbles; i++) {
+    if (hash[i] !== '0') return false;
+  }
+  const remainingBits = difficulty % 4;
+  if (remainingBits > 0) {
+    const nibble = parseInt(hash[fullNibbles], 16);
+    const mask = 0xF << (4 - remainingBits) & 0xF;
+    if (nibble & mask) return false;
+  }
+  return true;
+}
+
 export function validatePow(event: APIGatewayProxyEvent, difficulty: number) {
   if (!config.features.powEnabled) {
     return { valid: true, errorResponse: null };
@@ -27,8 +41,7 @@ export function validatePow(event: APIGatewayProxyEvent, difficulty: number) {
     .update(nonce + solution + timestamp)
     .digest('hex');
 
-  const target = '0'.repeat(difficulty) + 'f'.repeat(64 - difficulty);
-  if (hash >= target) {
+  if (!hashMeetsDifficulty(hash, difficulty)) {
     return { valid: false, errorResponse: error(ERRORS.POW_INVALID, 403) };
   }
 

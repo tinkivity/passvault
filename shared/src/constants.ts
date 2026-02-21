@@ -11,6 +11,7 @@ export const API_PATHS = {
   ADMIN_TOTP_SETUP: '/admin/totp/setup',
   ADMIN_TOTP_VERIFY: '/admin/totp/verify',
   ADMIN_USERS: '/admin/users',
+  ADMIN_USER_VAULT: '/admin/vault',
   VAULT: '/vault',
   VAULT_DOWNLOAD: '/vault/download',
 } as const;
