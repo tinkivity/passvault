@@ -29,6 +29,7 @@ export interface EnvironmentConfig {
   stackName: string;
   environment: EnvironmentName;
   region: string;
+  subdomain: string;
   adminUsername: string;
   features: FeatureFlags;
   session: SessionConfig;

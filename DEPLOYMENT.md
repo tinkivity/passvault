@@ -176,15 +176,12 @@ Bootstrap AWS CDK in your account (one-time setup per AWS account/region):
 ```bash
 cd cdk
 
-# Bootstrap for default region
-cdk bootstrap aws://ACCOUNT-ID/REGION
-
-# Example:
-cdk bootstrap aws://123456789012/eu-central-1
-
-# If deploying to multiple regions/accounts
+# Bootstrap for the primary region
 cdk bootstrap aws://ACCOUNT-ID/eu-central-1
-cdk bootstrap aws://ACCOUNT-ID/eu-west-1
+
+# If using a custom domain (see Section 6, Step 3), also bootstrap us-east-1.
+# The CertificateStack (ACM certificate for CloudFront) must be deployed there.
+cdk bootstrap aws://ACCOUNT-ID/us-east-1
 ```
 
 ---
@@ -193,18 +190,26 @@ cdk bootstrap aws://ACCOUNT-ID/eu-west-1
 
 ### Main Stack Components
 
-The PassVault CDK stack (`PassVaultStack`) consists of multiple constructs, some conditional on environment:
+The deployment uses one or two CloudFormation stacks depending on whether a custom domain is provided:
 
+**`CertificateStack`** (optional, deployed to `us-east-1`):
+- Created only when `--context domain=...` is provided and `cloudFrontEnabled` is true
+- Looks up the existing Route 53 hosted zone and issues an ACM certificate via DNS validation
+- CloudFront requires certificates in us-east-1 regardless of the primary region
+
+**`PassVaultStack`** (always, deployed to the primary region):
 1. **StorageConstruct**: DynamoDB table and S3 buckets (PITR/versioning: prod only)
 2. **BackendConstruct**: Lambda functions and API Gateway (memory/timeout from config)
 3. **SecurityConstruct**: WAF with KillSwitchBlock rule, IAM roles, security policies (**prod only**)
-4. **FrontendConstruct**: CloudFront distribution and S3 static hosting (CloudFront optional in dev)
+4. **FrontendConstruct**: CloudFront distribution, S3 static hosting, optional Route 53 alias record
 5. **MonitoringConstruct**: CloudWatch alarms, dashboards, and SNS alert topic (**prod only**)
 6. **KillSwitchConstruct**: Kill switch Lambda + SNS subscription (**prod only**, requires security + monitoring)
 
 ### Stack Dependencies
 
 ```
+CertificateStack (us-east-1, optional)
+       ↓
 StorageConstruct
        ↓
 BackendConstruct → SecurityConstruct
@@ -387,6 +392,16 @@ GET  /vault/download     → Vault Lambda
   - 404 → /index.html (for SPA routing)
   - 403 → /index.html
 
+**Custom domain (optional):** When `--context domain=example.com` is provided, the distribution is configured with a custom subdomain and an ACM certificate. Subdomains per environment:
+
+| Environment | URL |
+|---|---|
+| prod | `pv.example.com` |
+| beta | `beta.pv.example.com` |
+| dev | `dev.pv.example.com` (CloudFront disabled by default) |
+
+A Route 53 alias A record is created automatically and **deleted on `cdk destroy`**.
+
 **Behaviors:**
 - Default (`*`) → S3 bucket (frontend)
 - `/challenge`, `/health` → API Gateway (GET only)
@@ -484,33 +499,37 @@ cdk doctor
 
 ### Step 3: Deploy Infrastructure
 
+**Without custom domain:**
 ```bash
-# Deploy dev stack (no WAF, no TOTP, no CloudFront required)
 cdk deploy PassVault-Dev --context env=dev
-
-# Deploy beta stack (no WAF, no TOTP, with CloudFront)
 cdk deploy PassVault-Beta --context env=beta
-
-# Deploy prod stack (full security — WAF, TOTP, CloudFront)
-# Optionally pass --context alertEmail=you@example.com to subscribe to SNS cost/traffic alerts
 cdk deploy PassVault-Prod --context env=prod --context alertEmail=you@example.com --require-approval broadening
-
-# Deploy all stacks
-cdk deploy --all
-
-# Deploy with progress output
-cdk deploy PassVault-Prod --context env=prod --progress events
-
-# Expected output (prod example):
-# ✅ PassVault-Prod
-#
-# Outputs:
-# PassVault-Prod.ApiUrl = https://abc123.execute-api.eu-central-1.amazonaws.com/prod
-# PassVault-Prod.CloudFrontUrl = https://d1234567890.cloudfront.net
-# PassVault-Prod.AlertTopicArn = arn:aws:sns:eu-central-1:123456789012:passvault-prod-alerts
 ```
 
-**Deployment time:** ~15-20 minutes for first prod deployment, ~5-10 minutes for dev/beta (no WAF)
+**With custom domain** (requires an existing Route 53 hosted zone for `example.com`):
+```bash
+# This deploys two stacks: PassVault-Prod-Cert (us-east-1) and PassVault-Prod (eu-central-1)
+cdk deploy --all --context env=prod --context domain=example.com --context alertEmail=you@example.com --require-approval broadening
+```
+
+The certificate stack (`PassVault-Prod-Cert`) must be deployed before the main stack. Running `cdk deploy --all` handles ordering automatically.
+
+> **Note:** CDK performs a Route 53 hosted zone lookup during synthesis. AWS credentials must have `route53:ListHostedZonesByName` permission, and the hosted zone for `domain` must already exist.
+
+**Expected output (prod with custom domain):**
+```
+✅ PassVault-Prod-Cert
+✅ PassVault-Prod
+
+Outputs:
+PassVault-Prod.ApiUrl = https://abc123.execute-api.eu-central-1.amazonaws.com/prod
+PassVault-Prod.CloudFrontUrl = https://d1234567890.cloudfront.net
+PassVault-Prod.AlertTopicArn = arn:aws:sns:eu-central-1:123456789012:passvault-prod-alerts
+```
+
+The application will be accessible at `https://pv.example.com` once DNS propagates (~1-2 minutes).
+
+**Deployment time:** ~15-20 minutes for first prod deployment (ACM DNS validation adds ~5 minutes when using a custom domain), ~5-10 minutes for dev/beta.
 
 ### Step 4: Initialize Admin Account
 
@@ -650,16 +669,13 @@ Deploy separate, fully isolated stacks for dev, beta, and production:
 cdk deploy PassVault-Dev --context env=dev
 
 # Deploy beta stack (~$0/month, no WAF, no TOTP, with CloudFront)
-cdk deploy PassVault-Beta --context env=beta
+cdk deploy PassVault-Beta --context env=beta --context domain=example.com
 
 # Deploy prod stack (~$8-10/month, full security)
-cdk deploy PassVault-Prod --context env=prod --require-approval broadening
+cdk deploy --all --context env=prod --context domain=example.com --require-approval broadening
 
-# Deploy all stacks at once
-cdk deploy --all
-
-# Destroy a specific stack
-cdk destroy PassVault-Dev --context env=dev
+# Destroy (Route 53 alias record is removed automatically)
+cdk destroy --all --context env=prod --context domain=example.com
 ```
 
 ### 8.2 Environment Configuration

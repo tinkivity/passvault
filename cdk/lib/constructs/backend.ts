@@ -65,6 +65,7 @@ export class BackendConstruct extends Construct {
       memorySize: 256,
       timeout: cdk.Duration.seconds(5),
       logGroup: challengeLogGroup,
+      reservedConcurrentExecutions: 5,
     });
 
     // Auth Lambda
@@ -83,6 +84,7 @@ export class BackendConstruct extends Construct {
       memorySize: defaultMemory,
       timeout: cdk.Duration.seconds(10),
       logGroup: authLogGroup,
+      reservedConcurrentExecutions: 3,
     });
 
     // Admin Lambda
@@ -101,6 +103,7 @@ export class BackendConstruct extends Construct {
       memorySize: defaultMemory,
       timeout: cdk.Duration.seconds(10),
       logGroup: adminLogGroup,
+      reservedConcurrentExecutions: 2,
     });
 
     // Vault Lambda
@@ -119,6 +122,7 @@ export class BackendConstruct extends Construct {
       memorySize: defaultMemory,
       timeout: defaultTimeout,
       logGroup: vaultLogGroup,
+      reservedConcurrentExecutions: 5,
     });
 
     // Health Lambda
@@ -137,6 +141,7 @@ export class BackendConstruct extends Construct {
       memorySize: 128,
       timeout: cdk.Duration.seconds(5),
       logGroup: healthLogGroup,
+      reservedConcurrentExecutions: 2,
     });
 
     // SSM: pass parameter name (not value) to Lambdas that sign/verify tokens.
