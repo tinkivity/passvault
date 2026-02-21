@@ -60,7 +60,7 @@ async function handleChangePassword(event: APIGatewayProxyEvent): Promise<APIGat
   const pow = validatePow(event, POW_CONFIG.DIFFICULTY.MEDIUM);
   if (pow.errorResponse) return pow.errorResponse;
 
-  const { user, errorResponse } = requireAuth(event);
+  const { user, errorResponse } = await requireAuth(event);
   if (errorResponse) return errorResponse;
 
   if (user!.status !== 'pending_first_login') {
@@ -84,7 +84,7 @@ async function handleTotpSetup(event: APIGatewayProxyEvent): Promise<APIGatewayP
   const pow = validatePow(event, POW_CONFIG.DIFFICULTY.MEDIUM);
   if (pow.errorResponse) return pow.errorResponse;
 
-  const { user, errorResponse } = requireAuth(event);
+  const { user, errorResponse } = await requireAuth(event);
   if (errorResponse) return errorResponse;
 
   if (user!.status !== 'pending_totp_setup') {
@@ -109,7 +109,7 @@ async function handleTotpVerify(event: APIGatewayProxyEvent): Promise<APIGateway
   const pow = validatePow(event, POW_CONFIG.DIFFICULTY.MEDIUM);
   if (pow.errorResponse) return pow.errorResponse;
 
-  const { user, errorResponse } = requireAuth(event);
+  const { user, errorResponse } = await requireAuth(event);
   if (errorResponse) return errorResponse;
 
   if (user!.status !== 'pending_totp_setup') {

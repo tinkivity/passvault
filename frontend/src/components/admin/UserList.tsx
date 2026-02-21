@@ -1,6 +1,13 @@
 import type { UserSummary, UserStatus } from '@passvault/shared';
 import { Button } from '../layout/Layout.js';
 
+function formatBytes(bytes: number | null): string {
+  if (bytes === null || bytes === 0) return 'empty';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 interface UserListProps {
   users: UserSummary[];
   loading: boolean;
@@ -60,7 +67,7 @@ export function UserList({ users, loading, onDownload }: UserListProps) {
                   variant="secondary"
                   onClick={() => onDownload(user.userId, user.username)}
                 >
-                  Download backup
+                  Download ({formatBytes(user.vaultSizeBytes)})
                 </Button>
               </td>
             </tr>

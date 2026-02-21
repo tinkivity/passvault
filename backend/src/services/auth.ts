@@ -49,7 +49,7 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
   // Update last login
   await updateUser(user.userId, { lastLoginAt: new Date().toISOString() });
 
-  const token = signToken({
+  const token = await signToken({
     userId: user.userId,
     username: user.username,
     role: user.role,

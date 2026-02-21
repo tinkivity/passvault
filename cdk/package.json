@@ -11,6 +11,7 @@
     "deploy": "cdk deploy"
   },
   "dependencies": {
+    "@aws-sdk/client-wafv2": "^3.700.0",
     "@passvault/shared": "*",
     "aws-cdk-lib": "^2.170.0",
     "constructs": "^10.4.0",
@@ -19,6 +20,7 @@
   "devDependencies": {
     "@types/source-map-support": "^0.5.10",
     "aws-cdk": "^2.170.0",
+    "esbuild": "^0.25.0",
     "tsx": "^4.0.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"

@@ -11,26 +11,26 @@ export function extractToken(event: APIGatewayProxyEvent): string | null {
   return parts[1];
 }
 
-export function authenticate(event: APIGatewayProxyEvent): TokenPayload | null {
+export async function authenticate(event: APIGatewayProxyEvent): Promise<TokenPayload | null> {
   const token = extractToken(event);
   if (!token) return null;
   try {
-    return verifyToken(token);
+    return await verifyToken(token);
   } catch {
     return null;
   }
 }
 
-export function requireAuth(event: APIGatewayProxyEvent) {
-  const payload = authenticate(event);
+export async function requireAuth(event: APIGatewayProxyEvent) {
+  const payload = await authenticate(event);
   if (!payload) {
     return { user: null, errorResponse: error(ERRORS.UNAUTHORIZED, 401) };
   }
   return { user: payload, errorResponse: null };
 }
 
-export function requireRole(event: APIGatewayProxyEvent, role: 'admin' | 'user') {
-  const { user, errorResponse } = requireAuth(event);
+export async function requireRole(event: APIGatewayProxyEvent, role: 'admin' | 'user') {
+  const { user, errorResponse } = await requireAuth(event);
   if (errorResponse) return { user: null, errorResponse };
   if (user!.role !== role) {
     return { user: null, errorResponse: error(ERRORS.FORBIDDEN, 403) };

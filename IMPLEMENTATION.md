@@ -78,16 +78,18 @@ Infrastructure as code. Depends only on `shared/` for `EnvironmentConfig`.
 cdk/
 ├── bin/passvault.ts              # entry point, reads --context env
 └── lib/
-    ├── passvault-stack.ts        # composes constructs, conditional WAF
+    ├── passvault-stack.ts        # composes constructs, conditional WAF + kill switch
+    ├── kill-switch-handler.ts    # Lambda handler: SNS → WAF KillSwitchBlock flip
     └── constructs/
-        ├── storage.ts            # DynamoDB + 3 S3 buckets
+        ├── storage.ts            # DynamoDB + 2 S3 buckets
         ├── backend.ts            # 5 Lambdas + API Gateway + IAM
         ├── security.ts           # WAF (only if wafEnabled)
         ├── frontend.ts           # CloudFront + S3 static hosting
-        └── monitoring.ts         # CloudWatch dashboards + alarms (prod only)
+        ├── monitoring.ts         # CloudWatch dashboards + alarms + SNS (prod only)
+        └── kill-switch.ts        # Kill switch Lambda + SNS subscription (prod only)
 ```
 
-Build order within step: storage → backend → security → frontend → monitoring → stack.
+Build order within step: storage → backend → security → frontend → monitoring → kill-switch → stack.
 
 **Done when**: `cdk synth --context env=dev` produces valid CloudFormation. All three environments synthesize without errors.
 
@@ -191,7 +193,7 @@ frontend/src/services/
 
 **Done when**: crypto round-trip test passes (encrypt → decrypt = original). API client correctly fetches challenge and attaches PoW headers. PoW solver finds valid solutions.
 
-**Status**: Pending
+**Status**: Complete
 
 ---
 
@@ -231,7 +233,7 @@ frontend/src/
 
 **Done when**: full user flow works end-to-end against the deployed dev stack. Admin login → password change → create user → user login → password change → view vault → edit → save → re-login → content preserved. Environment banner shows. Auto-logout fires. Copy/download work.
 
-**Status**: Pending
+**Status**: Complete
 
 ---
 

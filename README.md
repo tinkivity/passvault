@@ -182,7 +182,7 @@ See **[COSTS.md](COSTS.md)** for detailed analysis.
 
 ### Admin Workflow
 1. Deploy PassVault to AWS using CDK
-2. Retrieve initial admin password from S3
+2. Run `ENVIRONMENT=prod npx tsx scripts/init-admin.ts` — prints the one-time admin password to console
 3. Log in and change password
 4. Set up TOTP (scan QR code) — *prod only, skipped in dev/beta*
 5. Create user accounts (system generates OTPs)

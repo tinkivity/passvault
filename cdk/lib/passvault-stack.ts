@@ -1,4 +1,5 @@
 import * as cdk from 'aws-cdk-lib';
+import * as logs from 'aws-cdk-lib/aws-logs';
 import { Construct } from 'constructs';
 import type { EnvironmentConfig } from '@passvault/shared';
 import { StorageConstruct } from './constructs/storage.js';
@@ -6,10 +7,17 @@ import { BackendConstruct } from './constructs/backend.js';
 import { SecurityConstruct } from './constructs/security.js';
 import { FrontendConstruct } from './constructs/frontend.js';
 import { MonitoringConstruct } from './constructs/monitoring.js';
+import { KillSwitchConstruct } from './constructs/kill-switch.js';
 
 export class PassVaultStack extends cdk.Stack {
   constructor(scope: Construct, id: string, config: EnvironmentConfig, props?: cdk.StackProps) {
     super(scope, id, props);
+
+    // Alert email for SNS subscription. Provide via:
+    //   cdk deploy --context alertEmail=you@example.com
+    // Required for kill switch email notifications. A confirmation email will
+    // be sent to this address after deploy — click the link to activate it.
+    const alertEmail = this.node.tryGetContext('alertEmail') as string | undefined;
 
     // 1. Storage: DynamoDB + S3 buckets
     const storage = new StorageConstruct(this, 'Storage', config);
@@ -34,9 +42,10 @@ export class PassVaultStack extends cdk.Stack {
       });
     }
 
-    // 5. Monitoring: CloudWatch dashboard + alarms (prod only)
+    // 5. Monitoring: CloudWatch dashboard + alarms + SNS alerts (prod only)
+    let monitoring: MonitoringConstruct | undefined;
     if (config.environment === 'prod') {
-      new MonitoringConstruct(this, 'Monitoring', {
+      monitoring = new MonitoringConstruct(this, 'Monitoring', {
         config,
         api: backend.api,
         lambdaFunctions: [
@@ -47,6 +56,16 @@ export class PassVaultStack extends cdk.Stack {
           backend.healthFn,
         ],
         usersTable: storage.usersTable,
+        alertEmail,
+      });
+    }
+
+    // 6. Kill switch: WAF flip Lambda + SNS subscription (prod only, requires WAF + monitoring)
+    if (security && monitoring) {
+      new KillSwitchConstruct(this, 'KillSwitch', {
+        webAcl: security.webAcl,
+        alertTopic: monitoring.alertTopic,
+        logRetentionDays: config.monitoring.logRetentionDays as logs.RetentionDays,
       });
     }
 
@@ -64,10 +83,6 @@ export class PassVaultStack extends cdk.Stack {
       value: storage.filesBucket.bucketName,
     });
 
-    new cdk.CfnOutput(this, 'ConfigBucketName', {
-      value: storage.configBucket.bucketName,
-    });
-
     new cdk.CfnOutput(this, 'FrontendBucketName', {
       value: storage.frontendBucket.bucketName,
     });
@@ -76,6 +91,13 @@ export class PassVaultStack extends cdk.Stack {
       new cdk.CfnOutput(this, 'CloudFrontUrl', {
         value: `https://${frontend.distribution.distributionDomainName}`,
         description: 'CloudFront distribution URL',
+      });
+    }
+
+    if (monitoring) {
+      new cdk.CfnOutput(this, 'AlertTopicArn', {
+        value: monitoring.alertTopic.topicArn,
+        description: 'SNS topic for traffic spike alarms and cost alerts',
       });
     }
   }
