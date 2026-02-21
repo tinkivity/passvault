@@ -2,6 +2,24 @@ import { createHash } from 'crypto';
 import { POW_CONFIG, type ChallengeResponse } from '@passvault/shared';
 import { generateNonce } from '../utils/crypto.js';
 
+/**
+ * Check if the first `difficulty` bits of a SHA-256 hex digest are zero.
+ * difficulty=16 → P=2^{-16} ≈ 65k iterations (~100ms in browser WASM)
+ */
+function hashMeetsDifficulty(hash: string, difficulty: number): boolean {
+  const fullNibbles = Math.floor(difficulty / 4);
+  for (let i = 0; i < fullNibbles; i++) {
+    if (hash[i] !== '0') return false;
+  }
+  const remainingBits = difficulty % 4;
+  if (remainingBits > 0) {
+    const nibble = parseInt(hash[fullNibbles], 16);
+    const mask = 0xF << (4 - remainingBits) & 0xF;
+    if (nibble & mask) return false;
+  }
+  return true;
+}
+
 export function generateChallenge(difficulty: number): ChallengeResponse {
   return {
     nonce: generateNonce(POW_CONFIG.NONCE_BYTES),
@@ -19,6 +37,5 @@ export function validateSolution(nonce: string, solution: string, timestamp: num
     .update(nonce + solution + timestamp.toString())
     .digest('hex');
 
-  const target = '0'.repeat(difficulty) + 'f'.repeat(64 - difficulty);
-  return hash < target;
+  return hashMeetsDifficulty(hash, difficulty);
 }

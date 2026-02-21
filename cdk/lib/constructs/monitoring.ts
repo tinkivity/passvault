@@ -100,7 +100,7 @@ export class MonitoringConstruct extends Construct {
 
     // Lambda error rate per function
     for (const fn of lambdaFunctions) {
-      new cloudwatch.Alarm(this, `LambdaErrors-${fn.functionName}`, {
+      new cloudwatch.Alarm(this, `LambdaErrors-${fn.node.id}`, {
         alarmName: `passvault-${env}-lambda-errors-${fn.functionName}`,
         metric: fn.metricErrors({ period: cdk.Duration.hours(1) }),
         threshold: 5,
