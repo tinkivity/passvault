@@ -34,7 +34,7 @@ async function handleGetVault(event: APIGatewayProxyEvent): Promise<APIGatewayPr
   const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
   if (pow.errorResponse) return pow.errorResponse;
 
-  const { user, errorResponse } = requireAuth(event);
+  const { user, errorResponse } = await requireAuth(event);
   if (errorResponse) return errorResponse;
 
   if (user!.status !== 'active') {
@@ -52,7 +52,7 @@ async function handlePutVault(event: APIGatewayProxyEvent): Promise<APIGatewayPr
   const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
   if (pow.errorResponse) return pow.errorResponse;
 
-  const { user, errorResponse } = requireAuth(event);
+  const { user, errorResponse } = await requireAuth(event);
   if (errorResponse) return errorResponse;
 
   if (user!.status !== 'active') {
@@ -71,7 +71,7 @@ async function handleDownloadVault(event: APIGatewayProxyEvent): Promise<APIGate
   const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
   if (pow.errorResponse) return pow.errorResponse;
 
-  const { user, errorResponse } = requireAuth(event);
+  const { user, errorResponse } = await requireAuth(event);
   if (errorResponse) return errorResponse;
 
   if (user!.status !== 'active') {

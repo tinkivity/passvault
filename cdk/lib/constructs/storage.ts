@@ -7,7 +7,6 @@ import type { EnvironmentConfig } from '@passvault/shared';
 export class StorageConstruct extends Construct {
   public readonly usersTable: dynamodb.Table;
   public readonly filesBucket: s3.Bucket;
-  public readonly configBucket: s3.Bucket;
   public readonly frontendBucket: s3.Bucket;
 
   constructor(scope: Construct, id: string, config: EnvironmentConfig) {
@@ -36,15 +35,6 @@ export class StorageConstruct extends Construct {
       encryption: s3.BucketEncryption.S3_MANAGED,
       versioned: env === 'prod',
       removalPolicy: cdk.RemovalPolicy.RETAIN,
-      enforceSSL: true,
-    });
-
-    // S3: config bucket (admin initial password)
-    this.configBucket = new s3.Bucket(this, 'ConfigBucket', {
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      encryption: s3.BucketEncryption.S3_MANAGED,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-      autoDeleteObjects: true,
       enforceSSL: true,
     });
 

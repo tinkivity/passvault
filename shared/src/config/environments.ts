@@ -3,7 +3,7 @@ import type { EnvironmentConfig, EnvironmentName } from '../types/environment.js
 export const devConfig: EnvironmentConfig = {
   stackName: 'PassVault-Dev',
   environment: 'dev',
-  region: 'us-east-1',
+  region: 'eu-central-1',
   adminUsername: 'admin',
   features: {
     totpRequired: false,
@@ -25,7 +25,7 @@ export const devConfig: EnvironmentConfig = {
 export const betaConfig: EnvironmentConfig = {
   stackName: 'PassVault-Beta',
   environment: 'beta',
-  region: 'us-east-1',
+  region: 'eu-central-1',
   adminUsername: 'admin',
   features: {
     totpRequired: false,
@@ -47,7 +47,7 @@ export const betaConfig: EnvironmentConfig = {
 export const prodConfig: EnvironmentConfig = {
   stackName: 'PassVault-Prod',
   environment: 'prod',
-  region: 'us-east-1',
+  region: 'eu-central-1',
   adminUsername: 'admin',
   features: {
     totpRequired: true,

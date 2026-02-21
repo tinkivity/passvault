@@ -16,7 +16,7 @@ import { getUserByUsername, createUser, updateUser, listAllUsers } from '../util
 import { hashPassword, verifyPassword, generateOtp, generateSalt } from '../utils/crypto.js';
 import { validatePassword } from '../utils/password.js';
 import { signToken } from '../utils/jwt.js';
-import { putVaultFile } from '../utils/s3.js';
+import { putVaultFile, getVaultFileSize } from '../utils/s3.js';
 import { verifyCode } from './totp.js';
 import { config } from '../config.js';
 
@@ -50,7 +50,7 @@ export async function adminLogin(request: LoginRequest): Promise<{ response?: Lo
 
   await updateUser(user.userId, { lastLoginAt: new Date().toISOString() });
 
-  const token = signToken({
+  const token = await signToken({
     userId: user.userId,
     username: user.username,
     role: user.role,
@@ -150,15 +150,16 @@ export async function createUserInvitation(
 
 export async function listUsers(): Promise<ListUsersResponse> {
   const users = await listAllUsers();
+  const regularUsers = users.filter((u) => u.role === 'user');
+  const sizes = await Promise.all(regularUsers.map((u) => getVaultFileSize(u.userId)));
   return {
-    users: users
-      .filter((u) => u.role === 'user')
-      .map((u) => ({
-        userId: u.userId,
-        username: u.username,
-        status: u.status,
-        createdAt: u.createdAt,
-        lastLoginAt: u.lastLoginAt,
-      })),
+    users: regularUsers.map((u, i) => ({
+      userId: u.userId,
+      username: u.username,
+      status: u.status,
+      createdAt: u.createdAt,
+      lastLoginAt: u.lastLoginAt,
+      vaultSizeBytes: sizes[i],
+    })),
   };
 }

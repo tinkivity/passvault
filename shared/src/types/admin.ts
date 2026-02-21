@@ -17,6 +17,7 @@ export interface UserSummary {
   status: UserStatus;
   createdAt: string;
   lastLoginAt: string | null;
+  vaultSizeBytes: number | null;
 }
 
 export interface ListUsersResponse {

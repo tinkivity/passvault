@@ -1,5 +1,5 @@
-import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
-import { FILES_BUCKET, CONFIG_BUCKET } from '../config.js';
+import { S3Client, GetObjectCommand, PutObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+import { FILES_BUCKET } from '../config.js';
 
 const s3 = new S3Client({});
 
@@ -33,18 +33,17 @@ export async function putVaultFile(userId: string, encryptedContent: string): Pr
   return now;
 }
 
-export async function getAdminPassword(): Promise<string | null> {
+export async function getVaultFileSize(userId: string): Promise<number | null> {
   try {
     const result = await s3.send(
-      new GetObjectCommand({
-        Bucket: CONFIG_BUCKET,
-        Key: 'admin-initial-password.txt',
+      new HeadObjectCommand({
+        Bucket: FILES_BUCKET,
+        Key: `user-${userId}.enc`,
       }),
     );
-    const content = (await result.Body?.transformToString()) || '';
-    return content.trim();
+    return result.ContentLength ?? null;
   } catch (err: unknown) {
-    if ((err as { name?: string }).name === 'NoSuchKey') return null;
+    if ((err as { name?: string }).name === 'NotFound') return null;
     throw err;
   }
 }

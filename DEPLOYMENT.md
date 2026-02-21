@@ -93,12 +93,14 @@ passvault/
 │   │   └── passvault.ts          # CDK app entry point
 │   ├── lib/
 │   │   ├── passvault-stack.ts    # Main stack definition
+│   │   ├── kill-switch-handler.ts# Lambda handler: SNS → WAF KillSwitchBlock flip
 │   │   └── constructs/
-│   │       ├── storage.ts        # DynamoDB + 3 S3 buckets
+│   │       ├── storage.ts        # DynamoDB + 2 S3 buckets
 │   │       ├── backend.ts        # 5 Lambdas + API Gateway + IAM
 │   │       ├── security.ts       # WAF (prod only)
 │   │       ├── frontend.ts       # CloudFront + S3 static hosting
-│   │       └── monitoring.ts     # CloudWatch dashboards + alarms (prod only)
+│   │       ├── monitoring.ts     # CloudWatch dashboards + alarms + SNS (prod only)
+│   │       └── kill-switch.ts    # Kill switch Lambda + SNS subscription (prod only)
 │   ├── package.json
 │   ├── tsconfig.json
 │   └── cdk.json
@@ -178,10 +180,10 @@ cd cdk
 cdk bootstrap aws://ACCOUNT-ID/REGION
 
 # Example:
-cdk bootstrap aws://123456789012/us-east-1
+cdk bootstrap aws://123456789012/eu-central-1
 
 # If deploying to multiple regions/accounts
-cdk bootstrap aws://ACCOUNT-ID/us-east-1
+cdk bootstrap aws://ACCOUNT-ID/eu-central-1
 cdk bootstrap aws://ACCOUNT-ID/eu-west-1
 ```
 
@@ -193,11 +195,12 @@ cdk bootstrap aws://ACCOUNT-ID/eu-west-1
 
 The PassVault CDK stack (`PassVaultStack`) consists of multiple constructs, some conditional on environment:
 
-1. **StorageConstruct**: DynamoDB tables and S3 buckets (PITR/versioning: prod only)
+1. **StorageConstruct**: DynamoDB table and S3 buckets (PITR/versioning: prod only)
 2. **BackendConstruct**: Lambda functions and API Gateway (memory/timeout from config)
-3. **SecurityConstruct**: WAF, IAM roles, and security policies (**prod only** — not deployed in dev/beta)
+3. **SecurityConstruct**: WAF with KillSwitchBlock rule, IAM roles, security policies (**prod only**)
 4. **FrontendConstruct**: CloudFront distribution and S3 static hosting (CloudFront optional in dev)
-5. **MonitoringConstruct**: CloudWatch alarms and dashboards (**prod only** — log retention still applied per-function in all environments)
+5. **MonitoringConstruct**: CloudWatch alarms, dashboards, and SNS alert topic (**prod only**)
+6. **KillSwitchConstruct**: Kill switch Lambda + SNS subscription (**prod only**, requires security + monitoring)
 
 ### Stack Dependencies
 
@@ -206,7 +209,9 @@ StorageConstruct
        ↓
 BackendConstruct → SecurityConstruct
        ↓                ↓
-FrontendConstruct ← MonitoringConstruct
+FrontendConstruct   MonitoringConstruct
+                         ↓
+                   KillSwitchConstruct
 ```
 
 ---
@@ -237,16 +242,9 @@ FrontendConstruct ← MonitoringConstruct
 ### 5.2 S3 Buckets
 
 **User Files Bucket:** `passvault-files-{environment}-{random}`
-- Encrypted user vault files
+- Encrypted user vault files (`.enc` objects, one per user)
 - Versioning enabled (prod only; disabled in dev/beta)
 - Block all public access
-- Lifecycle policy: None (user files retained indefinitely)
-
-**Config Bucket:** `passvault-config-{environment}-{random}`
-- Initial admin password
-- Application configuration
-- Block all public access
-- Lifecycle policy: Delete initial password after 30 days (optional)
 
 **Frontend Bucket:** `passvault-frontend-{environment}-{random}`
 - Static React build artifacts
@@ -256,6 +254,8 @@ FrontendConstruct ← MonitoringConstruct
 ### 5.3 Lambda Functions
 
 All Lambda functions use **ARM_64 (Graviton)** architecture for ~20% cost savings.
+
+**JWT Secret:** The auth, admin, and vault functions receive the SSM parameter *name* (`/passvault/{env}/jwt-secret`) as a `JWT_SECRET_PARAM` environment variable. At cold-start, each function calls the SSM API to fetch and decrypt the value. The secret is cached in memory for the lifetime of the Lambda container. See [Step 0](#step-0-create-jwt-secret-in-ssm-parameter-store) for how to create this parameter before deploying.
 
 **Challenge Function:** `passvault-challenge-{env}`
 - Runtime: Node.js 22.x (ARM64)
@@ -291,6 +291,15 @@ All Lambda functions use **ARM_64 (Graviton)** architecture for ~20% cost saving
 - Timeout: 5 seconds
 - Handler: `health.handler`
 - Purpose: Health check endpoint
+
+**Kill Switch Function:** `passvault-kill-switch` (prod only)
+- Runtime: Node.js 22.x (ARM64)
+- Memory: 128 MB
+- Timeout: 30 seconds
+- Trigger: SNS (subscribed to alert topic)
+- Purpose: Flip WAF KillSwitchBlock rule from Count → Block on traffic spike alarm
+
+> **Log Groups**: All Lambda functions use explicit `logs.LogGroup` constructs with `removalPolicy: DESTROY`. Log groups are named `/aws/lambda/{function-name}` and are deleted when the stack is destroyed.
 
 ### 5.4 API Gateway
 
@@ -339,21 +348,23 @@ GET  /vault/download     → Vault Lambda
 **Attached to:** CloudFront distribution
 
 **Rules (in order):**
-1. **AWS Managed - Bot Control** (Priority: 1)
+1. **KillSwitchBlock** (Priority: 0)
+   - Deployed in **Count** mode (no effect on traffic)
+   - Automatically flipped to **Block** by the kill switch Lambda on traffic spike alarm
+   - Returns HTTP 503 with inline HTML maintenance page when active
+   - Recovery: WAF Console (us-east-1) → Web ACLs → passvault-waf-prod → Rules → KillSwitchBlock → Edit → change Block → Count
+
+2. **AWS Managed - Bot Control** (Priority: 1)
    - Detects and blocks common bots
    - Challenge suspected bots with CAPTCHA
 
-2. **AWS Managed - Known Bad Inputs** (Priority: 2)
+3. **AWS Managed - Known Bad Inputs** (Priority: 2)
    - Blocks SQL injection, XSS attempts
    - Protects against OWASP Top 10
 
-3. **Rate Limiting Rule** (Priority: 3)
+4. **Rate Limiting Rule** (Priority: 3)
    - Limit: 100 requests per 5 minutes per IP
-   - Action: Block for 1 hour
-
-4. **Geographic Restriction** (Priority: 4, Optional)
-   - Allow/block specific countries
-   - Configure based on requirements
+   - Action: Block
 
 **CAPTCHA Configuration:**
 - Immunity time: 300 seconds (5 minutes)
@@ -389,6 +400,37 @@ GET  /vault/download     → Vault Lambda
 
 ## 6. Deployment Steps
 
+### Step 0: Create JWT Secret in SSM Parameter Store
+
+The CDK stack references a pre-existing SSM SecureString parameter for the JWT signing key. This must be created **once per environment** before the first `cdk deploy`. It is never managed by CloudFormation — creating it manually ensures the secret is not exposed in the CloudFormation template or CDK Cloud Assembly.
+
+```bash
+# Dev
+aws ssm put-parameter \
+  --name /passvault/dev/jwt-secret \
+  --value "$(openssl rand -hex 32)" \
+  --type SecureString
+
+# Beta
+aws ssm put-parameter \
+  --name /passvault/beta/jwt-secret \
+  --value "$(openssl rand -hex 32)" \
+  --type SecureString
+
+# Prod
+aws ssm put-parameter \
+  --name /passvault/prod/jwt-secret \
+  --value "$(openssl rand -hex 32)" \
+  --type SecureString
+```
+
+> **Important:** Run this command only once per environment. The `put-parameter` command without `--overwrite` will fail if the parameter already exists, which prevents accidental secret rotation. All existing user sessions would be invalidated if the secret changes.
+
+To verify a parameter exists (without revealing the value):
+```bash
+aws ssm get-parameter --name /passvault/dev/jwt-secret --query "Parameter.Name"
+```
+
 ### Step 1: Configure Environment
 
 All environment configs are defined in `shared/src/config/environments.ts`. The file exports dev, beta, and prod configurations:
@@ -398,7 +440,7 @@ All environment configs are defined in `shared/src/config/environments.ts`. The 
 export const prodConfig: EnvironmentConfig = {
   stackName: 'PassVault-Prod',
   environment: 'prod',
-  region: 'us-east-1',
+  region: 'eu-central-1',
   adminUsername: 'admin',
 
   features: {
@@ -450,7 +492,8 @@ cdk deploy PassVault-Dev --context env=dev
 cdk deploy PassVault-Beta --context env=beta
 
 # Deploy prod stack (full security — WAF, TOTP, CloudFront)
-cdk deploy PassVault-Prod --context env=prod --require-approval broadening
+# Optionally pass --context alertEmail=you@example.com to subscribe to SNS cost/traffic alerts
+cdk deploy PassVault-Prod --context env=prod --context alertEmail=you@example.com --require-approval broadening
 
 # Deploy all stacks
 cdk deploy --all
@@ -462,10 +505,9 @@ cdk deploy PassVault-Prod --context env=prod --progress events
 # ✅ PassVault-Prod
 #
 # Outputs:
-# PassVault-Prod.ApiEndpoint = https://abc123.execute-api.us-east-1.amazonaws.com/prod
-# PassVault-Prod.CloudFrontURL = https://d1234567890.cloudfront.net
-# PassVault-Prod.ConfigBucket = passvault-config-prod-xyz123
-# PassVault-Prod.AdminPasswordS3Key = admin-initial-password.txt
+# PassVault-Prod.ApiUrl = https://abc123.execute-api.eu-central-1.amazonaws.com/prod
+# PassVault-Prod.CloudFrontUrl = https://d1234567890.cloudfront.net
+# PassVault-Prod.AlertTopicArn = arn:aws:sns:eu-central-1:123456789012:passvault-prod-alerts
 ```
 
 **Deployment time:** ~15-20 minutes for first prod deployment, ~5-10 minutes for dev/beta (no WAF)
@@ -475,28 +517,20 @@ cdk deploy PassVault-Prod --context env=prod --progress events
 After infrastructure deployment, initialize the admin account:
 
 ```bash
-cd ../scripts
-
-# Run admin initialization script
-npm run init-admin
+# Run admin initialization script from the repo root
+ENVIRONMENT=prod npx tsx scripts/init-admin.ts
 
 # This script will:
-# 1. Generate secure random password (16+ characters)
-# 2. Create admin user in DynamoDB
-# 3. Upload initial password to S3 config bucket
-# 4. Display admin credentials
+# 1. Create admin user in DynamoDB with status="pending_first_login"
+# 2. Generate a secure random one-time password (16+ characters)
+# 3. Print the OTP to the console (it is NOT stored in S3)
 
 # Example output:
-# ✅ Admin account created successfully!
-#
-# Admin Credentials:
+# ✅ Admin user created successfully
 # Username: admin
-# Password: Xy9$mK2#pL4&nQ8@rT6
+# One-time password: Xy9$mK2#pL4&nQ8@rT6
 #
-# Initial password stored at:
-# s3://passvault-config-prod-xyz123/admin-initial-password.txt
-#
-# ⚠️  Save these credentials securely!
+# ⚠️  Save this password — it is shown only once.
 # ⚠️  You must change the password on first login.
 ```
 
@@ -508,7 +542,7 @@ cd ../frontend
 # Configure API endpoint (Vite uses VITE_ prefix)
 cat > .env.production << EOF
 VITE_ENVIRONMENT=prod
-VITE_API_ENDPOINT=https://abc123.execute-api.us-east-1.amazonaws.com/prod
+VITE_API_BASE_URL=https://d1234567890.cloudfront.net
 EOF
 
 # Build production bundle
@@ -554,7 +588,7 @@ open https://d1234567890.cloudfront.net
 2. Click "Admin Login" (or use `/admin` route)
 3. Enter credentials:
    - Username: `admin`
-   - Password: (from S3 config bucket)
+   - Password: (printed to console by `scripts/init-admin.ts`)
 4. Change password immediately
 5. **Prod only**: Set up TOTP (scan QR code with authenticator app)
 6. **Prod only**: Verify TOTP code
@@ -571,33 +605,22 @@ From admin dashboard:
 3. Copy one-time password (shown once)
 4. Share credentials with user securely (encrypted email, password manager, etc.)
 
-### 7.3 CloudWatch Alarms Setup
+### 7.3 Monitoring & Kill Switch (Prod Only)
 
-```bash
-# Set up cost alert
-aws cloudwatch put-metric-alarm \
-  --alarm-name passvault-cost-alert \
-  --alarm-description "Alert when monthly costs exceed $20" \
-  --metric-name EstimatedCharges \
-  --namespace AWS/Billing \
-  --statistic Maximum \
-  --period 21600 \
-  --evaluation-periods 1 \
-  --threshold 20 \
-  --comparison-operator GreaterThanThreshold
+All CloudWatch alarms, the SNS alert topic, and the kill switch are deployed automatically by CDK for the prod stack. No manual CLI setup is needed.
 
-# Set up error rate alert
-aws cloudwatch put-metric-alarm \
-  --alarm-name passvault-error-rate \
-  --alarm-description "Alert when error rate exceeds 5%" \
-  --metric-name 5XXError \
-  --namespace AWS/ApiGateway \
-  --statistic Average \
-  --period 300 \
-  --evaluation-periods 2 \
-  --threshold 0.05 \
-  --comparison-operator GreaterThanThreshold
-```
+**What is deployed:**
+- **SNS topic** `passvault-prod-alerts` — receives all alarm notifications
+- **Traffic spike alarm** — triggers when API Gateway request count exceeds 100,000 in 5 minutes; sends ALARM and OK notifications to the SNS topic
+- **AWS Budget** — `$5/day` daily cost budget; sends alert to SNS topic at 100% threshold
+- **Kill switch Lambda** `passvault-kill-switch` — subscribed to the SNS topic; on ALARM, flips the WAF `KillSwitchBlock` rule from Count → Block (HTTP 503 maintenance page returned to all clients)
+- **Email subscription** (optional) — pass `--context alertEmail=you@example.com` during `cdk deploy` to receive email alerts
+
+**Kill switch recovery** (after a traffic spike is resolved):
+1. Open AWS Console → WAF & Shield (region: **us-east-1**) → Web ACLs
+2. Select `passvault-waf-prod` → Rules → `KillSwitchBlock` → Edit
+3. Change action from **Block** → **Count** → Save
+4. Traffic is immediately unblocked
 
 ### 7.4 WAF Monitoring
 
@@ -664,7 +687,7 @@ See [SPECIFICATION.md Section 2.5](SPECIFICATION.md) for the full environment co
 
 ### 9.1 CloudWatch Dashboards
 
-> **Note**: CloudWatch dashboards and alarms are only deployed in the **prod** environment. All environments still get per-Lambda log retention via the `logRetention` property.
+> **Note**: CloudWatch dashboards, alarms, the SNS alert topic, and the kill switch Lambda are only deployed in the **prod** environment. All environments get explicit `logs.LogGroup` constructs with `removalPolicy: DESTROY` for each Lambda function.
 
 **Main Dashboard:** `passvault-prod-dashboard`
 
@@ -902,7 +925,7 @@ jobs:
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
+          aws-region: eu-central-1
 
       - name: Install Dependencies
         run: npm ci

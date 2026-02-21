@@ -2,7 +2,7 @@ import * as cdk from 'aws-cdk-lib';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as logs from 'aws-cdk-lib/aws-logs';
-import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 import type { EnvironmentConfig } from '@passvault/shared';
 import type { StorageConstruct } from './storage.js';
@@ -26,21 +26,20 @@ export class BackendConstruct extends Construct {
     const { config, storage } = props;
     const env = config.environment;
 
-    // JWT signing secret — auto-generated once; stable across redeployments
-    const jwtSecret = new secretsmanager.Secret(this, 'JwtSecret', {
-      secretName: `passvault-jwt-secret-${env}`,
-      description: `JWT signing key for PassVault ${env}`,
-      generateSecretString: {
-        excludePunctuation: true,
-        passwordLength: 64,
-      },
-    });
+    // JWT signing secret — stored in SSM Parameter Store as a SecureString.
+    // Create once manually (or via bootstrap script):
+    //   aws ssm put-parameter --name /passvault/<env>/jwt-secret \
+    //     --value "$(openssl rand -hex 32)" --type SecureString
+    const jwtSecretParamName = `/passvault/${env}/jwt-secret`;
+    const jwtSecretParam = ssm.StringParameter.fromSecureStringParameterAttributes(
+      this, 'JwtSecretParam',
+      { parameterName: jwtSecretParamName },
+    );
 
     const commonEnv: Record<string, string> = {
       ENVIRONMENT: env,
       DYNAMODB_TABLE: storage.usersTable.tableName,
       FILES_BUCKET: storage.filesBucket.bucketName,
-      CONFIG_BUCKET: storage.configBucket.bucketName,
     };
 
     const runtime = lambda.Runtime.NODEJS_22_X;
@@ -48,9 +47,14 @@ export class BackendConstruct extends Construct {
     const defaultMemory = config.lambda.memorySize;
     const defaultTimeout = cdk.Duration.seconds(config.lambda.timeout);
 
-    const logRetention = config.monitoring.logRetentionDays as logs.RetentionDays;
+    const retentionDays = config.monitoring.logRetentionDays as logs.RetentionDays;
 
     // Challenge Lambda
+    const challengeLogGroup = new logs.LogGroup(this, 'ChallengeLogs', {
+      logGroupName: `/aws/lambda/passvault-challenge-${env}`,
+      retention: retentionDays,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
     this.challengeFn = new lambda.Function(this, 'ChallengeFn', {
       runtime,
       architecture,
@@ -60,10 +64,15 @@ export class BackendConstruct extends Construct {
       environment: commonEnv,
       memorySize: 256,
       timeout: cdk.Duration.seconds(5),
-      logRetention,
+      logGroup: challengeLogGroup,
     });
 
     // Auth Lambda
+    const authLogGroup = new logs.LogGroup(this, 'AuthLogs', {
+      logGroupName: `/aws/lambda/passvault-auth-${env}`,
+      retention: retentionDays,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
     this.authFn = new lambda.Function(this, 'AuthFn', {
       runtime,
       architecture,
@@ -73,10 +82,15 @@ export class BackendConstruct extends Construct {
       environment: commonEnv,
       memorySize: defaultMemory,
       timeout: cdk.Duration.seconds(10),
-      logRetention,
+      logGroup: authLogGroup,
     });
 
     // Admin Lambda
+    const adminLogGroup = new logs.LogGroup(this, 'AdminLogs', {
+      logGroupName: `/aws/lambda/passvault-admin-${env}`,
+      retention: retentionDays,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
     this.adminFn = new lambda.Function(this, 'AdminFn', {
       runtime,
       architecture,
@@ -86,10 +100,15 @@ export class BackendConstruct extends Construct {
       environment: commonEnv,
       memorySize: defaultMemory,
       timeout: cdk.Duration.seconds(10),
-      logRetention,
+      logGroup: adminLogGroup,
     });
 
     // Vault Lambda
+    const vaultLogGroup = new logs.LogGroup(this, 'VaultLogs', {
+      logGroupName: `/aws/lambda/passvault-vault-${env}`,
+      retention: retentionDays,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
     this.vaultFn = new lambda.Function(this, 'VaultFn', {
       runtime,
       architecture,
@@ -99,10 +118,15 @@ export class BackendConstruct extends Construct {
       environment: commonEnv,
       memorySize: defaultMemory,
       timeout: defaultTimeout,
-      logRetention,
+      logGroup: vaultLogGroup,
     });
 
     // Health Lambda
+    const healthLogGroup = new logs.LogGroup(this, 'HealthLogs', {
+      logGroupName: `/aws/lambda/passvault-health-${env}`,
+      retention: retentionDays,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
     this.healthFn = new lambda.Function(this, 'HealthFn', {
       runtime,
       architecture,
@@ -112,18 +136,17 @@ export class BackendConstruct extends Construct {
       environment: commonEnv,
       memorySize: 128,
       timeout: cdk.Duration.seconds(5),
-      logRetention,
+      logGroup: healthLogGroup,
     });
 
-    // JWT_SECRET: inject auto-generated secret into the Lambdas that sign/verify tokens
-    // CloudFormation resolves the dynamic reference at deploy time; value stored in Lambda config
-    const jwtSecretValue = jwtSecret.secretValue.unsafeUnwrap();
-    this.authFn.addEnvironment('JWT_SECRET', jwtSecretValue);
-    this.adminFn.addEnvironment('JWT_SECRET', jwtSecretValue);
-    this.vaultFn.addEnvironment('JWT_SECRET', jwtSecretValue);
-    jwtSecret.grantRead(this.authFn);
-    jwtSecret.grantRead(this.adminFn);
-    jwtSecret.grantRead(this.vaultFn);
+    // SSM: pass parameter name (not value) to Lambdas that sign/verify tokens.
+    // The Lambda fetches and decrypts the value at cold-start via the SSM API.
+    this.authFn.addEnvironment('JWT_SECRET_PARAM', jwtSecretParamName);
+    this.adminFn.addEnvironment('JWT_SECRET_PARAM', jwtSecretParamName);
+    this.vaultFn.addEnvironment('JWT_SECRET_PARAM', jwtSecretParamName);
+    jwtSecretParam.grantRead(this.authFn);
+    jwtSecretParam.grantRead(this.adminFn);
+    jwtSecretParam.grantRead(this.vaultFn);
 
     // IAM: grant DynamoDB access to auth, admin, vault
     storage.usersTable.grantReadWriteData(this.authFn);
@@ -135,9 +158,6 @@ export class BackendConstruct extends Construct {
 
     // IAM: grant S3 file read+write to admin (creates empty vault on invite, downloads vault for backup)
     storage.filesBucket.grantReadWrite(this.adminFn);
-
-    // IAM: grant S3 config read to admin (initial password)
-    storage.configBucket.grantRead(this.adminFn);
 
     // API Gateway
     this.api = new apigateway.RestApi(this, 'Api', {

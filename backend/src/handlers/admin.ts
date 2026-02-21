@@ -71,7 +71,7 @@ async function handleChangePassword(event: APIGatewayProxyEvent): Promise<APIGat
   const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
   if (pow.errorResponse) return pow.errorResponse;
 
-  const { user, errorResponse } = requireAuth(event);
+  const { user, errorResponse } = await requireAuth(event);
   if (errorResponse) return errorResponse;
 
   if (user!.role !== 'admin') {
@@ -98,7 +98,7 @@ async function handleTotpSetup(event: APIGatewayProxyEvent): Promise<APIGatewayP
   const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
   if (pow.errorResponse) return pow.errorResponse;
 
-  const { user, errorResponse } = requireAuth(event);
+  const { user, errorResponse } = await requireAuth(event);
   if (errorResponse) return errorResponse;
 
   if (user!.role !== 'admin') {
@@ -125,7 +125,7 @@ async function handleTotpVerify(event: APIGatewayProxyEvent): Promise<APIGateway
   const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
   if (pow.errorResponse) return pow.errorResponse;
 
-  const { user, errorResponse } = requireAuth(event);
+  const { user, errorResponse } = await requireAuth(event);
   if (errorResponse) return errorResponse;
 
   if (user!.role !== 'admin') {
@@ -157,7 +157,7 @@ async function handleCreateUser(event: APIGatewayProxyEvent): Promise<APIGateway
   const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
   if (pow.errorResponse) return pow.errorResponse;
 
-  const { user, errorResponse } = requireAuth(event);
+  const { user, errorResponse } = await requireAuth(event);
   if (errorResponse) return errorResponse;
 
   if (user!.role !== 'admin') {
@@ -180,7 +180,7 @@ async function handleListUsers(event: APIGatewayProxyEvent): Promise<APIGatewayP
   const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
   if (pow.errorResponse) return pow.errorResponse;
 
-  const { user, errorResponse } = requireAuth(event);
+  const { user, errorResponse } = await requireAuth(event);
   if (errorResponse) return errorResponse;
 
   if (user!.role !== 'admin') {
@@ -198,7 +198,7 @@ async function handleDownloadUserVault(event: APIGatewayProxyEvent): Promise<API
   const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
   if (pow.errorResponse) return pow.errorResponse;
 
-  const { user, errorResponse } = requireAuth(event);
+  const { user, errorResponse } = await requireAuth(event);
   if (errorResponse) return errorResponse;
 
   if (user!.role !== 'admin') {

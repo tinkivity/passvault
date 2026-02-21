@@ -236,7 +236,8 @@ Cost: 18 GB × $0.085 = $1.53/month
 
 **PassVault Configuration:**
 - 1 Web ACL: $5.00/month
-- 3 Managed rule groups (Bot Control, Known Bad Inputs, Rate Limiting): $3.00/month
+- 2 Managed rule groups (Bot Control, Known Bad Inputs): $2.00/month
+- 1 Custom rate-based rule (Rate Limiting): included in Web ACL price
 - Request processing: Variable based on traffic
 
 **PassVault Usage:**
@@ -253,11 +254,13 @@ Cost: 18 GB × $0.085 = $1.53/month
 **Calculation Example (100 users):**
 ```
 Web ACL: $5.00/month
-Managed Rules: 3 × $1.00 = $3.00/month
+Managed Rules: 2 × $1.00 = $2.00/month
 Requests: 51,000 × $0.60 / 1,000,000 = $0.0306/month
 
-Total WAF: $5.00 + $3.00 + $0.03 = $8.03/month
+Total WAF: $5.00 + $2.00 + $0.03 = $7.03/month
 ```
+
+> **Note**: Cost tables throughout this document reflect the earlier $8/month WAF estimate (3 rule groups). Actual cost with 2 managed rule groups is ~$7/month, making the real totals ~$1 lower than shown.
 
 **WAF ROI Analysis:**
 - **Monthly cost**: $8/month
