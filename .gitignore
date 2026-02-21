@@ -8,6 +8,7 @@ package-lock.json
 # Production builds
 build/
 dist/
+*.tsbuildinfo
 
 # Environment variables
 .env
