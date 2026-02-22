@@ -34,7 +34,7 @@ export function AdminLoginPage() {
     <Layout>
       <Card>
         <h1 className="text-xl font-bold mb-1 text-center">PassVault</h1>
-        <p className="text-center text-sm text-gray-500 mb-6">Admin Login</p>
+        <p className="text-center text-sm text-base-content/50 mb-6">Admin Login</p>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <Input
             label="Username"
@@ -76,7 +76,7 @@ export function AdminLoginPage() {
           </Button>
           <a
             href="/login"
-            className="text-center text-xs text-gray-400 hover:text-gray-600 mt-2"
+            className="text-center text-xs text-base-content/40 hover:text-base-content/70 mt-2 transition-colors"
           >
             User login
           </a>

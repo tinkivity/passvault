@@ -58,14 +58,14 @@ export function VaultPage() {
   if (!initialFetched && loading) {
     return (
       <Layout>
-        <div className="text-gray-500 text-sm">Decrypting vault…</div>
+        <div className="text-base-content/50 text-sm">Decrypting vault…</div>
       </Layout>
     );
   }
 
   return (
     <Layout>
-      <div className="w-full max-w-2xl bg-white rounded-lg shadow-md p-6 flex flex-col min-h-[32rem]">
+      <div className="w-full max-w-2xl bg-base-100 rounded-xl shadow-md p-6 flex flex-col min-h-[32rem]">
         {mode === 'view' ? (
           <VaultViewer
             content={content}

@@ -53,7 +53,7 @@ export function TotpSetupPage({ isAdmin = false }: TotpSetupPageProps) {
     <Layout>
       <Card>
         <h1 className="text-xl font-bold mb-2 text-center">Set Up Authenticator</h1>
-        <p className="text-sm text-gray-600 mb-4 text-center">
+        <p className="text-sm text-base-content/70 mb-4 text-center">
           Scan this QR code with your authenticator app, then enter the 6-digit code.
         </p>
 
@@ -62,7 +62,7 @@ export function TotpSetupPage({ isAdmin = false }: TotpSetupPageProps) {
             <img src={qrCodeUrl} alt="TOTP QR Code" className="w-48 h-48" />
           </div>
         ) : (
-          <div className="h-48 flex items-center justify-center text-gray-400 text-sm mb-4">
+          <div className="h-48 flex items-center justify-center text-base-content/30 text-sm mb-4">
             Loading…
           </div>
         )}

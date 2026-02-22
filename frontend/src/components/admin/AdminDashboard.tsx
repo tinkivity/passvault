@@ -55,19 +55,19 @@ export function AdminDashboard() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-xl font-bold">Admin Dashboard</h1>
-            <p className="text-xs text-gray-500">Logged in as {username} · Session: {timeDisplay}</p>
+            <p className="text-xs text-base-content/50">Logged in as {username} · Session: {timeDisplay}</p>
           </div>
           <Button variant="danger" onClick={handleLogout}>
             Logout
           </Button>
         </div>
 
-        <div className="bg-white rounded-lg shadow-md p-6 mb-4">
+        <div className="bg-base-100 rounded-xl shadow-md p-6 mb-4">
           <h2 className="text-base font-semibold mb-4">Create User</h2>
           <CreateUserForm onCreateUser={handleCreateUser} loading={loading} />
         </div>
 
-        <div className="bg-white rounded-lg shadow-md p-6">
+        <div className="bg-base-100 rounded-xl shadow-md p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-base font-semibold">Users</h2>
             <Button variant="secondary" onClick={refreshUsers} disabled={loading}>
