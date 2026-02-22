@@ -50,6 +50,21 @@ export class PassVaultStack extends cdk.Stack {
       });
     }
 
+    // M1: Set CORS origin on all Lambdas. In dev (no CloudFront) we keep '*'.
+    // In beta/prod the frontend is served from CloudFront — lock the origin.
+    const frontendOrigin = frontend
+      ? `https://${frontend.distribution.distributionDomainName}`
+      : '*';
+    for (const fn of [
+      backend.challengeFn,
+      backend.authFn,
+      backend.adminFn,
+      backend.vaultFn,
+      backend.healthFn,
+    ]) {
+      fn.addEnvironment('FRONTEND_ORIGIN', frontendOrigin);
+    }
+
     // 5. Monitoring: CloudWatch dashboard + alarms + SNS alerts (prod only)
     let monitoring: MonitoringConstruct | undefined;
     if (config.environment === 'prod') {

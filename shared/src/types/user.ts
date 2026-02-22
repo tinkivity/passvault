@@ -15,4 +15,6 @@ export interface User {
   createdAt: string;
   lastLoginAt: string | null;
   createdBy: string | null;
+  failedLoginAttempts: number;
+  lockedUntil: string | null;
 }

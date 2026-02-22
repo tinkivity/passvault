@@ -75,12 +75,6 @@ export function LoginPage() {
           <Button type="submit" loading={loading}>
             {loading ? 'Signing in…' : 'Sign in'}
           </Button>
-          <a
-            href="/admin/login"
-            className="text-center text-xs text-gray-400 hover:text-gray-600 mt-2"
-          >
-            Admin login
-          </a>
         </form>
       </Card>
     </Layout>

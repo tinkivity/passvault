@@ -1,5 +1,6 @@
 import {
   ERRORS,
+  LIMITS,
   type LoginRequest,
   type LoginResponse,
   type ChangePasswordRequest,
@@ -14,9 +15,23 @@ import { verifyCode } from './totp.js';
 import { config } from '../config.js';
 
 export async function login(request: LoginRequest): Promise<{ response?: LoginResponse; error?: string; statusCode?: number }> {
+  // M3: Guard against oversized inputs before hitting DynamoDB
+  if (typeof request.username !== 'string' || request.username.length > LIMITS.USERNAME_MAX_LENGTH) {
+    return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
+  }
+  if (typeof request.password !== 'string' || request.password.length > LIMITS.MAX_PASSWORD_LENGTH) {
+    return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
+  }
+
   const user = await getUserByUsername(request.username);
   if (!user || user.role !== 'user') {
     return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
+  }
+
+  // H2: Check account lockout
+  const now = new Date();
+  if (user.lockedUntil && new Date(user.lockedUntil) > now) {
+    return { error: ERRORS.ACCOUNT_LOCKED, statusCode: 429 };
   }
 
   // First-time login: verify against OTP hash
@@ -26,12 +41,14 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
     }
     const otpValid = await verifyPassword(request.password, user.oneTimePasswordHash);
     if (!otpValid) {
+      await recordFailedAttempt(user.userId, user.failedLoginAttempts ?? 0);
       return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
     }
   } else {
     // Normal login: verify against password hash
     const passwordValid = await verifyPassword(request.password, user.passwordHash);
     if (!passwordValid) {
+      await recordFailedAttempt(user.userId, user.failedLoginAttempts ?? 0);
       return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
     }
 
@@ -41,13 +58,18 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
         return { error: ERRORS.INVALID_TOTP, statusCode: 401 };
       }
       if (!user.totpSecret || !verifyCode(request.totpCode, user.totpSecret)) {
+        await recordFailedAttempt(user.userId, user.failedLoginAttempts ?? 0);
         return { error: ERRORS.INVALID_TOTP, statusCode: 401 };
       }
     }
   }
 
-  // Update last login
-  await updateUser(user.userId, { lastLoginAt: new Date().toISOString() });
+  // Update last login and reset lockout counter
+  await updateUser(user.userId, {
+    lastLoginAt: new Date().toISOString(),
+    failedLoginAttempts: 0,
+    lockedUntil: null,
+  });
 
   const token = await signToken({
     userId: user.userId,
@@ -92,4 +114,13 @@ export async function changePassword(
   });
 
   return { response: { success: true } };
+}
+
+async function recordFailedAttempt(userId: string, currentAttempts: number): Promise<void> {
+  const newCount = currentAttempts + 1;
+  const lockedUntil =
+    newCount >= LIMITS.RATE_LIMIT_FAILED_ATTEMPTS
+      ? new Date(Date.now() + LIMITS.RATE_LIMIT_WINDOW_MINUTES * 60 * 1000).toISOString()
+      : null;
+  await updateUser(userId, { failedLoginAttempts: newCount, lockedUntil });
 }
