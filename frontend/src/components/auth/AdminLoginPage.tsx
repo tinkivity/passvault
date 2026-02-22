@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth.js';
-import { Layout, Card, Button, Input, ErrorMessage } from '../layout/Layout.js';
+import { Layout, Button, Input, ErrorMessage } from '../layout/Layout.js';
 import logo from '../../assets/logo.png';
 
 export function AdminLoginPage() {
@@ -33,58 +33,63 @@ export function AdminLoginPage() {
 
   return (
     <Layout>
-      <Card>
-        <div className="flex justify-center mb-2">
-          <img src={logo} alt="PassVault" className="h-16 w-auto" />
+      <div className="bg-base-100 rounded-xl shadow-md w-full max-w-2xl flex overflow-hidden">
+        {/* Logo panel */}
+        <div className="flex-1 flex items-center justify-center p-8 border-r border-base-300">
+          <img src={logo} alt="PassVault" className="max-w-full h-auto max-h-48" />
         </div>
-        <p className="text-center text-sm text-base-content/50 mb-6">Admin Login</p>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <Input
-            label="Username"
-            id="username"
-            type="text"
-            autoComplete="username"
-            value={username}
-            onChange={e => setUsername(e.target.value)}
-            required
-          />
-          <Input
-            label="Password"
-            id="password"
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={e => setPassword(e.target.value)}
-            required
-          />
-          {needsTotp && (
+
+        {/* Form panel */}
+        <div className="flex-1 p-6 flex flex-col justify-center">
+          <p className="text-sm text-base-content/50 mb-4">Admin Login</p>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <Input
-              label="Authenticator Code"
-              id="totp"
+              label="Username"
+              id="username"
               type="text"
-              inputMode="numeric"
-              pattern="[0-9]{6}"
-              maxLength={6}
-              value={totpCode}
-              onChange={e => setTotpCode(e.target.value)}
+              autoComplete="username"
+              value={username}
+              onChange={e => setUsername(e.target.value)}
               required
             />
-          )}
-          <div style={{ display: 'none' }} aria-hidden="true">
-            <input tabIndex={-1} name="email_confirm" autoComplete="off" />
-          </div>
-          <ErrorMessage message={error} />
-          <Button type="submit" loading={loading}>
-            Sign in
-          </Button>
-          <a
-            href="/login"
-            className="text-center text-xs text-base-content/40 hover:text-base-content/70 mt-2 transition-colors"
-          >
-            User login
-          </a>
-        </form>
-      </Card>
+            <Input
+              label="Password"
+              id="password"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              required
+            />
+            {needsTotp && (
+              <Input
+                label="Authenticator Code"
+                id="totp"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]{6}"
+                maxLength={6}
+                value={totpCode}
+                onChange={e => setTotpCode(e.target.value)}
+                required
+              />
+            )}
+            <div style={{ display: 'none' }} aria-hidden="true">
+              <input tabIndex={-1} name="email_confirm" autoComplete="off" />
+            </div>
+            <ErrorMessage message={error} />
+            <Button type="submit" loading={loading}>
+              Sign in
+            </Button>
+            <a
+              href="/login"
+              className="text-center text-xs text-base-content/40 hover:text-base-content/70 mt-2 transition-colors"
+            >
+              User login
+            </a>
+          </form>
+        </div>
+      </div>
     </Layout>
   );
 }
