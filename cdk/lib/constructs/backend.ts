@@ -49,6 +49,11 @@ export class BackendConstruct extends Construct {
 
     const retentionDays = config.monitoring.logRetentionDays as logs.RetentionDays;
 
+    // Reserved concurrency is only set in prod to cap blast radius.
+    // In dev/beta, Lambda draws from the unreserved account pool — this avoids
+    // failing on new accounts where the concurrency quota can be as low as 10.
+    const isProd = env === 'prod';
+
     // Challenge Lambda
     const challengeLogGroup = new logs.LogGroup(this, 'ChallengeLogs', {
       logGroupName: `/aws/lambda/passvault-challenge-${env}`,
@@ -65,7 +70,7 @@ export class BackendConstruct extends Construct {
       memorySize: 256,
       timeout: cdk.Duration.seconds(5),
       logGroup: challengeLogGroup,
-      reservedConcurrentExecutions: 5,
+      ...(isProd && { reservedConcurrentExecutions: 5 }),
     });
 
     // Auth Lambda
@@ -84,7 +89,7 @@ export class BackendConstruct extends Construct {
       memorySize: defaultMemory,
       timeout: cdk.Duration.seconds(10),
       logGroup: authLogGroup,
-      reservedConcurrentExecutions: 3,
+      ...(isProd && { reservedConcurrentExecutions: 3 }),
     });
 
     // Admin Lambda
@@ -103,7 +108,7 @@ export class BackendConstruct extends Construct {
       memorySize: defaultMemory,
       timeout: cdk.Duration.seconds(10),
       logGroup: adminLogGroup,
-      reservedConcurrentExecutions: 2,
+      ...(isProd && { reservedConcurrentExecutions: 2 }),
     });
 
     // Vault Lambda
@@ -122,7 +127,7 @@ export class BackendConstruct extends Construct {
       memorySize: defaultMemory,
       timeout: defaultTimeout,
       logGroup: vaultLogGroup,
-      reservedConcurrentExecutions: 5,
+      ...(isProd && { reservedConcurrentExecutions: 5 }),
     });
 
     // Health Lambda
@@ -141,7 +146,7 @@ export class BackendConstruct extends Construct {
       memorySize: 128,
       timeout: cdk.Duration.seconds(5),
       logGroup: healthLogGroup,
-      reservedConcurrentExecutions: 2,
+      ...(isProd && { reservedConcurrentExecutions: 2 }),
     });
 
     // SSM: pass parameter name (not value) to Lambdas that sign/verify tokens.

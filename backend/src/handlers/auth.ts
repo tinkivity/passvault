@@ -9,6 +9,18 @@ import * as totpService from '../services/totp.js';
 import { getUserById, updateUser } from '../utils/dynamodb.js';
 import { config } from '../config.js';
 
+function parseBody(event: APIGatewayProxyEvent): { body: Record<string, unknown> } | { parseError: APIGatewayProxyResult } {
+  try {
+    const parsed = JSON.parse(event.body || '{}');
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return { parseError: error('Invalid request body', 400) };
+    }
+    return { body: parsed as Record<string, unknown> };
+  } catch {
+    return { parseError: error('Invalid JSON', 400) };
+  }
+}
+
 export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
   const path = event.path;
   const method = event.httpMethod;
@@ -16,19 +28,19 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
   try {
     // POST /auth/login
     if (path === API_PATHS.AUTH_LOGIN && method === 'POST') {
-      return handleLogin(event);
+      return await handleLogin(event);
     }
     // POST /auth/change-password
     if (path === API_PATHS.AUTH_CHANGE_PASSWORD && method === 'POST') {
-      return handleChangePassword(event);
+      return await handleChangePassword(event);
     }
     // POST /auth/totp/setup
     if (path === API_PATHS.AUTH_TOTP_SETUP && method === 'POST') {
-      return handleTotpSetup(event);
+      return await handleTotpSetup(event);
     }
     // POST /auth/totp/verify
     if (path === API_PATHS.AUTH_TOTP_VERIFY && method === 'POST') {
-      return handleTotpVerify(event);
+      return await handleTotpVerify(event);
     }
 
     return error('Not found', 404);
@@ -47,8 +59,9 @@ async function handleLogin(event: APIGatewayProxyEvent): Promise<APIGatewayProxy
   const honeypot = validateHoneypot(event);
   if (honeypot.errorResponse) return honeypot.errorResponse;
 
-  const body = JSON.parse(event.body || '{}');
-  const result = await login(body);
+  const parsed = parseBody(event);
+  if ('parseError' in parsed) return parsed.parseError;
+  const result = await login(parsed.body);
 
   if (result.error) {
     return error(result.error, result.statusCode || 401);
@@ -67,8 +80,9 @@ async function handleChangePassword(event: APIGatewayProxyEvent): Promise<APIGat
     return error('Password change not required', 400);
   }
 
-  const body = JSON.parse(event.body || '{}');
-  const result = await changePassword(user!.userId, user!.username, body);
+  const parsed = parseBody(event);
+  if ('parseError' in parsed) return parsed.parseError;
+  const result = await changePassword(user!.userId, user!.username, parsed.body);
 
   if (result.error) {
     return error(result.error, result.statusCode || 400, result.details);
@@ -116,13 +130,14 @@ async function handleTotpVerify(event: APIGatewayProxyEvent): Promise<APIGateway
     return error(ERRORS.TOTP_SETUP_REQUIRED, 400);
   }
 
-  const body = JSON.parse(event.body || '{}');
+  const parsed = parseBody(event);
+  if ('parseError' in parsed) return parsed.parseError;
   const dbUser = await getUserById(user!.userId);
   if (!dbUser?.totpSecret) {
     return error('TOTP not set up yet', 400);
   }
 
-  if (!totpService.verifyCode(body.totpCode, dbUser.totpSecret)) {
+  if (!totpService.verifyCode(parsed.body.totpCode as string, dbUser.totpSecret)) {
     return error(ERRORS.INVALID_TOTP, 400);
   }
 

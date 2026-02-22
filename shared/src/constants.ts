@@ -60,6 +60,7 @@ export const ERRORS = {
   POW_INVALID: 'Invalid proof of work solution',
   POW_EXPIRED: 'Proof of work challenge expired',
   FILE_TOO_LARGE: 'File exceeds maximum size of 1MB',
+  ACCOUNT_LOCKED: 'Account temporarily locked due to too many failed attempts',
 } as const;
 
 // Limits
@@ -71,4 +72,5 @@ export const LIMITS = {
   USERNAME_PATTERN: /^[a-zA-Z0-9_-]+$/,
   RATE_LIMIT_FAILED_ATTEMPTS: 5,
   RATE_LIMIT_WINDOW_MINUTES: 15,
+  MAX_PASSWORD_LENGTH: 1024,
 } as const;

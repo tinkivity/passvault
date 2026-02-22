@@ -5,6 +5,18 @@ import { validatePow } from '../middleware/pow.js';
 import { requireAuth } from '../middleware/auth.js';
 import { getVault, putVault, downloadVault } from '../services/vault.js';
 
+function parseBody(event: APIGatewayProxyEvent): { body: Record<string, unknown> } | { parseError: APIGatewayProxyResult } {
+  try {
+    const parsed = JSON.parse(event.body || '{}');
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      return { parseError: error('Invalid request body', 400) };
+    }
+    return { body: parsed as Record<string, unknown> };
+  } catch {
+    return { parseError: error('Invalid JSON', 400) };
+  }
+}
+
 export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
   const path = event.path;
   const method = event.httpMethod;
@@ -12,15 +24,15 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
   try {
     // GET /vault
     if (path === API_PATHS.VAULT && method === 'GET') {
-      return handleGetVault(event);
+      return await handleGetVault(event);
     }
     // PUT /vault
     if (path === API_PATHS.VAULT && method === 'PUT') {
-      return handlePutVault(event);
+      return await handlePutVault(event);
     }
     // GET /vault/download
     if (path === API_PATHS.VAULT_DOWNLOAD && method === 'GET') {
-      return handleDownloadVault(event);
+      return await handleDownloadVault(event);
     }
 
     return error('Not found', 404);
@@ -59,8 +71,9 @@ async function handlePutVault(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     return error(ERRORS.FORBIDDEN, 403);
   }
 
-  const body = JSON.parse(event.body || '{}');
-  const result = await putVault(user!.userId, body);
+  const parsed = parseBody(event);
+  if ('parseError' in parsed) return parsed.parseError;
+  const result = await putVault(user!.userId, parsed.body);
   if (result.error) {
     return error(result.error, result.statusCode || 500);
   }

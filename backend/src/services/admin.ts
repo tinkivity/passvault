@@ -21,20 +21,36 @@ import { verifyCode } from './totp.js';
 import { config } from '../config.js';
 
 export async function adminLogin(request: LoginRequest): Promise<{ response?: LoginResponse; error?: string; statusCode?: number }> {
+  // M3: Guard against oversized inputs before hitting DynamoDB
+  if (typeof request.username !== 'string' || request.username.length > LIMITS.USERNAME_MAX_LENGTH) {
+    return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
+  }
+  if (typeof request.password !== 'string' || request.password.length > LIMITS.MAX_PASSWORD_LENGTH) {
+    return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
+  }
+
   const user = await getUserByUsername(request.username);
   if (!user || user.role !== 'admin') {
     return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
+  }
+
+  // H2: Check account lockout
+  const now = new Date();
+  if (user.lockedUntil && new Date(user.lockedUntil) > now) {
+    return { error: ERRORS.ACCOUNT_LOCKED, statusCode: 429 };
   }
 
   // First-time login: verify against password hash (set during init)
   if (user.status === 'pending_first_login') {
     const valid = await verifyPassword(request.password, user.passwordHash);
     if (!valid) {
+      await recordFailedAttempt(user.userId, user.failedLoginAttempts ?? 0);
       return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
     }
   } else {
     const passwordValid = await verifyPassword(request.password, user.passwordHash);
     if (!passwordValid) {
+      await recordFailedAttempt(user.userId, user.failedLoginAttempts ?? 0);
       return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
     }
 
@@ -43,12 +59,18 @@ export async function adminLogin(request: LoginRequest): Promise<{ response?: Lo
         return { error: ERRORS.INVALID_TOTP, statusCode: 401 };
       }
       if (!user.totpSecret || !verifyCode(request.totpCode, user.totpSecret)) {
+        await recordFailedAttempt(user.userId, user.failedLoginAttempts ?? 0);
         return { error: ERRORS.INVALID_TOTP, statusCode: 401 };
       }
     }
   }
 
-  await updateUser(user.userId, { lastLoginAt: new Date().toISOString() });
+  // Reset lockout counter on success
+  await updateUser(user.userId, {
+    lastLoginAt: new Date().toISOString(),
+    failedLoginAttempts: 0,
+    lockedUntil: null,
+  });
 
   const token = await signToken({
     userId: user.userId,
@@ -162,4 +184,13 @@ export async function listUsers(): Promise<ListUsersResponse> {
       vaultSizeBytes: sizes[i],
     })),
   };
+}
+
+async function recordFailedAttempt(userId: string, currentAttempts: number): Promise<void> {
+  const newCount = currentAttempts + 1;
+  const lockedUntil =
+    newCount >= LIMITS.RATE_LIMIT_FAILED_ATTEMPTS
+      ? new Date(Date.now() + LIMITS.RATE_LIMIT_WINDOW_MINUTES * 60 * 1000).toISOString()
+      : null;
+  await updateUser(userId, { failedLoginAttempts: newCount, lockedUntil });
 }
