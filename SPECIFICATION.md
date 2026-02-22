@@ -160,12 +160,10 @@ PassVault is an invitation-only, personal secure text storage application where 
   - Track click/touch events before form submit
   - If zero interactions → suspicious
 
-**Layer 6: Progressive Challenges**
-- **First failed login attempt**: Standard error message
-- **Second failed attempt**: Add 2-second delay before response
-- **Third failed attempt**: Require PoW with higher difficulty
-- **Fourth+ attempts**: Show CAPTCHA + higher PoW difficulty
-- **Five+ failed attempts**: Temporary IP block (15 minutes)
+**Layer 6: Account Lockout**
+- **First–fourth failed login attempt**: Standard 401 error message; `failedLoginAttempts` counter incremented in DynamoDB
+- **Fifth failed attempt**: Account locked for 15 minutes; `lockedUntil` set in DynamoDB; subsequent attempts return 429 immediately without password verification
+- **Successful login**: Counter reset to 0 and `lockedUntil` cleared
 
 #### Implementation Details
 
@@ -409,7 +407,8 @@ All environment differences are driven by a single `EnvironmentConfig` type. The
 - **API Gateway**: AWS API Gateway (REST API)
 - **Compute**: AWS Lambda functions (Node.js runtime)
 - **Storage**: AWS S3 bucket for text file storage
-- **Authentication**: Basic auth with API Gateway authorizer or Lambda function
+- **Authentication**: JWT-based auth with Lambda middleware
+- **CORS**: `Access-Control-Allow-Origin` set to CloudFront domain in beta/prod; `*` in dev — driven by `FRONTEND_ORIGIN` Lambda environment variable set at deploy time
 - **Bot Protection**: AWS WAF with Bot Control managed rules
 - **CDN** (Optional): CloudFront for static content delivery and WAF attachment
 - **Rate Limiting**: API Gateway throttling + usage plans
@@ -623,6 +622,8 @@ Attributes:
 - createdAt: timestamp (String/Number)
 - lastLoginAt: timestamp (String/Number)
 - createdBy: userId of admin who created this user (String, nullable)
+- failedLoginAttempts: count of consecutive failed logins (Number) - reset to 0 on successful login
+- lockedUntil: ISO timestamp until which the account is locked (String, nullable) - set after 5 consecutive failures
 ```
 
 Global Secondary Index (GSI):
@@ -753,8 +754,9 @@ s3://passvault-files/
   - Timer enforced on frontend, user logged out when timer expires
   - Clear all session data and redirect to login on timeout
 - Rate limiting on all login endpoints (prevent brute force)
-  - Max 5 failed attempts per username per 15 minutes
-  - Exponential backoff after failed attempts
+  - Max 5 failed attempts per username per 15 minutes (DynamoDB-persisted counter)
+  - After 5 failures: account locked for 15 minutes (flat lockout, stored in `lockedUntil`)
+  - Lockout returns HTTP 429; counter and lock reset on successful login
 - Validate password strength against policy on backend
 - OTP must be securely generated and only displayed once to admin
 - OTP is invalidated after first successful password change
@@ -854,10 +856,11 @@ PassVault implements **complete separation** between admin privileges and user d
 ### 6.7 Input Validation
 - **Username Validation**:
   - Alphanumeric characters only (a-z, A-Z, 0-9) plus underscore and hyphen
-  - Length: 3-30 characters
+  - Length: 3-30 characters (enforced in service layer before DynamoDB lookup)
   - Must be unique (checked against DynamoDB GSI)
   - Prevent injection attacks in S3 key construction
 - **Password Validation**:
+  - Maximum length: 1,024 characters (enforced in service layer before DynamoDB lookup)
   - Enforce password policy (see section 5.3) on backend
   - Return specific validation errors (e.g., "missing uppercase letter")
   - Frontend provides real-time validation feedback
@@ -1241,11 +1244,11 @@ Stacks share nothing — they can be deployed and destroyed independently.
   - Hidden field names (e.g., "email", "phone", "website")
   - CSS vs visibility hidden (CSS more reliable)
   - Server-side rejection strategy (silent fail vs explicit error)
-- [ ] **Progressive challenge escalation thresholds**:
-  - Failed login attempts before CAPTCHA: 3-5 attempts
-  - Failed attempts before IP block: 5-10 attempts
-  - IP block duration: 15 minutes - 1 hour
-  - Tracking method: DynamoDB table vs in-memory (trade-off: persistence vs cost)
+- [x] **Account lockout thresholds** (implemented):
+  - Failed attempts before lockout: 5 (`RATE_LIMIT_FAILED_ATTEMPTS`)
+  - Lockout duration: 15 minutes (`RATE_LIMIT_WINDOW_MINUTES`) — flat, not exponential
+  - Counter stored in DynamoDB (`failedLoginAttempts`, `lockedUntil` per user)
+  - Lockout is per-account (username), not per-IP
 
 ### General Infrastructure
 - [x] **CSS solution: Tailwind CSS v4** with `@tailwindcss/vite` plugin

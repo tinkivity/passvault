@@ -19,7 +19,7 @@ PassVault is a privacy-focused, serverless password vault where:
 - **Zero-knowledge architecture** - even admins can't access user data
 - **Three environments** - dev, beta, and prod with feature flags
 
-**Monthly Cost:** ~$0 for dev/beta, ~$8-10 for prod (3-100 users)
+**Monthly Cost:** ~$0 for dev/beta, ~$9-11 for prod (3-100 users)
 
 ---
 
@@ -41,7 +41,7 @@ PassVault is a privacy-focused, serverless password vault where:
 
 ### Infrastructure
 - 🚀 **Serverless** - AWS Lambda + API Gateway + S3 + DynamoDB
-- 📊 **Cost-effective** - ~$8/month for up to 100 users
+- 📊 **Cost-effective** - ~$9/month for up to 100 users
 - 🔒 **AWS WAF** - Bot Control with CAPTCHA challenges (prod only)
 - 🌍 **CloudFront CDN** - Global content delivery
 - 📈 **Scalable** - Handles 1,000+ users with minimal cost increase
@@ -53,6 +53,7 @@ PassVault is a privacy-focused, serverless password vault where:
 - **[SPECIFICATION.md](SPECIFICATION.md)** - Complete technical specification
 - **[IMPLEMENTATION.md](IMPLEMENTATION.md)** - Build plan and architecture
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** - AWS CDK deployment guide
+- **[TESTING.md](TESTING.md)** - Unit tests, dev UI testing script, smoke tests, pre-deployment checklist
 - **[RECOVERY.md](RECOVERY.md)** - Offline file recovery manual
 - **[COSTS.md](COSTS.md)** - Detailed cost analysis and projections
 - **[LICENSE](LICENSE)** - MIT License
@@ -138,18 +139,18 @@ For complete deployment instructions, see **[DEPLOYMENT.md](DEPLOYMENT.md)**.
 
 | Users | Monthly Cost | Per User/Month | Annual Cost |
 |-------|--------------|----------------|-------------|
-| 3     | $8.17        | $2.72          | $98         |
-| 10    | $8.54        | $0.85          | $102        |
-| 50    | $8.90        | $0.18          | $107        |
-| 100   | $10.01       | $0.10          | $120        |
-| 500   | $17.40       | $0.035         | $209        |
+| 3     | $9.17        | $3.06          | $110        |
+| 10    | $9.54        | $0.95          | $114        |
+| 50    | $9.90        | $0.20          | $119        |
+| 100   | $11.01       | $0.11          | $132        |
+| 500   | $18.40       | $0.037         | $221        |
 
 **Primary cost driver (prod):** AWS WAF (~80-90% of total costs)
 
 **Compared to alternatives:**
 - 1Password Business: $799/month for 100 users
 - Bitwarden Teams: $400/month for 100 users
-- **PassVault: $10/month for 100 users** (97% savings)
+- **PassVault: $11/month for 100 users** (99% savings)
 
 See **[COSTS.md](COSTS.md)** for detailed analysis.
 
@@ -246,6 +247,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 - **Documentation:** [SPECIFICATION.md](SPECIFICATION.md)
 - **Deployment:** [DEPLOYMENT.md](DEPLOYMENT.md)
+- **Testing:** [TESTING.md](TESTING.md)
 - **Recovery:** [RECOVERY.md](RECOVERY.md)
 - **Costs:** [COSTS.md](COSTS.md)
 - **Issues:** GitHub Issues
