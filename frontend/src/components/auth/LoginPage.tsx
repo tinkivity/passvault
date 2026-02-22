@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../hooks/useAuth.js';
 import { Layout, Card, Button, Input, ErrorMessage } from '../layout/Layout.js';
+import logo from '../../assets/logo.png';
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -34,7 +35,9 @@ export function LoginPage() {
   return (
     <Layout>
       <Card>
-        <h1 className="text-xl font-bold mb-6 text-center">PassVault</h1>
+        <div className="flex justify-center mb-6">
+          <img src={logo} alt="PassVault" className="h-16 w-auto" />
+        </div>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <Input
             label="Username"
