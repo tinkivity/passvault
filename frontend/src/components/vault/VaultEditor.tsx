@@ -43,10 +43,10 @@ export function VaultEditor({
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
-        <span className="font-semibold text-sm text-gray-700">Edit Vault</span>
+        <span className="font-semibold text-sm text-base-content/70">Edit Vault</span>
         <span
           className={`text-xs tabular-nums font-mono ${
-            isUrgent ? 'text-red-600 font-semibold' : 'text-gray-500'
+            isUrgent ? 'text-error font-semibold' : 'text-base-content/50'
           }`}
         >
           Auto-logout {formatted}
@@ -54,7 +54,7 @@ export function VaultEditor({
       </div>
 
       <textarea
-        className="flex-1 border border-gray-300 rounded p-3 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-64"
+        className="textarea textarea-bordered flex-1 w-full font-mono resize-none min-h-64"
         value={content}
         onChange={e => setContent(e.target.value)}
         placeholder="Enter your sensitive text here…"
@@ -63,7 +63,7 @@ export function VaultEditor({
       />
 
       <div className="flex items-center justify-between mt-1">
-        <span className={`text-xs ${overLimit ? 'text-red-600 font-semibold' : 'text-gray-400'}`}>
+        <span className={`text-xs ${overLimit ? 'text-error font-semibold' : 'text-base-content/30'}`}>
           {(byteSize / 1024).toFixed(1)} KB / 1024 KB
         </span>
       </div>

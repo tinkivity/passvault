@@ -22,15 +22,15 @@ export function OtpDisplay({ username, oneTimePassword, onDone }: OtpDisplayProp
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="rounded bg-yellow-50 border border-yellow-200 p-4">
-        <p className="text-sm font-semibold text-yellow-800 mb-1">
+      <div className="rounded bg-warning/10 border border-warning/30 p-4">
+        <p className="text-sm font-semibold text-warning mb-1">
           User created: <span className="font-mono">{username}</span>
         </p>
-        <p className="text-xs text-yellow-700 mb-3">
+        <p className="text-xs text-warning/80 mb-3">
           Share this one-time password with the user. It will not be shown again.
         </p>
         <div className="flex items-center gap-2">
-          <code className="flex-1 bg-white border border-yellow-300 rounded px-3 py-2 text-sm font-mono tracking-widest select-all">
+          <code className="flex-1 bg-base-100 border border-warning/30 rounded px-3 py-2 text-sm font-mono tracking-widest select-all">
             {oneTimePassword}
           </code>
           <Button variant="secondary" onClick={handleCopy}>

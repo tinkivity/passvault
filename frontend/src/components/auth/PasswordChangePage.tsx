@@ -55,7 +55,7 @@ export function PasswordChangePage({ isAdmin = false }: PasswordChangePageProps)
       <Layout>
         <Card>
           <h1 className="text-xl font-bold mb-4 text-center">Password Changed</h1>
-          <p className="text-center text-sm text-gray-600 mb-6">
+          <p className="text-center text-sm text-base-content/70 mb-6">
             Your password has been set successfully. Please log in with your new password.
           </p>
           <div className="flex justify-center">
@@ -72,7 +72,7 @@ export function PasswordChangePage({ isAdmin = false }: PasswordChangePageProps)
     <Layout>
       <Card>
         <h1 className="text-xl font-bold mb-1 text-center">Change Password</h1>
-        <p className="text-center text-sm text-gray-500 mb-6">
+        <p className="text-center text-sm text-base-content/50 mb-6">
           {username ? `Welcome, ${username}` : 'Set your new password'}
         </p>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -94,7 +94,7 @@ export function PasswordChangePage({ isAdmin = false }: PasswordChangePageProps)
             onChange={e => setConfirm(e.target.value)}
             required
           />
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-base-content/50">
             Password must be at least 12 characters with uppercase, lowercase, number, and special character.
           </p>
           <ErrorMessage message={error} />
