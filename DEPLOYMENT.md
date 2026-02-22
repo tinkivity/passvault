@@ -13,7 +13,7 @@ This guide provides complete instructions for deploying PassVault to AWS using A
 
 **Estimated Monthly Cost:**
 - Dev/Beta: ~$0 (no WAF, no TOTP, within AWS free tier)
-- Prod: $8-10 for 3-10 users (primarily AWS WAF costs)
+- Prod: $9-11 for 3-10 users (primarily AWS WAF costs)
 
 See [SPECIFICATION.md Section 2.5](SPECIFICATION.md) for full environment comparison.
 
@@ -262,10 +262,13 @@ All Lambda functions use **ARM_64 (Graviton)** architecture for ~20% cost saving
 
 **JWT Secret:** The auth, admin, and vault functions receive the SSM parameter *name* (`/passvault/{env}/jwt-secret`) as a `JWT_SECRET_PARAM` environment variable. At cold-start, each function calls the SSM API to fetch and decrypt the value. The secret is cached in memory for the lifetime of the Lambda container. See [Step 0](#step-0-create-jwt-secret-in-ssm-parameter-store) for how to create this parameter before deploying.
 
+**Reserved concurrency (prod only):** Each function has a `reservedConcurrentExecutions` cap in prod to limit blast radius. This setting is omitted in dev/beta — new AWS accounts can have a total Lambda concurrency quota as low as 10, and AWS requires at least 10 unreserved executions to remain in the account pool at all times, so reserving any slots would cause the deployment to fail.
+
 **Challenge Function:** `passvault-challenge-{env}`
 - Runtime: Node.js 22.x (ARM64)
 - Memory: 256 MB (all environments)
 - Timeout: 5 seconds
+- Reserved concurrency: 5 (prod only)
 - Handler: `challenge.handler`
 - Purpose: Generate PoW challenges
 
@@ -273,6 +276,7 @@ All Lambda functions use **ARM_64 (Graviton)** architecture for ~20% cost saving
 - Runtime: Node.js 22.x (ARM64)
 - Memory: 256 MB (dev/beta) / 512 MB (prod)
 - Timeout: 10 seconds
+- Reserved concurrency: 3 (prod only)
 - Handler: `auth.handler`
 - Purpose: Login, password change, TOTP setup/verify
 
@@ -280,6 +284,7 @@ All Lambda functions use **ARM_64 (Graviton)** architecture for ~20% cost saving
 - Runtime: Node.js 22.x (ARM64)
 - Memory: 256 MB (dev/beta) / 512 MB (prod)
 - Timeout: 10 seconds
+- Reserved concurrency: 2 (prod only)
 - Handler: `admin.handler`
 - Purpose: User creation, admin management
 
@@ -287,6 +292,7 @@ All Lambda functions use **ARM_64 (Graviton)** architecture for ~20% cost saving
 - Runtime: Node.js 22.x (ARM64)
 - Memory: 256 MB (dev/beta) / 512 MB (prod)
 - Timeout: 15 seconds
+- Reserved concurrency: 5 (prod only)
 - Handler: `vault.handler`
 - Purpose: File read/write operations
 
@@ -294,6 +300,7 @@ All Lambda functions use **ARM_64 (Graviton)** architecture for ~20% cost saving
 - Runtime: Node.js 22.x (ARM64)
 - Memory: 128 MB (all environments)
 - Timeout: 5 seconds
+- Reserved concurrency: 2 (prod only)
 - Handler: `health.handler`
 - Purpose: Health check endpoint
 
@@ -415,36 +422,94 @@ A Route 53 alias A record is created automatically and **deleted on `cdk destroy
 
 ## 6. Deployment Steps
 
+> **Working directory:** All `cdk` commands must be run from the `cdk/` subdirectory. `cdk.json` (which tells CDK how to find the app entry point) lives there. Running `cdk` from the repo root will fail with `--app is required`.
+> ```bash
+> cd cdk   # do this once before running any cdk command
+> ```
+
+### CDK Context Variables Reference
+
+All `cdk` commands accept context variables via `--context key=value`. The three variables below are the only ones used by the PassVault CDK app:
+
+| Variable | Required | Applies to | Description |
+|---|---|---|---|
+| `env` | **Yes** | All commands | Deployment environment. Must be `dev`, `beta`, or `prod`. Selects the environment config from `shared/src/config/environments.ts` and names the CloudFormation stack (`PassVault-Dev`, `PassVault-Beta`, `PassVault-Prod`). |
+| `domain` | No | All commands | Root domain name of an existing Route 53 hosted zone (e.g. `example.com`). When provided and `cloudFrontEnabled` is true for the selected environment, CDK creates a `CertificateStack` in `us-east-1` and configures CloudFront with a custom subdomain (`pv.example.com` for prod, `beta.pv.example.com` for beta, `dev.pv.example.com` for dev). Omit to use the auto-generated CloudFront URL. |
+| `alertEmail` | No | `env=prod` only | Email address to subscribe to the SNS alert topic. Receives traffic spike alarms and daily cost alerts. After deploy, AWS sends a confirmation email — the subscription is inactive until the link is clicked. Has no effect in dev or beta (no SNS topic is created). |
+
+**Minimal (dev):**
+```bash
+cdk deploy --context env=dev
+```
+
+**With custom domain (beta):**
+```bash
+cdk deploy --context env=beta --context domain=example.com
+```
+
+**Full production:**
+```bash
+cdk deploy --all --context env=prod --context domain=example.com --context alertEmail=you@example.com
+```
+
+---
+
 ### Step 0: Create JWT Secret in SSM Parameter Store
 
 The CDK stack references a pre-existing SSM SecureString parameter for the JWT signing key. This must be created **once per environment** before the first `cdk deploy`. It is never managed by CloudFormation — creating it manually ensures the secret is not exposed in the CloudFormation template or CDK Cloud Assembly.
+
+> **Region:** All stacks deploy to `eu-central-1`. The `--region eu-central-1` flag is required unless `eu-central-1` is already your AWS CLI default region. The Lambda will fail to fetch the secret at cold-start if the parameter is in the wrong region.
 
 ```bash
 # Dev
 aws ssm put-parameter \
   --name /passvault/dev/jwt-secret \
   --value "$(openssl rand -hex 32)" \
-  --type SecureString
+  --type SecureString \
+  --region eu-central-1
 
 # Beta
 aws ssm put-parameter \
   --name /passvault/beta/jwt-secret \
   --value "$(openssl rand -hex 32)" \
-  --type SecureString
+  --type SecureString \
+  --region eu-central-1
 
 # Prod
 aws ssm put-parameter \
   --name /passvault/prod/jwt-secret \
   --value "$(openssl rand -hex 32)" \
-  --type SecureString
+  --type SecureString \
+  --region eu-central-1
 ```
+
+On success, each command prints `{"Version": 1, "Tier": "Standard"}`. Any other output (or an error) means the parameter was not created.
 
 > **Important:** Run this command only once per environment. The `put-parameter` command without `--overwrite` will fail if the parameter already exists, which prevents accidental secret rotation. All existing user sessions would be invalidated if the secret changes.
 
-To verify a parameter exists (without revealing the value):
+**Verify via AWS CLI** (confirms existence without revealing the value):
 ```bash
-aws ssm get-parameter --name /passvault/dev/jwt-secret --query "Parameter.Name"
+aws ssm get-parameter \
+  --name /passvault/dev/jwt-secret \
+  --region eu-central-1 \
+  --query "Parameter.{Name:Name,Type:Type,Version:Version}"
 ```
+Expected output:
+```json
+{
+    "Name": "/passvault/dev/jwt-secret",
+    "Type": "SecureString",
+    "Version": 1
+}
+```
+
+**Verify via AWS Console:**
+1. Open **AWS Console** → set region to **EU (Frankfurt) `eu-central-1`**
+2. Navigate to **Systems Manager** → **Parameter Store**
+3. In the search box, enter `/passvault/` and press Enter
+4. You should see your parameter(s) listed with type **SecureString** and a KMS key ID
+5. Click a parameter name to view its details (ARN, last modified date, description)
+6. The value is intentionally hidden — click **Show** only if you need to confirm it (requires `kms:Decrypt` permission on the default AWS-managed key)
 
 ### Step 1: Configure Environment
 
@@ -487,11 +552,12 @@ export const prodConfig: EnvironmentConfig = {
 ### Step 2: Synthesize CDK Stack
 
 ```bash
-# Synthesize CloudFormation template
-cdk synth
+# Synthesize CloudFormation template (--context env is required)
+cdk synth --context env=dev
 
 # Review the generated CloudFormation template
-cat cdk.out/PassVaultStack.template.json
+# The file is named after the stack, e.g. PassVault-Dev.template.json
+cat cdk.out/PassVault-Dev.template.json
 
 # Check for any issues
 cdk doctor
@@ -536,22 +602,32 @@ The application will be accessible at `https://pv.example.com` once DNS propagat
 After infrastructure deployment, initialize the admin account:
 
 ```bash
-# Run admin initialization script from the repo root
+# Run from the repo root. ENVIRONMENT selects the config (admin username, region, table name).
 ENVIRONMENT=prod npx tsx scripts/init-admin.ts
 
-# This script will:
-# 1. Create admin user in DynamoDB with status="pending_first_login"
-# 2. Generate a secure random one-time password (16+ characters)
-# 3. Print the OTP to the console (it is NOT stored in S3)
-
-# Example output:
-# ✅ Admin user created successfully
-# Username: admin
-# One-time password: Xy9$mK2#pL4&nQ8@rT6
-#
-# ⚠️  Save this password — it is shown only once.
-# ⚠️  You must change the password on first login.
+# If your AWS CLI default profile lacks access, export AWS_PROFILE first:
+AWS_PROFILE=my-profile ENVIRONMENT=prod npx tsx scripts/init-admin.ts
 ```
+
+The script:
+1. Checks whether the admin user already exists (exits with an error if it does)
+2. Creates the admin user in DynamoDB with `status="pending_first_login"`
+3. Generates a secure random one-time password (16+ characters)
+4. Prints the OTP to the console — it is **not** stored anywhere
+
+```
+✓ Admin user created successfully.
+
+  Username          : admin
+  One-time password : Xy9$mK2#pL4&nQ8@rT6
+
+Use these credentials to log in at /admin/login.
+You will be prompted to set a new password on first login.
+```
+
+> **Save the one-time password** before closing the terminal — it cannot be recovered. If lost, delete the admin item from DynamoDB and re-run the script.
+
+> **Dev stack note:** `scripts/dev-ui.sh` runs `init-admin.ts` automatically on first launch if the admin account is absent. You do not need to run it manually for dev.
 
 ### Step 5: Build and Deploy Frontend
 
@@ -596,6 +672,8 @@ curl https://d1234567890.cloudfront.net/challenge
 # Open frontend in browser
 open https://d1234567890.cloudfront.net
 ```
+
+For the complete testing guide — unit tests, type checking, the dev UI testing script, API smoke tests, and the pre-deployment checklist — see **[TESTING.md](TESTING.md)**.
 
 ---
 
@@ -756,8 +834,8 @@ aws ce get-cost-forecast \
 aws cloudformation list-stacks --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE
 
 # If stack is stuck, delete and redeploy
-cdk destroy
-cdk deploy --all
+cdk destroy --context env=dev
+cdk deploy --all --context env=dev
 ```
 
 #### Issue: Lambda Function Timeout
@@ -768,7 +846,7 @@ cdk deploy --all
 const lambdaTimeout = Duration.seconds(30); // Increase from 15 to 30
 
 # Redeploy
-cdk deploy
+cdk deploy --context env=<env>
 ```
 
 #### Issue: API Gateway 403 Forbidden
@@ -952,7 +1030,7 @@ jobs:
       - name: Deploy Infrastructure
         run: |
           cd cdk
-          cdk deploy --all --require-approval never
+          cdk deploy --all --context env=prod --require-approval never
 
       - name: Build Frontend
         run: |

@@ -5,9 +5,9 @@
 This document provides a comprehensive breakdown of PassVault's monthly operational costs on AWS. PassVault is designed to be extremely cost-effective for small to medium-scale deployments, with most AWS services staying within free tier limits.
 
 **Key Cost Highlights:**
-- **3-10 users**: $8-10/month (primarily AWS WAF)
-- **50 users**: $9-11/month
-- **100 users**: $10-12/month
+- **3-10 users**: $9-11/month (primarily AWS WAF)
+- **50 users**: $10-12/month
+- **100 users**: $11-13/month
 - **Primary cost driver**: AWS WAF (~80-90% of total costs)
 - **Without WAF (not recommended)**: ~$0-1/month (but vulnerable to costly attacks)
 
@@ -21,7 +21,7 @@ PassVault supports three deployment environments (see [SPECIFICATION.md Section 
 |-------------|-----|------|------------|----------------|-------------------|
 | **Dev** | $0 *(disabled)* | N/A *(disabled)* | $0 *(optional)* | ~$0 *(free tier)* | **~$0.00** |
 | **Beta** | $0 *(disabled)* | N/A *(disabled)* | ~$0 *(free tier)* | ~$0 *(free tier)* | **~$0.00** |
-| **Prod** | $8.00 | N/A | $0-5.22 | $0-1.78 | **$8-10** |
+| **Prod** | $9.00 | N/A | $0-5.22 | $0-1.78 | **$9-11** |
 
 **Running all three stacks:** ~$8-10/month total (only prod incurs meaningful costs)
 
@@ -236,31 +236,28 @@ Cost: 18 GB × $0.085 = $1.53/month
 
 **PassVault Configuration:**
 - 1 Web ACL: $5.00/month
-- 2 Managed rule groups (Bot Control, Known Bad Inputs): $2.00/month
-- 1 Custom rate-based rule (Rate Limiting): included in Web ACL price
+- 4 Rules: KillSwitchBlock (custom), Bot Control (managed), Known Bad Inputs (managed), Rate Limiting (custom): $4.00/month
 - Request processing: Variable based on traffic
 
 **PassVault Usage:**
 
 | User Count | Monthly Requests | WAF Request Cost | Total WAF Cost |
 |------------|------------------|------------------|----------------|
-| 3 users    | 1,530            | $0.001           | **$8.00**      |
-| 10 users   | 5,100            | $0.003           | **$8.00**      |
-| 50 users   | 25,500           | $0.015           | **$8.02**      |
-| 100 users  | 51,000           | $0.031           | **$8.03**      |
-| 500 users  | 255,000          | $0.153           | **$8.15**      |
-| 1,000 users| 510,000          | $0.306           | **$8.31**      |
+| 3 users    | 1,530            | $0.001           | **$9.00**      |
+| 10 users   | 5,100            | $0.003           | **$9.00**      |
+| 50 users   | 25,500           | $0.015           | **$9.02**      |
+| 100 users  | 51,000           | $0.031           | **$9.03**      |
+| 500 users  | 255,000          | $0.153           | **$9.15**      |
+| 1,000 users| 510,000          | $0.306           | **$9.31**      |
 
 **Calculation Example (100 users):**
 ```
 Web ACL: $5.00/month
-Managed Rules: 2 × $1.00 = $2.00/month
+Rules: 4 × $1.00 = $4.00/month  (KillSwitchBlock, BotControl, KnownBadInputs, RateLimit)
 Requests: 51,000 × $0.60 / 1,000,000 = $0.0306/month
 
-Total WAF: $5.00 + $2.00 + $0.03 = $7.03/month
+Total WAF: $5.00 + $4.00 + $0.03 = $9.03/month
 ```
-
-> **Note**: Cost tables throughout this document reflect the earlier $8/month WAF estimate (3 rule groups). Actual cost with 2 managed rule groups is ~$7/month, making the real totals ~$1 lower than shown.
 
 **WAF ROI Analysis:**
 - **Monthly cost**: $8/month
@@ -307,10 +304,10 @@ API Gateway:     $0.00  (free tier)
 S3:              $0.00  (free tier)
 DynamoDB:        $0.00  (free tier)
 CloudFront:      $0.00  (free tier)
-WAF:             $8.00
+WAF:             $9.00
 Data Transfer:   $0.00
 -----------------------------------
-TOTAL:           $8.00/month
+TOTAL:           $9.00/month
 ```
 
 **Monthly Costs (Year 2+):**
@@ -320,13 +317,13 @@ API Gateway:     $0.01
 S3:              $0.001
 DynamoDB:        $0.00  (free tier)
 CloudFront:      $0.16
-WAF:             $8.00
+WAF:             $9.00
 Data Transfer:   $0.00
 -----------------------------------
-TOTAL:           $8.17/month
+TOTAL:           $9.17/month
 ```
 
-**Per User Cost:** $2.72/month
+**Per User Cost:** $3.06/month
 
 ---
 
@@ -344,10 +341,10 @@ API Gateway:     $0.00  (free tier)
 S3:              $0.00  (free tier)
 DynamoDB:        $0.00  (free tier)
 CloudFront:      $0.00  (free tier)
-WAF:             $8.02
+WAF:             $9.02
 Data Transfer:   $0.00
 -----------------------------------
-TOTAL:           $8.02/month
+TOTAL:           $9.02/month
 ```
 
 **Monthly Costs (Year 2+, optimized):**
@@ -357,13 +354,13 @@ API Gateway:     $0.09
 S3:              $0.01
 DynamoDB:        $0.00  (free tier)
 CloudFront:      $0.78  (with compression)
-WAF:             $8.02
+WAF:             $9.02
 Data Transfer:   $0.00
 -----------------------------------
-TOTAL:           $8.90/month
+TOTAL:           $9.90/month
 ```
 
-**Per User Cost:** $0.18/month
+**Per User Cost:** $0.20/month
 
 ---
 
@@ -381,10 +378,10 @@ API Gateway:     $0.00  (free tier)
 S3:              $0.00  (free tier)
 DynamoDB:        $0.00  (free tier)
 CloudFront:      $0.00  (free tier)
-WAF:             $8.03
+WAF:             $9.03
 Data Transfer:   $0.00
 -----------------------------------
-TOTAL:           $8.03/month
+TOTAL:           $9.03/month
 ```
 
 **Monthly Costs (Year 2+, optimized):**
@@ -394,13 +391,13 @@ API Gateway:     $0.30
 S3:              $0.03
 DynamoDB:        $0.00  (free tier)
 CloudFront:      $1.53  (with compression)
-WAF:             $8.05
+WAF:             $9.05
 Data Transfer:   $0.00
 -----------------------------------
-TOTAL:           $10.01/month
+TOTAL:           $11.01/month
 ```
 
-**Per User Cost:** $0.10/month
+**Per User Cost:** $0.11/month
 
 ---
 
@@ -410,14 +407,14 @@ TOTAL:           $10.01/month
 
 | Users | Lambda | API GW | S3   | DynamoDB | CloudFront | WAF   | **Total** | Per User |
 |-------|--------|--------|------|----------|------------|-------|-----------|----------|
-| 3     | $0.00  | $0.01  | $0.00| $0.00    | $0.16      | $8.00 | **$8.17** | $2.72    |
-| 10    | $0.00  | $0.02  | $0.00| $0.00    | $0.52      | $8.00 | **$8.54** | $0.85    |
-| 25    | $0.00  | $0.04  | $0.01| $0.00    | $0.65      | $8.01 | **$8.71** | $0.35    |
-| 50    | $0.00  | $0.09  | $0.01| $0.00    | $0.78      | $8.02 | **$8.90** | $0.18    |
-| 100   | $0.10  | $0.18  | $0.02| $0.00    | $1.53      | $8.03 | **$10.01**| $0.10    |
-| 250   | $0.26  | $0.45  | $0.06| $0.00    | $3.83      | $8.08 | **$12.68**| $0.05    |
-| 500   | $0.51  | $0.89  | $0.12| $0.08    | $7.65      | $8.15 | **$17.40**| $0.035   |
-| 1,000 | $1.02  | $1.79  | $0.24| $0.17    | $15.30     | $8.31 | **$26.83**| $0.027   |
+| 3     | $0.00  | $0.01  | $0.00| $0.00    | $0.16      | $9.00 | **$9.17** | $3.06    |
+| 10    | $0.00  | $0.02  | $0.00| $0.00    | $0.52      | $9.00 | **$9.54** | $0.95    |
+| 25    | $0.00  | $0.04  | $0.01| $0.00    | $0.65      | $9.01 | **$9.71** | $0.39    |
+| 50    | $0.00  | $0.09  | $0.01| $0.00    | $0.78      | $9.02 | **$9.90** | $0.20    |
+| 100   | $0.10  | $0.18  | $0.02| $0.00    | $1.53      | $9.03 | **$11.01**| $0.11    |
+| 250   | $0.26  | $0.45  | $0.06| $0.00    | $3.83      | $9.08 | **$13.68**| $0.05    |
+| 500   | $0.51  | $0.89  | $0.12| $0.08    | $7.65      | $9.15 | **$18.40**| $0.037   |
+| 1,000 | $1.02  | $1.79  | $0.24| $0.17    | $15.30     | $9.31 | **$27.83**| $0.028   |
 
 **Key Insights:**
 - **Economies of scale**: Per-user cost drops dramatically with more users
@@ -468,11 +465,11 @@ Data Transfer: ~$0.05
 Total per hour: $0.73
 Total per day: $17.52
 Total per month (sustained): $525.60
-WAF baseline: $8.00
+WAF baseline: $9.00
 
-Total with WAF: $533.60/month
+Total with WAF: $534.60/month
 
-Savings vs no protection: $2,678.40 - $533.60 = $2,144.80/month (80% savings)
+Savings vs no protection: $2,678.40 - $534.60 = $2,143.80/month (80% savings)
 ```
 
 **Impact:** ✅ Manageable - WAF pays for itself in first hour of attack
@@ -498,11 +495,11 @@ Data Transfer: ~$0.02
 Total per hour: $0.28
 Total per day: $6.72
 Total per month (sustained): $201.60
-WAF baseline: $8.00
+WAF baseline: $9.00
 
-Total with WAF + PoW: $209.60/month
+Total with WAF + PoW: $210.60/month
 
-Savings vs no protection: $2,678.40 - $209.60 = $2,468.80/month (92% savings)
+Savings vs no protection: $2,678.40 - $210.60 = $2,467.80/month (92% savings)
 ```
 
 **Impact:** ✅✅ Excellent - Multi-layer defense dramatically reduces costs
@@ -582,11 +579,12 @@ cloudFront: {
 
 **Lambda Reserved Concurrency:**
 ```typescript
-// For predictable workloads >100,000 requests/month
-reservedConcurrentExecutions: 5
+// Prod: caps blast radius per function (challenge=5, auth=3, admin=2, vault=5, health=2)
+// Dev/beta: omitted to avoid failing on low-quota AWS accounts
+reservedConcurrentExecutions: 5  // example — varies per function
 ```
-**Savings:** Up to 40% on Lambda costs with Compute Savings Plans
-**Impact:** Only worthwhile at 500+ users
+**Purpose:** Limits Lambda concurrency in prod for blast radius control — not a cost optimization.
+**Cost savings:** None directly; can combine with Compute Savings Plans for up to 40% discount on Lambda compute at high usage (500+ users).
 
 ---
 
@@ -739,22 +737,22 @@ aws budgets create-budget \
 
 | Users | Monthly (Avg) | Annual Total | Per User/Year |
 |-------|---------------|--------------|---------------|
-| 3     | $8.00         | **$96**      | $32.00        |
-| 10    | $8.00         | **$96**      | $9.60         |
-| 50    | $8.02         | **$96**      | $1.92         |
-| 100   | $8.03         | **$96**      | $0.96         |
-| 500   | $8.15         | **$98**      | $0.20         |
+| 3     | $9.00         | **$108**     | $36.00        |
+| 10    | $9.00         | **$108**     | $10.80        |
+| 50    | $9.02         | **$108**     | $2.16         |
+| 100   | $9.03         | **$108**     | $1.08         |
+| 500   | $9.15         | **$110**     | $0.22         |
 
 **Year 2+ (after free tier expires):**
 
 | Users | Monthly (Avg) | Annual Total | Per User/Year |
 |-------|---------------|--------------|---------------|
-| 3     | $8.17         | **$98**      | $32.67        |
-| 10    | $8.54         | **$102**     | $10.20        |
-| 50    | $8.90         | **$107**     | $2.14         |
-| 100   | $10.01        | **$120**     | $1.20         |
-| 500   | $17.40        | **$209**     | $0.42         |
-| 1,000 | $26.83        | **$322**     | $0.32         |
+| 3     | $9.17         | **$110**     | $36.67        |
+| 10    | $9.54         | **$114**     | $11.40        |
+| 50    | $9.90         | **$119**     | $2.38         |
+| 100   | $11.01        | **$132**     | $1.32         |
+| 500   | $18.40        | **$221**     | $0.44         |
+| 1,000 | $27.83        | **$334**     | $0.33         |
 
 ---
 
@@ -767,13 +765,13 @@ aws budgets create-budget \
 
 | Year | Monthly | Annual | Cumulative |
 |------|---------|--------|------------|
-| 1    | $8.03   | $96    | $96        |
-| 2    | $10.01  | $120   | $216       |
-| 3    | $10.01  | $120   | $336       |
-| 4    | $10.01  | $120   | $456       |
-| 5    | $10.01  | $120   | $576       |
+| 1    | $9.03   | $108   | $108       |
+| 2    | $11.01  | $132   | $240       |
+| 3    | $11.01  | $132   | $372       |
+| 4    | $11.01  | $132   | $504       |
+| 5    | $11.01  | $132   | $636       |
 
-**5-Year TCO:** $576 for 100 users ($1.15 per user per year)
+**5-Year TCO:** $636 for 100 users ($1.27 per user per year)
 
 ---
 
@@ -782,14 +780,14 @@ aws budgets create-budget \
 ### Cost Summary (100 Users, Production)
 
 **Year 1:**
-- Monthly: $8.03
-- Annual: $96
-- Per user: $0.96/year
+- Monthly: $9.03
+- Annual: $108
+- Per user: $1.08/year
 
 **Year 2+ (Optimized):**
-- Monthly: $10.01
-- Annual: $120
-- Per user: $1.20/year
+- Monthly: $11.01
+- Annual: $132
+- Per user: $1.32/year
 
 ### Primary Cost Drivers
 
@@ -810,14 +808,14 @@ aws budgets create-budget \
 ### Cost-Effectiveness
 
 PassVault is **extremely cost-effective**:
-- **3-100 users**: $8-10/month (less than a Netflix subscription)
-- **500 users**: $17/month ($0.42/user/year)
-- **1,000 users**: $27/month ($0.32/user/year)
+- **3-100 users**: $9-11/month (less than a Netflix subscription)
+- **500 users**: $18/month ($0.44/user/year)
+- **1,000 users**: $28/month ($0.33/user/year)
 
 **Competitive Analysis:**
 - 1Password Business: $7.99/user/month = $799/month for 100 users
 - Bitwarden Teams: $4/user/month = $400/month for 100 users
-- **PassVault**: $10/month for 100 users = **97% cost savings**
+- **PassVault**: $11/month for 100 users = **99% cost savings**
 
 ---
 
