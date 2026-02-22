@@ -1,5 +1,11 @@
+import { useState } from 'react';
 import type { UserSummary, UserStatus } from '@passvault/shared';
-import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+import {
+  ArrowDownTrayIcon,
+  ChevronUpDownIcon,
+  ChevronDoubleUpIcon,
+  ChevronDoubleDownIcon,
+} from '@heroicons/react/24/outline';
 
 function formatBytes(bytes: number | null): string {
   if (bytes === null || bytes === 0) return 'empty';
@@ -26,7 +32,62 @@ const statusClass: Record<UserStatus, string> = {
   active: 'badge badge-success badge-sm',
 };
 
+type SortColumn = 'username' | 'status' | 'createdAt' | 'lastLoginAt';
+type SortDirection = 'asc' | 'desc';
+
+function applySorting(users: UserSummary[], col: SortColumn, dir: SortDirection): UserSummary[] {
+  return [...users].sort((a, b) => {
+    let cmp = 0;
+    if (col === 'username') {
+      cmp = a.username.localeCompare(b.username);
+    } else if (col === 'status') {
+      cmp = statusLabel[a.status].localeCompare(statusLabel[b.status]);
+    } else if (col === 'createdAt') {
+      cmp = a.createdAt.localeCompare(b.createdAt);
+    } else if (col === 'lastLoginAt') {
+      if (!a.lastLoginAt && !b.lastLoginAt) cmp = 0;
+      else if (!a.lastLoginAt) cmp = 1;   // nulls last
+      else if (!b.lastLoginAt) cmp = -1;
+      else cmp = a.lastLoginAt.localeCompare(b.lastLoginAt);
+    }
+    return dir === 'asc' ? cmp : -cmp;
+  });
+}
+
+function SortIcon({ active, dir }: { active: boolean; dir: SortDirection }) {
+  if (!active) return <ChevronUpDownIcon className="w-4 h-4 shrink-0" />;
+  return dir === 'asc'
+    ? <ChevronDoubleUpIcon className="w-4 h-4 shrink-0" />
+    : <ChevronDoubleDownIcon className="w-4 h-4 shrink-0" />;
+}
+
 export function UserList({ users, loading, onDownload }: UserListProps) {
+  const [sortCol, setSortCol] = useState<SortColumn>('username');
+  const [sortDir, setSortDir] = useState<SortDirection>('asc');
+
+  function handleSort(col: SortColumn) {
+    if (sortCol === col) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortCol(col);
+      setSortDir('asc');
+    }
+  }
+
+  function thButton(col: SortColumn, label: string) {
+    return (
+      <th key={col}>
+        <button
+          onClick={() => handleSort(col)}
+          className="flex items-center gap-1 cursor-pointer select-none"
+        >
+          <SortIcon active={sortCol === col} dir={sortDir} />
+          {label}
+        </button>
+      </th>
+    );
+  }
+
   if (loading) {
     return <p className="text-sm text-base-content/40">Loading users…</p>;
   }
@@ -35,20 +96,22 @@ export function UserList({ users, loading, onDownload }: UserListProps) {
     return <p className="text-sm text-base-content/50 italic">No users yet.</p>;
   }
 
+  const sorted = applySorting(users, sortCol, sortDir);
+
   return (
     <div className="overflow-x-auto">
       <table className="table table-sm w-full">
         <thead>
           <tr>
-            <th>Username</th>
-            <th>Status</th>
-            <th>Created</th>
-            <th>Last login</th>
+            {thButton('username', 'Username')}
+            {thButton('status', 'Status')}
+            {thButton('createdAt', 'Created')}
+            {thButton('lastLoginAt', 'Last login')}
             <th></th>
           </tr>
         </thead>
         <tbody>
-          {users.map(user => (
+          {sorted.map(user => (
             <tr key={user.userId}>
               <td className="font-mono">{user.username}</td>
               <td>
