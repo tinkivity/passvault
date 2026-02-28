@@ -167,7 +167,15 @@ cd passvault
 
 # Install all dependencies (monorepo — npm workspaces)
 npm install
+
+# Build shared types and Lambda bundles
+# shared/ must be compiled before backend/ can import from @passvault/shared.
+# backend/ must be bundled (esbuild → dist/) before CDK can package the Lambda functions.
+# Run from the repo root — workspace flag ensures correct build order.
+npm run build -w shared -w backend
 ```
+
+> **Note:** The frontend is built separately in [Step 5](#step-5-build-and-deploy-frontend), after infrastructure is deployed and the API URL is known.
 
 ### CDK Bootstrap
 
@@ -550,6 +558,8 @@ export const prodConfig: EnvironmentConfig = {
 ```
 
 ### Step 2: Synthesize CDK Stack
+
+> **Prerequisite:** `backend/dist/` must exist before synthesizing. If you haven't built yet, run `npm run build -w shared -w backend` from the repo root first.
 
 ```bash
 # Synthesize CloudFormation template (--context env is required)
