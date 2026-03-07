@@ -3,7 +3,7 @@ import { useAuthContext } from './context/AuthContext.js';
 import { LoginPage } from './components/auth/LoginPage.js';
 import { AdminLoginPage } from './components/auth/AdminLoginPage.js';
 import { PasswordChangePage } from './components/auth/PasswordChangePage.js';
-import { TotpSetupPage } from './components/auth/TotpSetupPage.js';
+import { PasskeySetupPage } from './components/auth/PasskeySetupPage.js';
 import { VaultPage } from './components/vault/VaultPage.js';
 import { AdminDashboard } from './components/admin/AdminDashboard.js';
 
@@ -20,19 +20,19 @@ function RequireAuth({ requiredRole }: { requiredRole?: 'admin' | 'user' }) {
     const path = role === 'admin' ? '/admin/change-password' : '/change-password';
     return <Navigate to={path} replace />;
   }
-  if (status === 'pending_totp_setup') {
-    const path = role === 'admin' ? '/admin/totp-setup' : '/totp-setup';
+  if (status === 'pending_passkey_setup') {
+    const path = role === 'admin' ? '/admin/passkey-setup' : '/passkey-setup';
     return <Navigate to={path} replace />;
   }
 
   return <Outlet />;
 }
 
-function RequireOnboarding(props: { step: 'password' | 'totp'; isAdmin?: boolean }) {
+function RequireOnboarding(props: { step: 'password' | 'passkey'; isAdmin?: boolean }) {
   const { token, status } = useAuthContext();
   if (!token) return <Navigate to="/login" replace />;
 
-  const expectedStatus = props.step === 'password' ? 'pending_first_login' : 'pending_totp_setup';
+  const expectedStatus = props.step === 'password' ? 'pending_first_login' : 'pending_passkey_setup';
   if (status !== expectedStatus) {
     return <Navigate to={props.isAdmin ? '/admin/dashboard' : '/vault'} replace />;
   }
@@ -55,9 +55,9 @@ export const router = createBrowserRouter([
     children: [{ index: true, element: <PasswordChangePage /> }],
   },
   {
-    path: '/totp-setup',
-    element: <RequireOnboarding step="totp" />,
-    children: [{ index: true, element: <TotpSetupPage /> }],
+    path: '/passkey-setup',
+    element: <RequireOnboarding step="passkey" />,
+    children: [{ index: true, element: <PasskeySetupPage /> }],
   },
 
   // Vault (authenticated user)
@@ -77,9 +77,9 @@ export const router = createBrowserRouter([
     children: [{ index: true, element: <PasswordChangePage isAdmin /> }],
   },
   {
-    path: '/admin/totp-setup',
-    element: <RequireOnboarding step="totp" isAdmin />,
-    children: [{ index: true, element: <TotpSetupPage isAdmin /> }],
+    path: '/admin/passkey-setup',
+    element: <RequireOnboarding step="passkey" isAdmin />,
+    children: [{ index: true, element: <PasskeySetupPage isAdmin /> }],
   },
 
   // Admin dashboard (authenticated admin)

@@ -7,7 +7,7 @@ vi.mock('../config.js', () => ({
     features: {
       powEnabled: false,
       honeypotEnabled: true,
-      totpRequired: false,
+      passkeyRequired: false,
       wafEnabled: false,
       cloudFrontEnabled: false,
     },
@@ -42,15 +42,16 @@ vi.mock('../services/vault.js', () => ({
   downloadVault: vi.fn(),
 }));
 
-vi.mock('../services/totp.js', () => ({
-  generateSecret: vi.fn().mockReturnValue('TOTP_SECRET'),
-  generateQrUri: vi.fn().mockReturnValue('otpauth://totp/...'),
-  generateQrDataUrl: vi.fn().mockResolvedValue('data:image/png;base64,abc'),
-  verifyCode: vi.fn(),
+vi.mock('../services/passkey.js', () => ({
+  generateChallengeJwt: vi.fn().mockResolvedValue('challenge.jwt.token'),
+  verifyChallengeJwt: vi.fn().mockResolvedValue('base64urlchallenge'),
+  generatePasskeyToken: vi.fn().mockResolvedValue('passkey.jwt.token'),
+  verifyPasskeyAssertion: vi.fn(),
+  verifyPasskeyAttestation: vi.fn(),
 }));
 
 vi.mock('../utils/dynamodb.js', () => ({
-  getUserById: vi.fn(),
+  getUserByCredentialId: vi.fn(),
   updateUser: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -265,22 +266,69 @@ describe('GET /admin/users', () => {
   });
 });
 
-// ── TOTP endpoints ────────────────────────────────────────────────────────────
+// ── Passkey endpoints ─────────────────────────────────────────────────────────
 
-describe('TOTP endpoints — totpRequired: false (dev/beta)', () => {
+import { verifyPasskeyAssertion, verifyPasskeyAttestation } from '../services/passkey.js';
+import { getUserByCredentialId, updateUser } from '../utils/dynamodb.js';
+
+const mockGetUserByCredentialId = vi.mocked(getUserByCredentialId);
+const mockVerifyPasskeyAssertion = vi.mocked(verifyPasskeyAssertion);
+const mockVerifyPasskeyAttestation = vi.mocked(verifyPasskeyAttestation);
+
+describe('GET /admin/passkey/challenge', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('returns challengeJwt', async () => {
+    const res = await handler(makeEvent(API_PATHS.ADMIN_PASSKEY_CHALLENGE, 'GET'));
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body).data.challengeJwt).toBe('challenge.jwt.token');
+  });
+});
+
+describe('GET /admin/passkey/register/challenge', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    config.features.totpRequired = false;
+    config.features.passkeyRequired = true;
+  });
+
+  it('returns 404 when passkeyRequired is false', async () => {
+    config.features.passkeyRequired = false;
+    mockRequireAuth.mockResolvedValue({ user: { ...adminUser, status: 'pending_passkey_setup' }, errorResponse: null });
+    const res = await handler(makeEvent(API_PATHS.ADMIN_PASSKEY_REGISTER_CHALLENGE, 'GET'));
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('returns 400 when status is not pending_passkey_setup', async () => {
+    authOk(adminUser); // status: active
+    const res = await handler(makeEvent(API_PATHS.ADMIN_PASSKEY_REGISTER_CHALLENGE, 'GET'));
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns challengeJwt for admin with pending_passkey_setup', async () => {
+    mockRequireAuth.mockResolvedValue({ user: { ...adminUser, status: 'pending_passkey_setup' }, errorResponse: null });
+    const res = await handler(makeEvent(API_PATHS.ADMIN_PASSKEY_REGISTER_CHALLENGE, 'GET'));
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body).data.challengeJwt).toBe('challenge.jwt.token');
+  });
+});
+
+describe('POST /admin/passkey/register', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    config.features.passkeyRequired = true;
     mockValidatePow.mockReturnValue({ valid: true, errorResponse: null });
   });
 
-  it('returns 404 for POST /admin/totp/setup', async () => {
-    const res = await handler(makeEvent(API_PATHS.ADMIN_TOTP_SETUP, 'POST'));
-    expect(res.statusCode).toBe(404);
-  });
-
-  it('returns 404 for POST /admin/totp/verify', async () => {
-    const res = await handler(makeEvent(API_PATHS.ADMIN_TOTP_VERIFY, 'POST'));
-    expect(res.statusCode).toBe(404);
+  it('sets status to active on successful registration', async () => {
+    mockRequireAuth.mockResolvedValue({ user: { ...adminUser, status: 'pending_passkey_setup' }, errorResponse: null });
+    mockVerifyPasskeyAttestation.mockResolvedValue({
+      verified: true, credentialId: 'cred-1', publicKey: 'pubkey', counter: 0, aaguid: 'aaguid', transports: ['internal'],
+    });
+    const res = await handler(makeEvent(API_PATHS.ADMIN_PASSKEY_REGISTER, 'POST', {
+      challengeJwt: 'valid',
+      attestation: { id: 'cred-1', rawId: 'cred-1', response: {}, type: 'public-key', clientExtensionResults: {} },
+    }));
+    expect(res.statusCode).toBe(200);
+    expect(vi.mocked(updateUser)).toHaveBeenCalledWith('admin-1', expect.objectContaining({ status: 'active' }));
   });
 });

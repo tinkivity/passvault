@@ -12,26 +12,43 @@ import {
   type User,
   type UserStatus,
 } from '@passvault/shared';
-import { getUserByUsername, createUser, updateUser, listAllUsers } from '../utils/dynamodb.js';
+import { getUserById, getUserByUsername, createUser, updateUser, listAllUsers } from '../utils/dynamodb.js';
 import { hashPassword, verifyPassword, generateOtp, generateSalt } from '../utils/crypto.js';
 import { validatePassword } from '../utils/password.js';
 import { signToken } from '../utils/jwt.js';
 import { putVaultFile, getVaultFileSize } from '../utils/s3.js';
-import { verifyCode } from './totp.js';
+import { verifyPasskeyToken } from './passkey.js';
 import { config } from '../config.js';
 
 export async function adminLogin(request: LoginRequest): Promise<{ response?: LoginResponse; error?: string; statusCode?: number }> {
-  // M3: Guard against oversized inputs before hitting DynamoDB
-  if (typeof request.username !== 'string' || request.username.length > LIMITS.USERNAME_MAX_LENGTH) {
-    return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
-  }
   if (typeof request.password !== 'string' || request.password.length > LIMITS.MAX_PASSWORD_LENGTH) {
     return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
   }
 
-  const user = await getUserByUsername(request.username);
-  if (!user || user.role !== 'admin') {
-    return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
+  let user;
+
+  if (config.features.passkeyRequired) {
+    if (!request.passkeyToken) {
+      return { error: ERRORS.INVALID_PASSKEY, statusCode: 401 };
+    }
+    let userId: string;
+    try {
+      userId = await verifyPasskeyToken(request.passkeyToken);
+    } catch {
+      return { error: ERRORS.INVALID_PASSKEY, statusCode: 401 };
+    }
+    user = await getUserById(userId);
+    if (!user || user.role !== 'admin') {
+      return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
+    }
+  } else {
+    if (typeof request.username !== 'string' || request.username.length > LIMITS.USERNAME_MAX_LENGTH) {
+      return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
+    }
+    user = await getUserByUsername(request.username);
+    if (!user || user.role !== 'admin') {
+      return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
+    }
   }
 
   // H2: Check account lockout
@@ -52,16 +69,6 @@ export async function adminLogin(request: LoginRequest): Promise<{ response?: Lo
     if (!passwordValid) {
       await recordFailedAttempt(user.userId, user.failedLoginAttempts ?? 0);
       return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
-    }
-
-    if (config.features.totpRequired && user.status === 'active' && user.totpEnabled) {
-      if (!request.totpCode) {
-        return { error: ERRORS.INVALID_TOTP, statusCode: 401 };
-      }
-      if (!user.totpSecret || !verifyCode(request.totpCode, user.totpSecret)) {
-        await recordFailedAttempt(user.userId, user.failedLoginAttempts ?? 0);
-        return { error: ERRORS.INVALID_TOTP, statusCode: 401 };
-      }
     }
   }
 
@@ -88,8 +95,8 @@ export async function adminLogin(request: LoginRequest): Promise<{ response?: Lo
 
   if (user.status === 'pending_first_login') {
     response.requirePasswordChange = true;
-  } else if (user.status === 'pending_totp_setup' && config.features.totpRequired) {
-    response.requireTotpSetup = true;
+  } else if (user.status === 'pending_passkey_setup' && config.features.passkeyRequired) {
+    response.requirePasskeySetup = true;
   }
 
   return { response };
@@ -106,7 +113,7 @@ export async function adminChangePassword(
   }
 
   const newHash = await hashPassword(request.newPassword);
-  const nextStatus: UserStatus = config.features.totpRequired ? 'pending_totp_setup' : 'active';
+  const nextStatus: UserStatus = config.features.passkeyRequired ? 'pending_passkey_setup' : 'active';
 
   await updateUser(userId, {
     passwordHash: newHash,
@@ -147,8 +154,11 @@ export async function createUserInvitation(
     role: 'user',
     status: 'pending_first_login',
     oneTimePasswordHash: otpHash,
-    totpSecret: null,
-    totpEnabled: false,
+    passkeyCredentialId: null,
+    passkeyPublicKey: null,
+    passkeyCounter: 0,
+    passkeyTransports: null,
+    passkeyAaguid: null,
     encryptionSalt: salt,
     createdAt: new Date().toISOString(),
     lastLoginAt: null,

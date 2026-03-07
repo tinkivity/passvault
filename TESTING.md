@@ -45,7 +45,7 @@ npm run test:watch --workspace=backend
 | `src/middleware/pow.test.ts` | 8 | Valid/invalid PoW solutions, difficulty check, TTL expiry, disabled mode |
 | `src/middleware/honeypot.test.ts` | 5 | Hidden field detection (email/phone/website), disabled mode |
 | `src/services/challenge.test.ts` | 6 | Challenge generation, PoW solution validation |
-| `src/services/auth.test.ts` | 26 | Login (OTP, normal, TOTP), changePassword, account lockout (H2), input validation (M3) |
+| `src/services/auth.test.ts` | 26 | Login (OTP, normal, passkeyToken), changePassword, account lockout (H2), input validation (M3) |
 | `src/services/admin.test.ts` | 24 | adminLogin, adminChangePassword, createUserInvitation, listUsers, lockout, input validation |
 | `src/services/vault.test.ts` | 12 | getVault, putVault, downloadVault — auth checks, S3 round-trips |
 | `src/handlers/auth.test.ts` | 15 | Handler routing, PoW/honeypot middleware, invalid JSON body (C2 fix) |
@@ -172,20 +172,20 @@ AWS_PROFILE=my-profile ENVIRONMENT=dev npx tsx scripts/init-admin.ts
 
 ### What to test in dev
 
-The dev stack has `totpRequired: false` and `powEnabled: false`, so the login flow is simpler than prod:
+The dev stack has `passkeyRequired: false` and `powEnabled: false`, so the login flow is simpler than prod:
 
 **Admin flow:**
 1. The script prints the one-time password on first run — copy it before pressing Enter
 2. Click "Admin Login" (or navigate to `/admin`)
 3. Log in with the OTP
 4. Change password when prompted
-5. TOTP setup is **skipped** — you go directly to the dashboard
+5. Passkey setup is **skipped** — you go directly to the dashboard
 6. Create a test user account from the admin dashboard
 
 **User flow:**
 1. Log in with the test user's OTP
 2. Change password when prompted
-3. TOTP setup is **skipped** — you go directly to the vault
+3. Passkey setup is **skipped** — you go directly to the vault
 4. Type some text and save
 5. Log out, log in again — confirm the text is still there and decrypts correctly
 6. Download the encrypted backup and verify it downloads
@@ -234,4 +234,4 @@ Before promoting from dev → beta → prod, verify:
 - [ ] Health check returns `{"success":true}` on the target environment
 - [ ] Admin login and first-password-change flow works end-to-end
 - [ ] User creation, login, vault save/load, and backup download work
-- [ ] (Prod only) TOTP setup and verify work correctly
+- [ ] (Prod only) Passkey registration and login work correctly end-to-end

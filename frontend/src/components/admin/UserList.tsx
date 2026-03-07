@@ -22,13 +22,13 @@ interface UserListProps {
 
 const statusLabel: Record<UserStatus, string> = {
   pending_first_login: 'Awaiting first login',
-  pending_totp_setup: 'Awaiting TOTP setup',
+  pending_passkey_setup: 'Awaiting passkey setup',
   active: 'Active',
 };
 
 const statusClass: Record<UserStatus, string> = {
   pending_first_login: 'badge badge-warning badge-sm',
-  pending_totp_setup: 'badge badge-info badge-sm',
+  pending_passkey_setup: 'badge badge-info badge-sm',
   active: 'badge badge-success badge-sm',
 };
 

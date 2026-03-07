@@ -7,7 +7,7 @@ vi.mock('../config.js', () => ({
     features: {
       powEnabled: false,
       honeypotEnabled: true,
-      totpRequired: false,
+      passkeyRequired: false,
       wafEnabled: false,
       cloudFrontEnabled: false,
     },
@@ -43,20 +43,21 @@ vi.mock('../utils/s3.js', () => ({
   getVaultFileSize: vi.fn().mockResolvedValue(1024),
 }));
 
-vi.mock('./totp.js', () => ({
-  verifyCode: vi.fn(),
+vi.mock('./passkey.js', () => ({
+  verifyPasskeyToken: vi.fn(),
 }));
 
 import { adminLogin, adminChangePassword, createUserInvitation, listUsers } from './admin.js';
-import { getUserByUsername, updateUser, createUser, listAllUsers } from '../utils/dynamodb.js';
+import { getUserByUsername, getUserById, updateUser, createUser, listAllUsers } from '../utils/dynamodb.js';
 import { verifyPassword } from '../utils/crypto.js';
-import { verifyCode } from './totp.js';
+import { verifyPasskeyToken } from './passkey.js';
 import { config } from '../config.js';
 import type { User } from '@passvault/shared';
 
-const mockGetUser = vi.mocked(getUserByUsername);
+const mockGetUserByUsername = vi.mocked(getUserByUsername);
+const mockGetUserById = vi.mocked(getUserById);
 const mockVerifyPw = vi.mocked(verifyPassword);
-const mockVerifyTotp = vi.mocked(verifyCode);
+const mockVerifyPasskeyToken = vi.mocked(verifyPasskeyToken);
 const mockUpdateUser = vi.mocked(updateUser);
 const mockListAllUsers = vi.mocked(listAllUsers);
 
@@ -68,8 +69,11 @@ function makeAdmin(overrides: Partial<User> = {}): User {
     oneTimePasswordHash: '$2b$12$otphash',
     role: 'admin',
     status: 'pending_first_login',
-    totpSecret: null,
-    totpEnabled: false,
+    passkeyCredentialId: null,
+    passkeyPublicKey: null,
+    passkeyCounter: 0,
+    passkeyTransports: null,
+    passkeyAaguid: null,
     encryptionSalt: 'base64salt==',
     createdAt: '2024-01-01T00:00:00.000Z',
     lastLoginAt: null,
@@ -82,31 +86,31 @@ function makeAdmin(overrides: Partial<User> = {}): User {
 
 // ── adminLogin() ──────────────────────────────────────────────────────────────
 
-describe('adminLogin — user lookup failures', () => {
+describe('adminLogin — user lookup failures (dev/beta)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    config.features.totpRequired = false;
+    config.features.passkeyRequired = false;
   });
 
   it('returns 401 when username is not found', async () => {
-    mockGetUser.mockResolvedValue(null);
+    mockGetUserByUsername.mockResolvedValue(null);
     const result = await adminLogin({ username: 'nobody', password: 'pass' });
     expect(result.error).toBe(ERRORS.INVALID_CREDENTIALS);
     expect(result.statusCode).toBe(401);
   });
 
   it('returns 401 when account is not admin role', async () => {
-    mockGetUser.mockResolvedValue(makeAdmin({ role: 'user' }));
+    mockGetUserByUsername.mockResolvedValue(makeAdmin({ role: 'user' }));
     const result = await adminLogin({ username: 'admin', password: 'pass' });
     expect(result.error).toBe(ERRORS.INVALID_CREDENTIALS);
   });
 });
 
-describe('adminLogin — pending_first_login', () => {
+describe('adminLogin — pending_first_login (dev/beta)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    config.features.totpRequired = false;
-    mockGetUser.mockResolvedValue(makeAdmin({ status: 'pending_first_login' }));
+    config.features.passkeyRequired = false;
+    mockGetUserByUsername.mockResolvedValue(makeAdmin({ status: 'pending_first_login' }));
   });
 
   it('returns 401 for wrong OTP', async () => {
@@ -123,13 +127,11 @@ describe('adminLogin — pending_first_login', () => {
   });
 });
 
-describe('adminLogin — active, totpRequired: false (dev/beta)', () => {
+describe('adminLogin — active (dev/beta, passkeyRequired: false)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    config.features.totpRequired = false;
-    mockGetUser.mockResolvedValue(
-      makeAdmin({ status: 'active', totpEnabled: true, totpSecret: 'SECRET' }),
-    );
+    config.features.passkeyRequired = false;
+    mockGetUserByUsername.mockResolvedValue(makeAdmin({ status: 'active' }));
   });
 
   it('returns 401 for wrong password', async () => {
@@ -138,7 +140,7 @@ describe('adminLogin — active, totpRequired: false (dev/beta)', () => {
     expect(result.error).toBe(ERRORS.INVALID_CREDENTIALS);
   });
 
-  it('succeeds without TOTP (dev/beta)', async () => {
+  it('succeeds with correct password', async () => {
     mockVerifyPw.mockResolvedValue(true);
     const result = await adminLogin({ username: 'admin', password: 'correct' });
     expect(result.error).toBeUndefined();
@@ -146,54 +148,52 @@ describe('adminLogin — active, totpRequired: false (dev/beta)', () => {
   });
 });
 
-describe('adminLogin — active, totpRequired: true (prod)', () => {
+describe('adminLogin — passkeyRequired: true (prod)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    config.features.totpRequired = true;
-    mockGetUser.mockResolvedValue(
-      makeAdmin({ status: 'active', totpEnabled: true, totpSecret: 'SECRET' }),
-    );
+    config.features.passkeyRequired = true;
+  });
+
+  it('returns 401 when passkeyToken is missing', async () => {
+    const result = await adminLogin({ password: 'correct' });
+    expect(result.error).toBe(ERRORS.INVALID_PASSKEY);
+    expect(result.statusCode).toBe(401);
+  });
+
+  it('returns 401 when passkeyToken is invalid', async () => {
+    mockVerifyPasskeyToken.mockRejectedValue(new Error('jwt expired'));
+    const result = await adminLogin({ passkeyToken: 'bad.token', password: 'correct' });
+    expect(result.error).toBe(ERRORS.INVALID_PASSKEY);
+  });
+
+  it('returns 401 when user is not admin role', async () => {
+    mockVerifyPasskeyToken.mockResolvedValue('admin-1');
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user' }));
+    const result = await adminLogin({ passkeyToken: 'valid.token', password: 'correct' });
+    expect(result.error).toBe(ERRORS.INVALID_CREDENTIALS);
+  });
+
+  it('succeeds with valid passkey token and correct password', async () => {
+    mockVerifyPasskeyToken.mockResolvedValue('admin-1');
+    mockGetUserById.mockResolvedValue(makeAdmin({ status: 'active' }));
     mockVerifyPw.mockResolvedValue(true);
-  });
-
-  it('returns 401 when TOTP code is missing', async () => {
-    const result = await adminLogin({ username: 'admin', password: 'correct' });
-    expect(result.error).toBe(ERRORS.INVALID_TOTP);
-  });
-
-  it('returns 401 for an invalid TOTP code', async () => {
-    mockVerifyTotp.mockReturnValue(false);
-    const result = await adminLogin({
-      username: 'admin',
-      password: 'correct',
-      totpCode: '000000',
-    });
-    expect(result.error).toBe(ERRORS.INVALID_TOTP);
-  });
-
-  it('succeeds with a valid TOTP code', async () => {
-    mockVerifyTotp.mockReturnValue(true);
-    const result = await adminLogin({
-      username: 'admin',
-      password: 'correct',
-      totpCode: '123456',
-    });
+    const result = await adminLogin({ passkeyToken: 'valid.token', password: 'correct' });
     expect(result.error).toBeUndefined();
     expect(result.response?.token).toBe('signed.jwt.token');
   });
 });
 
-// ── adminLogin() — lockout + input validation ─────────────────────────────────
+// ── adminLogin() — lockout ────────────────────────────────────────────────────
 
-describe('adminLogin — account lockout', () => {
+describe('adminLogin — account lockout (dev/beta)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    config.features.totpRequired = false;
+    config.features.passkeyRequired = false;
   });
 
   it('returns 429 when lockedUntil is in the future', async () => {
     const future = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-    mockGetUser.mockResolvedValue(makeAdmin({ status: 'active', lockedUntil: future }));
+    mockGetUserByUsername.mockResolvedValue(makeAdmin({ status: 'active', lockedUntil: future }));
     mockVerifyPw.mockResolvedValue(true);
     const result = await adminLogin({ username: 'admin', password: 'correct' });
     expect(result.statusCode).toBe(429);
@@ -201,14 +201,14 @@ describe('adminLogin — account lockout', () => {
   });
 
   it('increments failedLoginAttempts on wrong password', async () => {
-    mockGetUser.mockResolvedValue(makeAdmin({ status: 'active', failedLoginAttempts: 1 }));
+    mockGetUserByUsername.mockResolvedValue(makeAdmin({ status: 'active', failedLoginAttempts: 1 }));
     mockVerifyPw.mockResolvedValue(false);
     await adminLogin({ username: 'admin', password: 'wrong' });
     expect(mockUpdateUser).toHaveBeenCalledWith('admin-1', expect.objectContaining({ failedLoginAttempts: 2 }));
   });
 
   it('sets lockedUntil after 5 failed attempts', async () => {
-    mockGetUser.mockResolvedValue(makeAdmin({ status: 'active', failedLoginAttempts: 4 }));
+    mockGetUserByUsername.mockResolvedValue(makeAdmin({ status: 'active', failedLoginAttempts: 4 }));
     mockVerifyPw.mockResolvedValue(false);
     await adminLogin({ username: 'admin', password: 'wrong' });
     expect(mockUpdateUser).toHaveBeenCalledWith('admin-1', expect.objectContaining({
@@ -218,7 +218,7 @@ describe('adminLogin — account lockout', () => {
   });
 
   it('resets counter on successful login', async () => {
-    mockGetUser.mockResolvedValue(makeAdmin({ status: 'active', failedLoginAttempts: 2 }));
+    mockGetUserByUsername.mockResolvedValue(makeAdmin({ status: 'active', failedLoginAttempts: 2 }));
     mockVerifyPw.mockResolvedValue(true);
     await adminLogin({ username: 'admin', password: 'correct' });
     expect(mockUpdateUser).toHaveBeenCalledWith('admin-1', expect.objectContaining({
@@ -228,19 +228,22 @@ describe('adminLogin — account lockout', () => {
   });
 });
 
-describe('adminLogin — input validation (M3)', () => {
-  beforeEach(() => vi.clearAllMocks());
+describe('adminLogin — input validation (dev/beta)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    config.features.passkeyRequired = false;
+  });
 
   it('returns 401 for oversized username without hitting DynamoDB', async () => {
     const result = await adminLogin({ username: 'a'.repeat(31), password: 'pass' });
     expect(result.statusCode).toBe(401);
-    expect(mockGetUser).not.toHaveBeenCalled();
+    expect(mockGetUserByUsername).not.toHaveBeenCalled();
   });
 
   it('returns 401 for oversized password without hitting DynamoDB', async () => {
     const result = await adminLogin({ username: 'admin', password: 'x'.repeat(1025) });
     expect(result.statusCode).toBe(401);
-    expect(mockGetUser).not.toHaveBeenCalled();
+    expect(mockGetUserByUsername).not.toHaveBeenCalled();
   });
 });
 
@@ -256,10 +259,10 @@ describe('adminChangePassword — validation', () => {
   });
 });
 
-describe('adminChangePassword — totpRequired: false (dev/beta)', () => {
+describe('adminChangePassword — passkeyRequired: false (dev/beta)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    config.features.totpRequired = false;
+    config.features.passkeyRequired = false;
   });
 
   it('sets next status to active', async () => {
@@ -271,17 +274,17 @@ describe('adminChangePassword — totpRequired: false (dev/beta)', () => {
   });
 });
 
-describe('adminChangePassword — totpRequired: true (prod)', () => {
+describe('adminChangePassword — passkeyRequired: true (prod)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    config.features.totpRequired = true;
+    config.features.passkeyRequired = true;
   });
 
-  it('sets next status to pending_totp_setup', async () => {
+  it('sets next status to pending_passkey_setup', async () => {
     await adminChangePassword('admin-1', 'admin', { newPassword: 'StrongPass123!' });
     expect(mockUpdateUser).toHaveBeenCalledWith(
       'admin-1',
-      expect.objectContaining({ status: 'pending_totp_setup' }),
+      expect.objectContaining({ status: 'pending_passkey_setup' }),
     );
   });
 });
@@ -291,7 +294,7 @@ describe('adminChangePassword — totpRequired: true (prod)', () => {
 describe('createUserInvitation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetUser.mockResolvedValue(null); // username not taken by default
+    mockGetUserByUsername.mockResolvedValue(null); // username not taken by default
   });
 
   it('returns 400 for a username that is too short', async () => {
@@ -311,7 +314,7 @@ describe('createUserInvitation', () => {
   });
 
   it('returns 409 when username already exists', async () => {
-    mockGetUser.mockResolvedValue(makeAdmin({ username: 'bob', role: 'user' }));
+    mockGetUserByUsername.mockResolvedValue(makeAdmin({ username: 'bob', role: 'user' }));
     const result = await createUserInvitation({ username: 'bob' }, 'admin-1');
     expect(result.statusCode).toBe(409);
     expect(result.error).toBe(ERRORS.USER_EXISTS);

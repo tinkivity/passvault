@@ -29,7 +29,7 @@ This manual explains how to decrypt your PassVault encrypted file **independentl
 
 **From the PassVault Application:**
 
-1. Log in to PassVault with your username, password, and TOTP code
+1. Log in to PassVault with your passkey and password
 2. You will see your vault in **View Mode**
 3. Click the **"Download Encrypted Backup"** button
 4. Save the file as `passvault-backup.json`

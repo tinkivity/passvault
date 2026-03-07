@@ -1,7 +1,8 @@
+// prod login: passkeyToken from passkey verification step; dev/beta login: username directly
 export interface LoginRequest {
-  username: string;
+  passkeyToken?: string;
+  username?: string;
   password: string;
-  totpCode?: string;
 }
 
 export interface LoginResponse {
@@ -10,7 +11,7 @@ export interface LoginResponse {
   username: string;
   encryptionSalt: string;
   requirePasswordChange?: boolean;
-  requireTotpSetup?: boolean;
+  requirePasskeySetup?: boolean;
 }
 
 export interface ChangePasswordRequest {
@@ -21,15 +22,55 @@ export interface ChangePasswordResponse {
   success: boolean;
 }
 
-export interface TotpSetupResponse {
-  secret: string;
-  qrCodeUrl: string;
+export interface PasskeyChallengeResponse {
+  challengeJwt: string;
 }
 
-export interface TotpVerifyRequest {
-  totpCode: string;
+export interface PasskeyAuthenticatorAssertionResponse {
+  clientDataJSON: string;
+  authenticatorData: string;
+  signature: string;
+  userHandle: string | null;
 }
 
-export interface TotpVerifyResponse {
+export interface PasskeyAssertionJSON {
+  id: string;
+  rawId: string;
+  response: PasskeyAuthenticatorAssertionResponse;
+  type: 'public-key';
+  clientExtensionResults: Record<string, unknown>;
+}
+
+export interface PasskeyVerifyRequest {
+  challengeJwt: string;
+  assertion: PasskeyAssertionJSON;
+}
+
+export interface PasskeyVerifyResponse {
+  passkeyToken: string;
+  username: string;
+  encryptionSalt: string;
+}
+
+export interface PasskeyAuthenticatorAttestationResponse {
+  clientDataJSON: string;
+  attestationObject: string;
+}
+
+export interface PasskeyAttestationJSON {
+  id: string;
+  rawId: string;
+  response: PasskeyAuthenticatorAttestationResponse;
+  type: 'public-key';
+  clientExtensionResults: Record<string, unknown>;
+  transports?: string[];
+}
+
+export interface PasskeyRegisterRequest {
+  challengeJwt: string;
+  attestation: PasskeyAttestationJSON;
+}
+
+export interface PasskeyRegisterResponse {
   success: boolean;
 }

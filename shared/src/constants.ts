@@ -4,12 +4,16 @@ export const API_PATHS = {
   HEALTH: '/health',
   AUTH_LOGIN: '/auth/login',
   AUTH_CHANGE_PASSWORD: '/auth/change-password',
-  AUTH_TOTP_SETUP: '/auth/totp/setup',
-  AUTH_TOTP_VERIFY: '/auth/totp/verify',
+  AUTH_PASSKEY_CHALLENGE: '/auth/passkey/challenge',
+  AUTH_PASSKEY_VERIFY: '/auth/passkey/verify',
+  AUTH_PASSKEY_REGISTER_CHALLENGE: '/auth/passkey/register/challenge',
+  AUTH_PASSKEY_REGISTER: '/auth/passkey/register',
   ADMIN_LOGIN: '/admin/login',
   ADMIN_CHANGE_PASSWORD: '/admin/change-password',
-  ADMIN_TOTP_SETUP: '/admin/totp/setup',
-  ADMIN_TOTP_VERIFY: '/admin/totp/verify',
+  ADMIN_PASSKEY_CHALLENGE: '/admin/passkey/challenge',
+  ADMIN_PASSKEY_VERIFY: '/admin/passkey/verify',
+  ADMIN_PASSKEY_REGISTER_CHALLENGE: '/admin/passkey/register/challenge',
+  ADMIN_PASSKEY_REGISTER: '/admin/passkey/register',
   ADMIN_USERS: '/admin/users',
   ADMIN_USER_VAULT: '/admin/vault',
   VAULT: '/vault',
@@ -34,22 +38,21 @@ export const POW_CONFIG = {
   },
 } as const;
 
-// TOTP configuration
-export const TOTP_CONFIG = {
-  ISSUER: 'PassVault',
-  DIGITS: 6,
-  PERIOD: 30,
-  ALGORITHM: 'SHA1',
-  WINDOW: 1,  // ±1 time step tolerance
+// Passkey configuration
+export const PASSKEY_CONFIG = {
+  RP_NAME: 'PassVault',
+  CHALLENGE_JWT_EXPIRY_SECONDS: 300,
+  PASSKEY_TOKEN_EXPIRY_SECONDS: 300,
+  CHALLENGE_BYTES: 32,
 } as const;
 
 // Error messages
 export const ERRORS = {
   INVALID_CREDENTIALS: 'Invalid username or password',
-  INVALID_TOTP: 'Invalid TOTP code',
-  TOTP_NOT_ENABLED: 'TOTP is not enabled in this environment',
+  INVALID_PASSKEY: 'Invalid passkey',
+  PASSKEY_SETUP_REQUIRED: 'Passkey setup required',
+  PASSKEY_NOT_REGISTERED: 'No passkey registered for this account',
   PASSWORD_CHANGE_REQUIRED: 'Password change required',
-  TOTP_SETUP_REQUIRED: 'TOTP setup required',
   UNAUTHORIZED: 'Unauthorized',
   FORBIDDEN: 'Forbidden',
   NOT_FOUND: 'Not found',

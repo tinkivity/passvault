@@ -15,7 +15,7 @@ PassVault is a privacy-focused, serverless password vault where:
 - **Client-side encryption** ensures the server never sees your data
 - **Post-quantum cryptography** (Argon2id + AES-256-GCM) protects against future threats
 - **Multi-layer bot protection** prevents AWS cost abuse
-- **TOTP-based 2FA** for all accounts (prod; disabled in dev/beta)
+- **Passkey-based 2FA** (WebAuthn/FIDO2) for all accounts (prod; disabled in dev/beta)
 - **Zero-knowledge architecture** - even admins can't access user data
 - **Three environments** - dev, beta, and prod with feature flags
 
@@ -28,7 +28,7 @@ PassVault is a privacy-focused, serverless password vault where:
 ### Security
 - ✅ **End-to-end encryption** - Files encrypted on client, server stores only encrypted blobs
 - ✅ **Post-quantum safe** - Argon2id + AES-256-GCM with 256-bit keys
-- ✅ **TOTP 2FA** - Mandatory two-factor authentication (prod; disabled in dev/beta)
+- ✅ **Passkey 2FA** - Mandatory WebAuthn/FIDO2 passkey authentication (prod; disabled in dev/beta)
 - ✅ **Zero-knowledge** - Admin cannot decrypt user files
 - ✅ **Bot protection** - Multi-layer defense against automated attacks
 - ✅ **Offline recovery** - Decrypt your file without the application
@@ -111,11 +111,11 @@ npm install
 # Bootstrap CDK (one-time setup)
 cdk bootstrap aws://ACCOUNT-ID/REGION
 
-# Deploy dev stack (no WAF, no TOTP, ~$0/month)
+# Deploy dev stack (no WAF, no passkey required, ~$0/month)
 cd cdk
 cdk deploy PassVault-Dev --context env=dev
 
-# Deploy beta stack (no WAF, no TOTP, with CloudFront, ~$0/month)
+# Deploy beta stack (no WAF, no passkey required, with CloudFront, ~$0/month)
 cdk deploy PassVault-Beta --context env=beta
 
 # Deploy prod stack (full security, ~$8-10/month)
@@ -185,7 +185,7 @@ See **[COSTS.md](COSTS.md)** for detailed analysis.
 1. Deploy PassVault to AWS using CDK
 2. Run `ENVIRONMENT=prod npx tsx scripts/init-admin.ts` — prints the one-time admin password to console
 3. Log in and change password
-4. Set up TOTP (scan QR code) — *prod only, skipped in dev/beta*
+4. Register passkey (biometric/PIN) — *prod only, skipped in dev/beta*
 5. Create user accounts (system generates OTPs)
 6. Share credentials with users securely
 
@@ -193,7 +193,7 @@ See **[COSTS.md](COSTS.md)** for detailed analysis.
 1. Receive username + OTP from admin
 2. Log in with OTP
 3. Change password (must meet security policy)
-4. Set up TOTP (scan QR code) — *prod only, skipped in dev/beta*
+4. Register passkey (biometric/PIN) — *prod only, skipped in dev/beta*
 5. Access vault in view mode (auto-logout)
 6. Click "Edit" to modify (extended auto-logout)
 7. Save changes (immediate logout)
@@ -215,14 +215,14 @@ See **[COSTS.md](COSTS.md)** for detailed analysis.
 - ✅ Database breach (encrypted files + hashed passwords)
 - ✅ Man-in-the-middle (HTTPS + authenticated encryption)
 - ✅ Bot attacks (multi-layer defense)
-- ✅ Brute force (TOTP in prod + progressive challenges)
+- ✅ Brute force (passkey in prod + progressive challenges)
 - ✅ Quantum computers (post-quantum cryptography)
 
 **Does NOT Protect Against:**
 - ❌ Compromised client device (keylogger, malware)
 - ❌ Weak user passwords (enforced policy helps)
-- ❌ Phishing attacks (user education required)
-- ❌ Lost TOTP device (recovery requires admin)
+- ❌ Phishing attacks (passkeys are phishing-resistant by design)
+- ❌ Lost passkey device (recovery requires admin to reset account)
 
 ---
 

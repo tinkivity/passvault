@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../config.js', () => ({
   config: {
     environment: 'dev',
-    features: { powEnabled: false, honeypotEnabled: true, totpRequired: false },
+    features: { powEnabled: false, honeypotEnabled: true, passkeyRequired: false },
     session: { adminTokenExpiryHours: 24, userTokenExpiryMinutes: 30 },
   },
   getJwtSecret: vi.fn().mockResolvedValue('test-secret-long-enough-for-hs256'),

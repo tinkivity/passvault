@@ -75,6 +75,18 @@ export async function updateUser(
   );
 }
 
+export async function getUserByCredentialId(credentialId: string): Promise<User | null> {
+  const result = await docClient.send(
+    new ScanCommand({
+      TableName: DYNAMODB_TABLE,
+      FilterExpression: '#cid = :cid',
+      ExpressionAttributeNames: { '#cid': 'passkeyCredentialId' },
+      ExpressionAttributeValues: { ':cid': credentialId },
+    }),
+  );
+  return (result.Items?.[0] as User) || null;
+}
+
 export async function listAllUsers(): Promise<User[]> {
   const result = await docClient.send(
     new ScanCommand({

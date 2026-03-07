@@ -6,7 +6,7 @@ vi.mock('../config.js', () => ({
     features: {
       powEnabled: false,
       honeypotEnabled: true,
-      totpRequired: false,
+      passkeyRequired: false,
       wafEnabled: false,
       cloudFrontEnabled: false,
     },

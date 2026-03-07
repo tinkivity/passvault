@@ -6,8 +6,15 @@ import { validateHoneypot } from '../middleware/honeypot.js';
 import { requireAuth } from '../middleware/auth.js';
 import { adminLogin, adminChangePassword, createUserInvitation, listUsers } from '../services/admin.js';
 import { downloadVault } from '../services/vault.js';
-import * as totpService from '../services/totp.js';
-import { getUserById, updateUser } from '../utils/dynamodb.js';
+import {
+  generateChallengeJwt,
+  verifyChallengeJwt,
+  generatePasskeyToken,
+  verifyPasskeyAssertion,
+  verifyPasskeyAttestation,
+} from '../services/passkey.js';
+import type { AuthenticationResponseJSON, RegistrationResponseJSON } from '@simplewebauthn/server';
+import { getUserByCredentialId, updateUser } from '../utils/dynamodb.js';
 import { config } from '../config.js';
 
 function parseBody(event: APIGatewayProxyEvent): { body: Record<string, unknown> } | { parseError: APIGatewayProxyResult } {
@@ -35,13 +42,21 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     if (path === API_PATHS.ADMIN_CHANGE_PASSWORD && method === 'POST') {
       return await handleChangePassword(event);
     }
-    // POST /admin/totp/setup
-    if (path === API_PATHS.ADMIN_TOTP_SETUP && method === 'POST') {
-      return await handleTotpSetup(event);
+    // GET /admin/passkey/challenge
+    if (path === API_PATHS.ADMIN_PASSKEY_CHALLENGE && method === 'GET') {
+      return await handlePasskeyChallenge();
     }
-    // POST /admin/totp/verify
-    if (path === API_PATHS.ADMIN_TOTP_VERIFY && method === 'POST') {
-      return await handleTotpVerify(event);
+    // POST /admin/passkey/verify
+    if (path === API_PATHS.ADMIN_PASSKEY_VERIFY && method === 'POST') {
+      return await handlePasskeyVerify(event);
+    }
+    // GET /admin/passkey/register/challenge
+    if (path === API_PATHS.ADMIN_PASSKEY_REGISTER_CHALLENGE && method === 'GET') {
+      return await handlePasskeyRegisterChallenge(event);
+    }
+    // POST /admin/passkey/register
+    if (path === API_PATHS.ADMIN_PASSKEY_REGISTER && method === 'POST') {
+      return await handlePasskeyRegister(event);
     }
     // POST /admin/users
     if (path === API_PATHS.ADMIN_USERS && method === 'POST') {
@@ -104,36 +119,78 @@ async function handleChangePassword(event: APIGatewayProxyEvent): Promise<APIGat
   return success(result.response);
 }
 
-async function handleTotpSetup(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
-  if (!config.features.totpRequired) {
-    return error(ERRORS.TOTP_NOT_ENABLED, 404);
-  }
-
-  const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
-  if (pow.errorResponse) return pow.errorResponse;
-
-  const { user, errorResponse } = await requireAuth(event);
-  if (errorResponse) return errorResponse;
-
-  if (user!.role !== 'admin') {
-    return error(ERRORS.FORBIDDEN, 403);
-  }
-  if (user!.status !== 'pending_totp_setup') {
-    return error(ERRORS.TOTP_SETUP_REQUIRED, 400);
-  }
-
-  const secret = totpService.generateSecret();
-  const uri = totpService.generateQrUri(user!.username, secret);
-  const qrCodeUrl = await totpService.generateQrDataUrl(uri);
-
-  await updateUser(user!.userId, { totpSecret: secret });
-
-  return success({ secret, qrCodeUrl });
+async function handlePasskeyChallenge(): Promise<APIGatewayProxyResult> {
+  const challengeJwt = await generateChallengeJwt();
+  return success({ challengeJwt });
 }
 
-async function handleTotpVerify(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
-  if (!config.features.totpRequired) {
-    return error(ERRORS.TOTP_NOT_ENABLED, 404);
+async function handlePasskeyVerify(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
+  if (pow.errorResponse) return pow.errorResponse;
+
+  const honeypot = validateHoneypot(event);
+  if (honeypot.errorResponse) return honeypot.errorResponse;
+
+  const parsed = parseBody(event);
+  if ('parseError' in parsed) return parsed.parseError;
+
+  const { challengeJwt, assertion } = parsed.body as { challengeJwt: string; assertion: AuthenticationResponseJSON };
+  if (!challengeJwt || !assertion) {
+    return error(ERRORS.INVALID_PASSKEY, 400);
+  }
+
+  let expectedChallenge: string;
+  try {
+    expectedChallenge = await verifyChallengeJwt(challengeJwt);
+  } catch {
+    return error(ERRORS.INVALID_PASSKEY, 401);
+  }
+
+  const credentialId = assertion.id;
+  const user = await getUserByCredentialId(credentialId);
+  if (!user || user.role !== 'admin' || !user.passkeyCredentialId || !user.passkeyPublicKey) {
+    return error(ERRORS.INVALID_PASSKEY, 401);
+  }
+
+  const result = await verifyPasskeyAssertion(assertion, expectedChallenge, {
+    credentialId: user.passkeyCredentialId,
+    publicKey: user.passkeyPublicKey,
+    counter: user.passkeyCounter,
+    transports: user.passkeyTransports,
+  });
+
+  if (!result.verified) {
+    return error(ERRORS.INVALID_PASSKEY, 401);
+  }
+
+  await updateUser(user.userId, { passkeyCounter: result.newCounter });
+
+  const passkeyToken = await generatePasskeyToken(user.userId);
+  return success({ passkeyToken, username: user.username, encryptionSalt: user.encryptionSalt });
+}
+
+async function handlePasskeyRegisterChallenge(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  if (!config.features.passkeyRequired) {
+    return error('Passkey not enabled in this environment', 404);
+  }
+
+  const { user, errorResponse } = await requireAuth(event);
+  if (errorResponse) return errorResponse;
+
+  if (user!.role !== 'admin') {
+    return error(ERRORS.FORBIDDEN, 403);
+  }
+  if (user!.status !== 'pending_passkey_setup') {
+    return error(ERRORS.PASSKEY_SETUP_REQUIRED, 400);
+  }
+
+  const challengeJwt = await generateChallengeJwt();
+  return success({ challengeJwt });
+}
+
+async function handlePasskeyRegister(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  if (!config.features.passkeyRequired) {
+    return error('Passkey not enabled in this environment', 404);
   }
 
   const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
@@ -145,23 +202,36 @@ async function handleTotpVerify(event: APIGatewayProxyEvent): Promise<APIGateway
   if (user!.role !== 'admin') {
     return error(ERRORS.FORBIDDEN, 403);
   }
-  if (user!.status !== 'pending_totp_setup') {
-    return error(ERRORS.TOTP_SETUP_REQUIRED, 400);
+  if (user!.status !== 'pending_passkey_setup') {
+    return error(ERRORS.PASSKEY_SETUP_REQUIRED, 400);
   }
 
   const parsed = parseBody(event);
   if ('parseError' in parsed) return parsed.parseError;
-  const dbUser = await getUserById(user!.userId);
-  if (!dbUser?.totpSecret) {
-    return error('TOTP not set up yet', 400);
+
+  const { challengeJwt, attestation } = parsed.body as { challengeJwt: string; attestation: RegistrationResponseJSON };
+  if (!challengeJwt || !attestation) {
+    return error('Missing challengeJwt or attestation', 400);
   }
 
-  if (!totpService.verifyCode(parsed.body.totpCode as string, dbUser.totpSecret)) {
-    return error(ERRORS.INVALID_TOTP, 400);
+  let expectedChallenge: string;
+  try {
+    expectedChallenge = await verifyChallengeJwt(challengeJwt);
+  } catch {
+    return error(ERRORS.INVALID_PASSKEY, 401);
+  }
+
+  const result = await verifyPasskeyAttestation(attestation, expectedChallenge);
+  if (!result.verified) {
+    return error(ERRORS.INVALID_PASSKEY, 400);
   }
 
   await updateUser(user!.userId, {
-    totpEnabled: true,
+    passkeyCredentialId: result.credentialId,
+    passkeyPublicKey: result.publicKey,
+    passkeyCounter: result.counter,
+    passkeyTransports: result.transports.length > 0 ? result.transports : null,
+    passkeyAaguid: result.aaguid || null,
     status: 'active',
   });
 

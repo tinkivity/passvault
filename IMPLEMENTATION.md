@@ -20,7 +20,7 @@ Each step produces a testable, self-contained layer. No step reaches into the in
 | Argon2 (server) | `argon2` (native) |
 | JWT | `jsonwebtoken` |
 | Password hashing | `bcryptjs` |
-| TOTP | `otplib` + `qrcode` |
+| Passkeys (WebAuthn) | `@simplewebauthn/server` (backend), `@simplewebauthn/browser` (frontend) |
 | AWS SDK | `@aws-sdk/client-*` v3 |
 
 ---
@@ -32,7 +32,7 @@ Step 1: shared/          ── types, configs, constants (the contract layer)
 Step 2: cdk/             ── infrastructure as code
 Step 3: backend/utils    ── crypto, JWT, S3, DynamoDB helpers
 Step 4: backend/middle   ── auth, PoW, honeypot middleware
-Step 5: backend/services ── auth, admin, totp, vault, challenge business logic
+Step 5: backend/services ── auth, admin, passkey, vault, challenge business logic
 Step 6: backend/handlers ── Lambda entry points wiring middleware + services
 Step 7: frontend/services── API client, encryption, PoW solver
 Step 8: frontend/UI      ── components, hooks, contexts, routing
@@ -143,16 +143,16 @@ Business logic layer. Depends on utils (Step 3). Called by handlers (Step 6).
 
 ```
 backend/src/services/
-├── auth.ts               # login(), changePassword() — env-conditional TOTP flow
+├── auth.ts               # login(), changePassword() — env-conditional passkey flow
 ├── admin.ts              # adminLogin(), adminChangePassword(), createUser(), listUsers()
-├── totp.ts               # generateSecret(), generateQrUri(), verifyCode()
+├── passkey.ts            # challenge JWTs, passkey tokens, WebAuthn verify/register
 ├── vault.ts              # getVault(), putVault(), downloadVault()
 └── challenge.ts          # generateChallenge(), validateSolution()
 ```
 
 Each service is a module of pure-ish functions that orchestrate utils. No Lambda event parsing here — that's the handler's job.
 
-**Done when**: services are unit-tested with mocked DynamoDB/S3. Auth flow (OTP login → password change → TOTP setup → active) works in tests for both TOTP-enabled and TOTP-disabled configs.
+**Done when**: services are unit-tested with mocked DynamoDB/S3. Auth flow (OTP login → password change → passkey setup → active) works in tests for both passkey-enabled and passkey-disabled configs.
 
 **Status**: Complete
 
@@ -164,8 +164,8 @@ Lambda entry points. Thin layer: parse event → call middleware → call servic
 
 ```
 backend/src/handlers/
-├── auth.ts               # POST /auth/login, /auth/change-password, /auth/totp/*
-├── admin.ts              # POST /admin/login, /admin/change-password, /admin/totp/*, /admin/users; GET /admin/users
+├── auth.ts               # POST /auth/login, /auth/change-password, /auth/passkey/*
+├── admin.ts              # POST /admin/login, /admin/change-password, /admin/passkey/*, /admin/users; GET /admin/users
 ├── vault.ts              # GET /vault, PUT /vault, GET /vault/download
 ├── challenge.ts          # GET /challenge
 └── health.ts             # GET /health
@@ -206,7 +206,7 @@ Build order within step:
 1. **Contexts**: `AuthContext.tsx`, `EncryptionContext.tsx`
 2. **Hooks**: `useAuth.ts`, `useEncryption.ts`, `useAutoLogout.ts`, `useVault.ts`, `useAdmin.ts`
 3. **Layout**: `EnvironmentBanner.tsx`, `Layout.tsx`
-4. **Auth pages**: `LoginPage.tsx`, `AdminLoginPage.tsx`, `PasswordChangePage.tsx`, `TotpSetupPage.tsx`
+4. **Auth pages**: `LoginPage.tsx`, `AdminLoginPage.tsx`, `PasswordChangePage.tsx`, `PasskeySetupPage.tsx`
 5. **Vault pages**: `VaultPage.tsx` (view/edit orchestration), `VaultViewer.tsx`, `VaultEditor.tsx`, `CountdownTimer.tsx`, `ConfirmDialog.tsx`
 6. **Admin pages**: `AdminDashboard.tsx`, `CreateUserForm.tsx`, `UserList.tsx`, `OtpDisplay.tsx`
 7. **Wiring**: `router.tsx`, `App.tsx`
@@ -223,7 +223,7 @@ frontend/src/
 │   ├── useVault.ts            # fetch+decrypt, encrypt+save, download
 │   └── useAdmin.ts            # createUser, listUsers
 ├── components/
-│   ├── auth/                  # LoginPage, AdminLoginPage, PasswordChangePage, TotpSetupPage
+│   ├── auth/                  # LoginPage, AdminLoginPage, PasswordChangePage, PasskeySetupPage
 │   ├── vault/                 # VaultPage, VaultViewer, VaultEditor, CountdownTimer, ConfirmDialog
 │   ├── admin/                 # AdminDashboard, CreateUserForm, UserList, OtpDisplay
 │   └── layout/                # EnvironmentBanner, Layout
@@ -260,7 +260,7 @@ After Step 8, deploy to dev and run the full smoke test:
 
 1. `cdk deploy PassVault-Dev --context env=dev`
 2. `scripts/init-admin.ts` → creates admin
-3. Admin login → password change → dashboard (no TOTP in dev)
+3. Admin login → password change → dashboard (no passkey in dev)
 4. Create user → OTP shown
 5. User login with OTP → password change → vault
 6. View empty vault → countdown timer ticking

@@ -1,8 +1,9 @@
 import { useState, useCallback } from 'react';
-import type { LoginRequest, ChangePasswordRequest } from '@passvault/shared';
+import type { ChangePasswordRequest, PasskeyVerifyResponse } from '@passvault/shared';
 import { useAuthContext } from '../context/AuthContext.js';
 import { useEncryptionContext } from '../context/EncryptionContext.js';
 import { api } from '../services/api.js';
+import { authenticateWithPasskey } from '../services/passkey.js';
 import { createHoneypot, getHoneypotFields } from '../services/honeypot.js';
 
 export function useAuth() {
@@ -11,15 +12,40 @@ export function useAuth() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const login = useCallback(async (req: LoginRequest) => {
+  // prod step 1-3: passkey challenge → browser dialog → verify → intermediate result
+  const startPasskeyLogin = useCallback(async (): Promise<PasskeyVerifyResponse> => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { challengeJwt } = await api.getPasskeyChallenge();
+      const honeypot = createHoneypot();
+      const assertion = await authenticateWithPasskey(challengeJwt);
+      return await api.verifyPasskey(
+        { challengeJwt, assertion },
+        getHoneypotFields(honeypot),
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Passkey authentication failed';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // prod step 4-6: password + passkeyToken → session JWT
+  const completeLogin = useCallback(async (
+    passkeyToken: string,
+    password: string,
+    encryptionSalt: string,
+  ) => {
     setLoading(true);
     setError(null);
     try {
       const honeypot = createHoneypot();
-      const res = await api.login(req, getHoneypotFields(honeypot));
+      const res = await api.login({ passkeyToken, password }, getHoneypotFields(honeypot));
 
-      // Derive encryption key from password + salt before storing token
-      await deriveKey(req.password, res.encryptionSalt);
+      await deriveKey(password, encryptionSalt);
 
       setAuth({
         token: res.token,
@@ -27,9 +53,37 @@ export function useAuth() {
         username: res.username,
         status: res.requirePasswordChange
           ? 'pending_first_login'
-          : res.requireTotpSetup
-            ? 'pending_totp_setup'
+          : res.requirePasskeySetup
+            ? 'pending_passkey_setup'
             : 'active',
+        encryptionSalt,
+      });
+
+      return res;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Login failed';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [setAuth, deriveKey]);
+
+  // dev/beta direct login: username + password
+  const login = useCallback(async (username: string, password: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const honeypot = createHoneypot();
+      const res = await api.login({ username, password }, getHoneypotFields(honeypot));
+
+      await deriveKey(password, res.encryptionSalt);
+
+      setAuth({
+        token: res.token,
+        role: res.role,
+        username: res.username,
+        status: res.requirePasswordChange ? 'pending_first_login' : 'active',
         encryptionSalt: res.encryptionSalt,
       });
 
@@ -43,12 +97,38 @@ export function useAuth() {
     }
   }, [setAuth, deriveKey]);
 
-  const adminLogin = useCallback(async (req: LoginRequest) => {
+  // prod step 1-3 for admin passkeys
+  const startAdminPasskeyLogin = useCallback(async (): Promise<PasskeyVerifyResponse> => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { challengeJwt } = await api.getAdminPasskeyChallenge();
+      const honeypot = createHoneypot();
+      const assertion = await authenticateWithPasskey(challengeJwt);
+      return await api.verifyAdminPasskey(
+        { challengeJwt, assertion },
+        getHoneypotFields(honeypot),
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Passkey authentication failed';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // prod step 4-6 for admin
+  const completeAdminLogin = useCallback(async (
+    passkeyToken: string,
+    password: string,
+    encryptionSalt: string,
+  ) => {
     setLoading(true);
     setError(null);
     try {
       const honeypot = createHoneypot();
-      const res = await api.adminLogin(req, getHoneypotFields(honeypot));
+      const res = await api.adminLogin({ passkeyToken, password }, getHoneypotFields(honeypot));
 
       setAuth({
         token: res.token,
@@ -56,9 +136,35 @@ export function useAuth() {
         username: res.username,
         status: res.requirePasswordChange
           ? 'pending_first_login'
-          : res.requireTotpSetup
-            ? 'pending_totp_setup'
+          : res.requirePasskeySetup
+            ? 'pending_passkey_setup'
             : 'active',
+        encryptionSalt,
+      });
+
+      return res;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Login failed';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [setAuth]);
+
+  // dev/beta direct admin login
+  const adminLogin = useCallback(async (adminUsername: string, password: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const honeypot = createHoneypot();
+      const res = await api.adminLogin({ username: adminUsername, password }, getHoneypotFields(honeypot));
+
+      setAuth({
+        token: res.token,
+        role: res.role,
+        username: res.username,
+        status: res.requirePasswordChange ? 'pending_first_login' : 'active',
         encryptionSalt: res.encryptionSalt,
       });
 
@@ -115,8 +221,15 @@ export function useAuth() {
     status,
     loading,
     error,
+    // prod passkey flow
+    startPasskeyLogin,
+    completeLogin,
+    startAdminPasskeyLogin,
+    completeAdminLogin,
+    // dev/beta direct flow
     login,
     adminLogin,
+    // shared
     changePassword,
     adminChangePassword,
     logout,

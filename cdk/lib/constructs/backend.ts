@@ -154,6 +154,18 @@ export class BackendConstruct extends Construct {
     this.authFn.addEnvironment('JWT_SECRET_PARAM', jwtSecretParamName);
     this.adminFn.addEnvironment('JWT_SECRET_PARAM', jwtSecretParamName);
     this.vaultFn.addEnvironment('JWT_SECRET_PARAM', jwtSecretParamName);
+
+    // Passkey (WebAuthn) relying-party configuration.
+    // Set these in SSM or provide via context/environment overrides at deploy time.
+    // Example: PASSKEY_RP_ID=vault.example.com, PASSKEY_ORIGIN=https://vault.example.com
+    if (config.features.passkeyRequired) {
+      const rpId = this.node.tryGetContext('passkeyRpId') as string | undefined ?? process.env.PASSKEY_RP_ID ?? '';
+      const origin = this.node.tryGetContext('passkeyOrigin') as string | undefined ?? process.env.PASSKEY_ORIGIN ?? '';
+      this.authFn.addEnvironment('PASSKEY_RP_ID', rpId);
+      this.authFn.addEnvironment('PASSKEY_ORIGIN', origin);
+      this.adminFn.addEnvironment('PASSKEY_RP_ID', rpId);
+      this.adminFn.addEnvironment('PASSKEY_ORIGIN', origin);
+    }
     jwtSecretParam.grantRead(this.authFn);
     jwtSecretParam.grantRead(this.adminFn);
     jwtSecretParam.grantRead(this.vaultFn);
@@ -217,22 +229,30 @@ export class BackendConstruct extends Construct {
     authLogin.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
     const authChangePassword = auth.addResource('change-password');
     authChangePassword.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
-    const authTotp = auth.addResource('totp');
-    const authTotpSetup = authTotp.addResource('setup');
-    authTotpSetup.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
-    const authTotpVerify = authTotp.addResource('verify');
-    authTotpVerify.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
+    const authPasskey = auth.addResource('passkey');
+    const authPasskeyChallenge = authPasskey.addResource('challenge');
+    authPasskeyChallenge.addMethod('GET', new apigateway.LambdaIntegration(this.authFn));
+    const authPasskeyVerify = authPasskey.addResource('verify');
+    authPasskeyVerify.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
+    const authPasskeyRegister = authPasskey.addResource('register');
+    const authPasskeyRegisterChallenge = authPasskeyRegister.addResource('challenge');
+    authPasskeyRegisterChallenge.addMethod('GET', new apigateway.LambdaIntegration(this.authFn));
+    authPasskeyRegister.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
 
     const admin = this.api.root.addResource('admin');
     const adminLogin = admin.addResource('login');
     adminLogin.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
     const adminChangePassword = admin.addResource('change-password');
     adminChangePassword.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
-    const adminTotp = admin.addResource('totp');
-    const adminTotpSetup = adminTotp.addResource('setup');
-    adminTotpSetup.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
-    const adminTotpVerify = adminTotp.addResource('verify');
-    adminTotpVerify.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
+    const adminPasskey = admin.addResource('passkey');
+    const adminPasskeyChallenge = adminPasskey.addResource('challenge');
+    adminPasskeyChallenge.addMethod('GET', new apigateway.LambdaIntegration(this.adminFn));
+    const adminPasskeyVerify = adminPasskey.addResource('verify');
+    adminPasskeyVerify.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
+    const adminPasskeyRegister = adminPasskey.addResource('register');
+    const adminPasskeyRegisterChallenge = adminPasskeyRegister.addResource('challenge');
+    adminPasskeyRegisterChallenge.addMethod('GET', new apigateway.LambdaIntegration(this.adminFn));
+    adminPasskeyRegister.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
     const adminUsers = admin.addResource('users');
     adminUsers.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
     adminUsers.addMethod('GET', new apigateway.LambdaIntegration(this.adminFn));

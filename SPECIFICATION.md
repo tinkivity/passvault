@@ -17,24 +17,23 @@ PassVault is an invitation-only, personal secure text storage application where 
   - The script must be run by someone with AWS credentials and DynamoDB write access
   - This establishes trust — AWS account access is the root of trust
   - After first login, admin must set a new secure password
-  - Admin account status changes from "pending_first_login" to "pending_totp_setup"
-- **Admin TOTP Setup (Required after password change)**: Admin must set up two-factor authentication
-  - System generates TOTP secret
-  - QR code displayed for scanning with authenticator app
-  - Admin scans QR code and enters verification code to confirm setup
-  - Admin account status changes from "pending_totp_setup" to "active"
+  - Admin account status changes from "pending_first_login" to "pending_passkey_setup"
+- **Admin Passkey Setup (Required after password change)**: Admin must register a WebAuthn passkey
+  - Browser shows device biometric / PIN prompt to create a passkey credential
+  - Credential is stored server-side (public key only)
+  - Admin account status changes from "pending_passkey_setup" to "active"
 - **Admin Authentication**: After initial setup, admin authenticates with:
-  - Username + Password
-  - TOTP code from authenticator app (6-digit code)
-  - > **Environment Note**: In dev and beta environments where TOTP is disabled, the status transitions directly from "pending_first_login" to "active" after password change. The TOTP setup step is skipped entirely. Login requires only username + password (no TOTP code).
+  - Passkey (step 1 — identifies the admin and pre-fills username)
+  - Password (step 2 — derives the encryption key)
+  - > **Environment Note**: In dev and beta environments where passkeys are disabled, the status transitions directly from "pending_first_login" to "active" after password change. The passkey setup step is skipped entirely. Login requires only username + password.
 - **Create User Invitation**: Admin creates new users by:
   - Specifying a username
   - System generates a secure one-time password (OTP)
   - Empty S3 file is automatically created for the user
   - User account is marked as "pending_first_login"
-  - Admin dashboard accessible only after admin has completed TOTP setup
+  - Admin dashboard accessible only after admin has completed passkey setup
   - **Important**: Admin does NOT set user passwords - users set their own passwords
-- **View User Invitations**: Admin can view list of created users and their status (pending_first_login / pending_totp_setup / active)
+- **View User Invitations**: Admin can view list of created users and their status (pending_first_login / pending_passkey_setup / active)
 - **Admin Limitations - Zero Access to User Data**:
   - **Admin CANNOT access user file content** unless they know the user's password
   - User files are encrypted with keys derived from user passwords (not admin password)
@@ -47,16 +46,15 @@ PassVault is an invitation-only, personal secure text storage application where 
   - Authenticate with username and OTP
   - System forces immediate password change
   - New password must meet secure password policy
-  - Account status changes from "pending_first_login" to "pending_totp_setup"
-- **TOTP Setup (Required after password change)**: Users must set up two-factor authentication
-  - System generates TOTP secret
-  - QR code displayed for scanning with authenticator app (Google Authenticator, Authy, etc.)
-  - User scans QR code and enters verification code to confirm setup
-  - Account status changes from "pending_totp_setup" to "active"
+  - Account status changes from "pending_first_login" to "pending_passkey_setup"
+- **Passkey Setup (Required after password change)**: Users must register a WebAuthn passkey
+  - Browser shows device biometric / PIN prompt to create a passkey credential
+  - Credential is stored server-side (public key only)
+  - Account status changes from "pending_passkey_setup" to "active"
 - **Normal Login**: After initial setup, users authenticate with:
-  - Username + Password
-  - TOTP code from authenticator app (6-digit code)
-  - > **Environment Note**: In dev and beta environments where TOTP is disabled, the status transitions directly from "pending_first_login" to "active" after password change. The TOTP setup step is skipped entirely. Login requires only username + password (no TOTP code).
+  - Passkey (step 1 — identifies the user and pre-fills username)
+  - Password (step 2 — derives the encryption key)
+  - > **Environment Note**: In dev and beta environments where passkeys are disabled, the status transitions directly from "pending_first_login" to "active" after password change. The passkey setup step is skipped entirely. Login requires only username + password.
 - **Session Management**: Maintain authenticated state during user session
 - **Logout**: Users can end their session
 
@@ -245,19 +243,15 @@ async function apiCall(endpoint, options) {
   - Confirm password field
   - Real-time password policy validation feedback
   - Submit button
-- **Admin TOTP Setup Page**: Displayed immediately after password change
-  - QR code for scanning with authenticator app
-  - Manual entry option (display TOTP secret as text)
-  - Instructions: "Scan this QR code with your authenticator app"
-  - Verification field for 6-digit TOTP code
-  - Verify button to confirm setup
-  - Cannot proceed until TOTP is verified
+- **Admin Passkey Setup Page**: Displayed immediately after password change
+  - "Register passkey" button triggers browser WebAuthn dialog (biometric / PIN prompt)
+  - Instructions explaining what a passkey is and how it will be used to sign in
+  - Cannot proceed until passkey is registered
 - **Admin Login Page (after setup)**:
-  - Username field
-  - Password field
-  - TOTP code field (6-digit code from authenticator app)
+  - Step 1: "Sign in with passkey" button — triggers browser WebAuthn dialog, pre-fills username
+  - Step 2: Password field (username pre-filled and read-only)
   - Login button
-- **Admin Dashboard** (accessible after TOTP is set up):
+- **Admin Dashboard** (accessible after passkey is set up):
   - Create new user form (enter username, click to generate OTP)
   - Display generated username and OTP to copy/share with user
   - List of all users showing:
@@ -269,11 +263,11 @@ async function apiCall(endpoint, options) {
 
 #### User Interface
 - **Login Page (first time)**: Form to authenticate with OTP (username, password/OTP)
-- **Login Page (after setup)**: Form to authenticate (username, password, TOTP code)
-  - Username field
-  - Password field
-  - TOTP code field (6-digit code from authenticator app)
+- **Login Page (after setup)**: Two-step authentication form
+  - Step 1: "Sign in with passkey" button — triggers browser WebAuthn dialog, pre-fills username
+  - Step 2: Password field (username pre-filled and read-only)
   - Login button
+  - > **Dev/beta**: Single-step form — username + password fields, no passkey prompt
 - **First-Time Password Change**: Displayed immediately after first login with OTP
   - Welcome message
   - Password policy requirements display
@@ -281,14 +275,10 @@ async function apiCall(endpoint, options) {
   - Confirm password field
   - Real-time password policy validation feedback
   - Submit button
-- **TOTP Setup Page**: Displayed immediately after password change
-  - QR code for scanning with authenticator app (Google Authenticator, Authy, etc.)
-  - Manual entry option (display TOTP secret as text for manual input)
-  - Instructions: "Scan this QR code with your authenticator app (Google Authenticator, Authy, etc.)"
-  - App recommendations and download links
-  - Verification field for 6-digit TOTP code
-  - Verify button to confirm setup
-  - Cannot proceed to vault until TOTP is verified
+- **Passkey Setup Page**: Displayed immediately after password change (prod only)
+  - "Register passkey" button triggers browser WebAuthn dialog (biometric / PIN prompt)
+  - Explains that the passkey will be required to sign in going forward
+  - Cannot proceed to vault until passkey is registered
 - **Vault Page**: Interface with two distinct modes:
 
   **View Mode (Default):**
@@ -321,7 +311,7 @@ PassVault supports three deployment environments with different security profile
 | Feature | Dev | Beta | Prod |
 |---------|-----|------|------|
 | **Purpose** | Developer testing | QA / integration / demos | Live |
-| **TOTP** | Disabled | Disabled | Mandatory |
+| **Passkeys** | Disabled | Disabled | Mandatory |
 | **WAF** | Disabled | Disabled | Enabled |
 | **Proof of Work** | Disabled | Enabled | Enabled |
 | **Honeypot** | Enabled | Enabled | Enabled |
@@ -340,7 +330,7 @@ PassVault supports three deployment environments with different security profile
 
 #### Dev Environment
 - **Purpose**: Individual developer testing and local development
-- **TOTP**: Disabled — status goes directly from "pending_first_login" → "active" after password change
+- **Passkeys**: Disabled — status goes directly from "pending_first_login" → "active" after password change
 - **WAF**: Disabled
 - **Proof of Work**: Disabled — faster iteration
 - **CloudFront**: Optional — can access API Gateway directly
@@ -352,7 +342,7 @@ PassVault supports three deployment environments with different security profile
 
 #### Beta Environment
 - **Purpose**: QA, integration testing, stakeholder demos
-- **TOTP**: Disabled — same simplified flow as dev
+- **Passkeys**: Disabled — same simplified flow as dev
 - **WAF**: Disabled — saves cost, bot protection not needed for internal testing
 - **Proof of Work**: Enabled — validates PoW flow works correctly
 - **CloudFront**: Enabled — matches prod architecture
@@ -362,7 +352,7 @@ PassVault supports three deployment environments with different security profile
 
 #### Production Environment
 - **Purpose**: Live deployment with full security
-- **TOTP**: Mandatory — all users and admin must complete TOTP setup
+- **Passkeys**: Mandatory — all users and admin must register a passkey after password change
 - **WAF**: Enabled — full bot control, rate limiting, CAPTCHA
 - **Proof of Work**: Enabled with production difficulty levels
 - **CloudFront**: Enabled with WAF attached
@@ -487,42 +477,41 @@ Protection Layers:
 
 ### 4.2 Admin Endpoints
 
-- **POST /admin/login**
-  - Request: `{ "username": "string", "password": "string", "totpCode": "string (optional)" }`
+- **GET /admin/passkey/challenge**
+  - Response: `{ "challengeJwt": "string" }` — signed JWT containing the WebAuthn challenge bytes
+  - No auth required; no PoW required
+
+- **POST /admin/passkey/verify** (PoW HIGH + honeypot)
+  - Request: `{ "challengeJwt": "string", "assertion": PasskeyAssertionJSON }`
+  - Response: `{ "passkeyToken": "string", "username": "string", "encryptionSalt": "string" }`
+  - Verifies the passkey assertion against the stored credential
+  - Returns a short-lived passkey token (5 min) encoding the userId; used with POST /admin/login
+
+- **POST /admin/login** (PoW HIGH + honeypot)
+  - Request (prod): `{ "passkeyToken": "string", "password": "string" }` — passkeyToken identifies the admin
+  - Request (dev/beta): `{ "username": "string", "password": "string" }` — direct username+password
   - Response:
-    - First-time login (with initial password): `{ "token": "string", "role": "admin", "requirePasswordChange": true, "encryptionSalt": "string (base64)" }`
-    - After password change, before TOTP setup: `{ "token": "string", "role": "admin", "requireTotpSetup": true, "encryptionSalt": "string (base64)" }`
-    - Normal login (with TOTP): `{ "token": "string", "role": "admin", "encryptionSalt": "string (base64)" }`
-  - Authenticates admin user
-  - First login: accepts initial password only (no TOTP required)
-  - After TOTP setup: requires both password and valid TOTP code
+    - First-time login: `{ "token": "string", "role": "admin", "requirePasswordChange": true, "encryptionSalt": "string (base64)" }`
+    - After password change (prod): `{ "token": "string", "role": "admin", "requirePasskeySetup": true, "encryptionSalt": "string (base64)" }`
+    - Active login: `{ "token": "string", "role": "admin", "encryptionSalt": "string (base64)" }`
   - Returns JWT token with admin role and encryption salt for key derivation
-  - Flags if password change or TOTP setup is required
-  - **When TOTP is disabled (dev/beta)**: login never returns `requireTotpSetup: true`; `totpCode` parameter is ignored; normal login requires only username + password
+  - Flags if password change or passkey setup is required
 
 - **POST /admin/change-password** (Requires admin auth)
   - Request: `{ "newPassword": "string" }`
   - Response: `{ "success": true }` or error with policy violations
   - Validates new password against security policy
-  - Updates admin password and changes status from "pending_first_login" to "pending_totp_setup"
-  - **When TOTP is disabled (dev/beta)**: status changes directly to "active" instead of "pending_totp_setup"
-  - Required on first admin login
+  - Updates admin password; sets status to "pending_passkey_setup" (prod) or "active" (dev/beta)
 
-- **POST /admin/totp/setup** (Requires admin auth, only accessible if status is "pending_totp_setup")
-  - Request: None (or empty)
-  - Response: `{ "secret": "string", "qrCodeUrl": "string" }`
-  - Generates new TOTP secret for admin
-  - Returns secret and QR code data URL for display
-  - Secret is stored in DynamoDB but not yet activated
+- **GET /admin/passkey/register/challenge** (Requires admin auth, status must be "pending_passkey_setup")
+  - Response: `{ "challengeJwt": "string" }`
 
-- **POST /admin/totp/verify** (Requires admin auth, only accessible if status is "pending_totp_setup")
-  - Request: `{ "totpCode": "string" }`
-  - Response: `{ "success": true }` or error
-  - Verifies TOTP code against stored secret
-  - If valid, activates TOTP and changes admin status from "pending_totp_setup" to "active"
-  - If invalid, returns error (user must retry)
+- **POST /admin/passkey/register** (Requires admin auth, status must be "pending_passkey_setup", PoW HIGH)
+  - Request: `{ "challengeJwt": "string", "attestation": PasskeyAttestationJSON }`
+  - Response: `{ "success": true }`
+  - Verifies and stores the passkey credential; changes admin status to "active"
 
-> **TOTP Endpoints (dev/beta)**: When TOTP is disabled, POST /admin/totp/setup and POST /admin/totp/verify return HTTP 404 with `{ "error": "TOTP is not enabled in this environment" }`.
+> **Passkey endpoints (dev/beta)**: When `passkeyRequired=false`, the passkey challenge/verify/register endpoints are still deployed but will not be exercised by the UI. POST /admin/login accepts `username` + `password` directly.
 
 - **POST /admin/users** (Requires admin auth, blocked if admin status is not "active")
   - Request: `{ "username": "string" }`
@@ -536,44 +525,42 @@ Protection Layers:
 
 - **GET /admin/users** (Requires admin auth, blocked if admin status is not "active")
   - Response: `{ "users": [{ "userId": "string", "username": "string", "status": "string", "createdAt": "timestamp", "lastLoginAt": "timestamp", "vaultSizeBytes": number | null }] }`
-  - Returns list of all users with their status (pending_first_login / pending_totp_setup / active) and current vault file size
+  - Returns list of all users with their status (pending_first_login / pending_passkey_setup / active) and current vault file size
 
 ### 4.3 User Authentication Endpoints
 
-- **POST /auth/login**
-  - Request: `{ "username": "string", "password": "string", "totpCode": "string (optional)" }`
+- **GET /auth/passkey/challenge**
+  - Response: `{ "challengeJwt": "string" }`
+  - No auth required; no PoW required
+
+- **POST /auth/passkey/verify** (PoW MEDIUM + honeypot)
+  - Request: `{ "challengeJwt": "string", "assertion": PasskeyAssertionJSON }`
+  - Response: `{ "passkeyToken": "string", "username": "string", "encryptionSalt": "string" }`
+
+- **POST /auth/login** (PoW MEDIUM + honeypot)
+  - Request (prod): `{ "passkeyToken": "string", "password": "string" }` — passkeyToken from verify step
+  - Request (dev/beta): `{ "username": "string", "password": "string" }` — direct
   - Response:
     - First-time login (with OTP): `{ "token": "string", "requirePasswordChange": true, "username": "string", "encryptionSalt": "string (base64)" }`
-    - After password change, before TOTP setup: `{ "token": "string", "requireTotpSetup": true, "username": "string", "encryptionSalt": "string (base64)" }`
-    - Normal login (with TOTP): `{ "token": "string", "username": "string", "encryptionSalt": "string (base64)" }`
-  - Accepts OTP (first time), or password + TOTP code (subsequent logins)
+    - After password change (prod): `{ "token": "string", "requirePasskeySetup": true, "username": "string", "encryptionSalt": "string (base64)" }`
+    - Active login: `{ "token": "string", "username": "string", "encryptionSalt": "string (base64)" }`
   - Returns JWT token with user ID and role, plus encryption salt for key derivation
-  - Flags if password change or TOTP setup is required
-  - **When TOTP is disabled (dev/beta)**: login never returns `requireTotpSetup: true`; `totpCode` parameter is ignored; normal login requires only username + password
 
 - **POST /auth/change-password** (Requires user auth)
   - Request: `{ "newPassword": "string" }`
   - Response: `{ "success": true }` or error with policy violations
   - Validates new password against security policy
-  - Updates user password and changes status from "pending_first_login" to "pending_totp_setup"
-  - **When TOTP is disabled (dev/beta)**: status changes directly to "active" instead of "pending_totp_setup"
-  - Invalidates OTP after successful password change
+  - Updates user password; sets status to "pending_passkey_setup" (prod) or "active" (dev/beta)
 
-- **POST /auth/totp/setup** (Requires user auth, only accessible if status is "pending_totp_setup")
-  - Request: None (or empty)
-  - Response: `{ "secret": "string", "qrCodeUrl": "string" }`
-  - Generates new TOTP secret for user
-  - Returns secret and QR code data URL for display
-  - Secret is stored in DynamoDB but not yet activated
+- **GET /auth/passkey/register/challenge** (Requires user auth, status must be "pending_passkey_setup")
+  - Response: `{ "challengeJwt": "string" }`
 
-- **POST /auth/totp/verify** (Requires user auth, only accessible if status is "pending_totp_setup")
-  - Request: `{ "totpCode": "string" }`
-  - Response: `{ "success": true }` or error
-  - Verifies TOTP code against stored secret
-  - If valid, activates TOTP and changes user status from "pending_totp_setup" to "active"
-  - If invalid, returns error (user must retry)
+- **POST /auth/passkey/register** (Requires user auth, status must be "pending_passkey_setup", PoW MEDIUM)
+  - Request: `{ "challengeJwt": "string", "attestation": PasskeyAttestationJSON }`
+  - Response: `{ "success": true }`
+  - Verifies and stores the passkey credential; changes user status to "active"
 
-> **TOTP Endpoints (dev/beta)**: When TOTP is disabled, POST /auth/totp/setup and POST /auth/totp/verify return HTTP 404 with `{ "error": "TOTP is not enabled in this environment" }`.
+> **Passkey endpoints (dev/beta)**: When `passkeyRequired=false`, the passkey challenge/verify/register endpoints are still deployed but will not be exercised by the UI. POST /auth/login accepts `username` + `password` directly.
 
 ### 4.4 File Operations (Protected Endpoints)
 All endpoints require user authentication via Authorization header (Bearer token).
@@ -584,7 +571,7 @@ All endpoints require user authentication via Authorization header (Bearer token
   - Content is encrypted by client before storage, server returns encrypted blob
   - Client decrypts content using key derived from user's password
   - User ID extracted from auth token
-  - Blocked if user status is not "active" (must complete password change and TOTP setup)
+  - Blocked if user status is not "active" (must complete password change and passkey setup)
 
 - **PUT /vault**
   - Request: `{ "encryptedContent": "string (base64)" }`
@@ -593,7 +580,7 @@ All endpoints require user authentication via Authorization header (Bearer token
   - Client encrypts content using key derived from user's password before sending
   - Server stores encrypted blob without decryption
   - User ID extracted from auth token ensures users can only update their own file
-  - Blocked if user status is not "active" (must complete password change and TOTP setup)
+  - Blocked if user status is not "active" (must complete password change and passkey setup)
 
 - **GET /vault/download**
   - Response: `{ "encryptedContent": "string (base64)", "encryptionSalt": "string (base64)", "algorithm": "argon2id+aes-256-gcm", "parameters": { "argon2": { "memory": 65536, "iterations": 3, "parallelism": 4, "hashLength": 32 }, "aes": { "keySize": 256, "ivSize": 96, "tagSize": 128 } }, "lastModified": "timestamp", "username": "string" }`
@@ -614,10 +601,13 @@ Attributes:
 - username: unique username (String, GSI)
 - passwordHash: bcrypt hashed password (String) - initially stores OTP hash, replaced after first login
 - role: user role (String) - "admin" or "user"
-- status: account status (String) - "pending_first_login", "pending_totp_setup", or "active"
+- status: account status (String) - "pending_first_login", "pending_passkey_setup", or "active"
 - oneTimePasswordHash: bcrypt hash of OTP (String, nullable) - cleared after first successful password change
-- totpSecret: TOTP secret key (String, encrypted, nullable) - set during TOTP setup, used for verification
-- totpEnabled: boolean flag indicating if TOTP is active (Boolean) - true after successful TOTP verification
+- passkeyCredentialId: WebAuthn credential ID (String, base64url, nullable) - set during passkey registration
+- passkeyPublicKey: COSE-encoded public key (String, base64url, nullable) - set during passkey registration
+- passkeyCounter: signature counter for replay protection (Number) - updated on every login
+- passkeyTransports: list of transport hints (List of Strings, nullable) - e.g. ["internal"]
+- passkeyAaguid: authenticator attestation GUID (String, nullable) - for auditing only
 - encryptionSalt: salt for password-based key derivation (String, base64) - unique per user, generated at user creation
 - createdAt: timestamp (String/Number)
 - lastLoginAt: timestamp (String/Number)
@@ -639,8 +629,11 @@ Global Secondary Index (GSI):
   - role: "admin"
   - status: "pending_first_login"
   - oneTimePasswordHash: null (or same as passwordHash)
-  - totpSecret: null (set during TOTP setup)
-  - totpEnabled: false (set to true after TOTP verification)
+  - passkeyCredentialId: null (set during passkey registration)
+  - passkeyPublicKey: null (set during passkey registration)
+  - passkeyCounter: 0
+  - passkeyTransports: null
+  - passkeyAaguid: null
   - encryptionSalt: randomly generated 256-bit salt (base64)
 - Initial admin password is generated by `scripts/init-admin.ts` and printed to console only
   - The OTP is never stored at rest — save it from the console output during initialization
@@ -760,15 +753,14 @@ s3://passvault-files/
 - Validate password strength against policy on backend
 - OTP must be securely generated and only displayed once to admin
 - OTP is invalidated after first successful password change
-- **TOTP (Two-Factor Authentication)**:
-  - TOTP secret must be cryptographically secure (32+ character base32 string)
-  - TOTP secrets stored encrypted in DynamoDB
-  - Use standard TOTP algorithm (RFC 6238) with 30-second time step
-  - 6-digit TOTP codes
-  - Allow time window tolerance (±1 time step, 30 seconds) for clock skew
-  - TOTP codes are single-use within the time window (prevent replay attacks)
-  - Mandatory for all users and admin after initial password setup
-  - QR code generated using standard otpauth:// URI format
+- **Passkeys (WebAuthn/FIDO2 — Two-Factor Authentication)**:
+  - Uses `@simplewebauthn/server` for credential verification and registration
+  - WebAuthn challenges are encoded in short-lived signed JWTs (5-minute expiry, same JWT secret as session tokens)
+  - Passkey tokens (issued after successful assertion) are short-lived JWTs (5-minute expiry) containing userId
+  - Signature counter checked on every login to detect cloned credentials (replay protection)
+  - One passkey per user; re-registration overwrites the existing credential
+  - Mandatory for all users and admin after initial password setup (prod only)
+  - `PASSKEY_RP_ID` and `PASSKEY_ORIGIN` environment variables configure the relying party for each deployment
 
 ### 6.3 Admin Isolation - Zero Access to User Data
 
@@ -818,25 +810,25 @@ PassVault implements **complete separation** between admin privileges and user d
   - Single admin account only (enforced at application level)
 
 - **User Authorization**:
-  - All /vault endpoints require valid user authentication with TOTP
+  - All /vault endpoints require valid user authentication (passkey + password in prod)
   - User ID extracted from JWT token, never from request body
   - Vault operations blocked if user status is not "active"
-  - User must complete both password change and TOTP setup before accessing vault
+  - User must complete both password change and passkey setup before accessing vault
   - **Critical**: Users can ONLY access files matching their user ID
     - GET /vault → reads `user-{tokenUserId}.enc`
     - PUT /vault → writes `user-{tokenUserId}.enc`
 
 - **Admin Authorization**:
-  - All /admin/* endpoints (except login, change-password, totp/setup, totp/verify) require valid admin authentication
+  - All /admin/* endpoints (except login, passkey/challenge, passkey/verify, change-password, passkey/register/*) require valid admin authentication
   - JWT token must have role="admin"
   - Admin operations (create users, list users) blocked if admin status is not "active"
-  - Admin must complete both password change and TOTP setup before accessing admin functions
+  - Admin must complete both password change and passkey setup before accessing admin functions
   - Verify admin role and status before any user management operations
 
 ### 6.5 DynamoDB Security
 - Username must be unique (enforced via GSI)
 - Passwords stored as bcrypt hashes, never plain text
-- TOTP secrets stored encrypted (application-level encryption or DynamoDB encryption at rest)
+- Passkey public keys stored per user (public key material only, never private keys)
 - **Encryption salts** stored per user (not secret, used for key derivation)
 - Enable DynamoDB encryption at rest
 - Lambda IAM role has permissions: GetItem, PutItem, Query, UpdateItem on users table
@@ -1107,23 +1099,28 @@ Stacks share nothing — they can be deployed and destroyed independently.
   - Key management (derive at login, hold in memory, clear on logout)
   - Encryption/decryption wrapper functions
   - Password change re-encryption flow
-- [ ] Implement TOTP module (RFC 6238):
-  - TOTP secret generation
-  - QR code generation (otpauth:// URI)
-  - TOTP verification with time window tolerance
-  - TOTP secret encryption/decryption
-- [ ] Implement admin endpoints (with environment-conditional TOTP):
-  - POST /admin/login (handle initial password, regular password+TOTP, return requirePasswordChange/requireTotpSetup flags; skip TOTP when disabled)
-  - POST /admin/change-password (with policy validation; set status to "active" directly when TOTP disabled, otherwise "pending_totp_setup")
-  - POST /admin/totp/setup (generate TOTP secret and QR code; return 404 when TOTP disabled)
-  - POST /admin/totp/verify (verify TOTP code, activate TOTP, change status to active; return 404 when TOTP disabled)
+- [ ] Implement passkey module (WebAuthn/FIDO2):
+  - Stateless challenge JWT generation and verification
+  - Passkey token generation (proves passkey was verified before password step)
+  - Credential registration via `@simplewebauthn/server` `verifyRegistrationResponse()`
+  - Credential authentication via `@simplewebauthn/server` `verifyAuthenticationResponse()`
+  - Counter-based replay protection (updated on every login)
+- [ ] Implement admin endpoints (with environment-conditional passkeys):
+  - POST /admin/login (handle initial password; in prod, accept passkeyToken + password; in dev/beta, accept username + password; return requirePasswordChange flag)
+  - POST /admin/change-password (with policy validation; set status to "active" directly when passkeys disabled, otherwise "pending_passkey_setup")
+  - GET /admin/passkey/challenge (stateless signed challenge JWT; return 404 when passkeys disabled)
+  - POST /admin/passkey/verify (verify passkey credential, return passkeyToken + username; return 404 when passkeys disabled)
+  - GET /admin/passkey/register/challenge (Bearer JWT required, status=pending_passkey_setup; return 404 when passkeys disabled)
+  - POST /admin/passkey/register (store credential, activate account; return 404 when passkeys disabled)
   - POST /admin/users (create user invitation with OTP generation, blocked if admin not active)
   - GET /admin/users (list all users, blocked if admin not active)
-- [ ] Implement user authentication endpoints (with environment-conditional TOTP):
-  - POST /auth/login (handle OTP, regular password+TOTP, return requirePasswordChange/requireTotpSetup flags; skip TOTP when disabled)
-  - POST /auth/change-password (with policy validation; set status to "active" directly when TOTP disabled, otherwise "pending_totp_setup")
-  - POST /auth/totp/setup (generate TOTP secret and QR code; return 404 when TOTP disabled)
-  - POST /auth/totp/verify (verify TOTP code, activate TOTP, change status to active; return 404 when TOTP disabled)
+- [ ] Implement user authentication endpoints (with environment-conditional passkeys):
+  - POST /auth/login (handle OTP first login; in prod, accept passkeyToken + password; in dev/beta, accept username + password; return requirePasswordChange flag)
+  - POST /auth/change-password (with policy validation; set status to "active" directly when passkeys disabled, otherwise "pending_passkey_setup")
+  - GET /auth/passkey/challenge (stateless signed challenge JWT; return 404 when passkeys disabled)
+  - POST /auth/passkey/verify (verify passkey credential, return passkeyToken + username + encryptionSalt; return 404 when passkeys disabled)
+  - GET /auth/passkey/register/challenge (Bearer JWT required, status=pending_passkey_setup; return 404 when passkeys disabled)
+  - POST /auth/passkey/register (store credential, activate account; return 404 when passkeys disabled)
 - [ ] Implement vault endpoints:
   - GET /vault (read user's file)
   - PUT /vault (update user's file)
@@ -1136,13 +1133,13 @@ Stacks share nothing — they can be deployed and destroyed independently.
     - Decrypt file content after GET /vault
     - Re-encrypt on password change
     - Clear key from memory on logout
-  - Admin login page (with TOTP field for returning admins, derives encryption key)
+  - Admin login page (prod: two-step passkey → password form; dev/beta: username + password form; derives encryption key)
   - Admin first-time password change page (redirect from login if requirePasswordChange=true, handles re-encryption)
-  - Admin TOTP setup page (redirect from password change, display QR code, verify code)
-  - Admin dashboard (create users, view user list, accessible only after TOTP setup)
-  - User login page (with TOTP field for returning users, derives encryption key)
+  - Admin passkey setup page (redirect from password change in prod; shows register button, calls WebAuthn API)
+  - Admin dashboard (create users, view user list, accessible only after passkey setup)
+  - User login page (prod: two-step passkey → password form; dev/beta: username + password form; derives encryption key)
   - User first-time password change page (with policy display, handles re-encryption)
-  - User TOTP setup page (redirect from password change, display QR code, verify code)
+  - User passkey setup page (redirect from password change in prod; shows register button, calls WebAuthn API)
   - Vault page with two modes:
     - View mode (read-only, copy to clipboard, download encrypted backup)
     - Edit mode (editable textarea, save/cancel buttons with logout on both)
@@ -1152,16 +1149,16 @@ Stacks share nothing — they can be deployed and destroyed independently.
   - Immediate logout after save operation
   - Immediate logout after cancel operation (with confirmation dialog)
   - Unsaved changes warning in cancel confirmation
-  - Auth state management (admin vs user contexts, track TOTP setup status)
-  - Environment-conditional TOTP:
-    - Skip TOTP setup screen when TOTP is disabled (dev/beta)
-    - Hide TOTP code field on login form when TOTP is disabled
+  - Auth state management (admin vs user contexts, track passkey setup status)
+  - Environment-conditional passkeys:
+    - Skip passkey setup screen when passkeys are disabled (dev/beta)
+    - Show passkey button on login form only when passkeys are enabled (prod)
   - Environment banner:
     - Show "DEV ENVIRONMENT" or "BETA ENVIRONMENT" banner when not in prod
     - No banner in prod
   - Route guards:
     - Redirect pending_first_login users/admin to password change page
-    - Redirect pending_totp_setup users/admin to TOTP setup page (prod only)
+    - Redirect pending_passkey_setup users/admin to passkey setup page (prod only)
     - Block vault/dashboard access until status is "active"
 - [ ] Connect frontend to backend APIs
 - [ ] Basic error handling and validation feedback
@@ -1291,18 +1288,18 @@ Stacks share nothing — they can be deployed and destroyed independently.
 - [ ] Decide on encrypted file format:
   - Storage format: `{IV (12 bytes) || ciphertext || tag (16 bytes)}` as base64
   - Download format: JSON with complete recovery metadata including salt and parameters
-- [ ] Choose TOTP library:
-  - Backend: speakeasy (Node.js), otplib, or similar
-  - Frontend: qrcode.react or qrcode for QR code generation/display
-- [ ] Decide on TOTP secret encryption method:
-  - AWS KMS for encryption keys
-  - Application-level encryption (AES-256)
-  - Rely on DynamoDB encryption at rest
-- [ ] Decide on TOTP parameters:
-  - Time step: 30 seconds (standard)
-  - Code length: 6 digits (standard)
-  - Algorithm: SHA-1 (standard for TOTP compatibility)
-  - Time window tolerance: ±1 step (60 second window total)
+- [x] **Passkey (WebAuthn) library**:
+  - Backend: `@simplewebauthn/server` — verifies registration and authentication responses
+  - Frontend: `@simplewebauthn/browser` — calls `startAuthentication()` and `startRegistration()`
+  - Challenge transport: stateless signed JWT (no DynamoDB table needed)
+  - Credential storage: DynamoDB attributes on user record (`passkeyCredentialId`, `passkeyPublicKey`, `passkeyCounter`, `passkeyTransports`, `passkeyAaguid`)
+- [x] **WebAuthn parameters**:
+  - Relying Party ID: `PASSKEY_RP_ID` env var (e.g. `vault.example.com`)
+  - Relying Party Origin: `PASSKEY_ORIGIN` env var (e.g. `https://vault.example.com`)
+  - Challenge lifetime: 5 minutes (signed JWT expiry)
+  - Authenticator type: platform (biometric/PIN, `authenticatorAttachment: 'platform'`)
+  - User verification: preferred
+  - Replay protection: credential counter incremented and validated on each login
 - [ ] Implement clipboard API strategy (navigator.clipboard API with fallback for older browsers)
 - [ ] Decide on countdown timer UI design (header bar, modal, floating widget)
 - [ ] Optional: Add audio/visual warning before auto-logout (5 seconds before)
@@ -1365,10 +1362,10 @@ Session timeouts vary by environment (see Section 2.5):
 - **User Features**:
   - Self-service password change (after initial setup)
   - Password expiration policy (force password change every N days)
-  - Account recovery flow (admin-assisted password reset + TOTP reset)
-  - TOTP backup codes (recovery codes in case of lost authenticator)
-  - TOTP reset capability (admin can reset TOTP for locked-out users)
-  - Multiple TOTP devices support (register backup authenticator)
+  - Account recovery flow (admin-assisted password reset + passkey reset)
+  - Passkey recovery codes (recovery codes in case of lost authenticator)
+  - Passkey reset capability (admin can clear passkey for locked-out users)
+  - Multiple passkey support (register backup authenticator / device)
   - Configurable session timeout preferences (per user or global)
   - "Extend session" button to add time before auto-logout
   - Audio/visual warning alerts before auto-logout (e.g., 10 seconds warning)

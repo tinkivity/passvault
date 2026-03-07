@@ -5,9 +5,11 @@ import type {
   LoginResponse,
   ChangePasswordRequest,
   ChangePasswordResponse,
-  TotpSetupResponse,
-  TotpVerifyRequest,
-  TotpVerifyResponse,
+  PasskeyChallengeResponse,
+  PasskeyVerifyRequest,
+  PasskeyVerifyResponse,
+  PasskeyRegisterRequest,
+  PasskeyRegisterResponse,
   VaultGetResponse,
   VaultPutRequest,
   VaultPutResponse,
@@ -108,18 +110,40 @@ export class ApiClient {
     });
   }
 
-  async totpSetup(token: string): Promise<TotpSetupResponse> {
-    return this.request<TotpSetupResponse>(API_PATHS.AUTH_TOTP_SETUP, {
+  async getPasskeyChallenge(): Promise<PasskeyChallengeResponse> {
+    return this.request<PasskeyChallengeResponse>(API_PATHS.AUTH_PASSKEY_CHALLENGE, {
+      method: 'GET',
+    });
+  }
+
+  async verifyPasskey(
+    req: PasskeyVerifyRequest,
+    honeypot: Record<string, string>,
+  ): Promise<PasskeyVerifyResponse> {
+    return this.request<PasskeyVerifyResponse>(API_PATHS.AUTH_PASSKEY_VERIFY, {
       method: 'POST',
+      body: req,
+      powDifficulty: POW_CONFIG.DIFFICULTY.MEDIUM,
+      honeypotFields: honeypot,
+    });
+  }
+
+  async getPasskeyRegisterChallenge(token: string): Promise<PasskeyChallengeResponse> {
+    return this.request<PasskeyChallengeResponse>(API_PATHS.AUTH_PASSKEY_REGISTER_CHALLENGE, {
+      method: 'GET',
       token,
     });
   }
 
-  async totpVerify(req: TotpVerifyRequest, token: string): Promise<TotpVerifyResponse> {
-    return this.request<TotpVerifyResponse>(API_PATHS.AUTH_TOTP_VERIFY, {
+  async registerPasskey(
+    req: PasskeyRegisterRequest,
+    token: string,
+  ): Promise<PasskeyRegisterResponse> {
+    return this.request<PasskeyRegisterResponse>(API_PATHS.AUTH_PASSKEY_REGISTER, {
       method: 'POST',
       body: req,
       token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.MEDIUM,
     });
   }
 
@@ -129,7 +153,7 @@ export class ApiClient {
     return this.request<LoginResponse>(API_PATHS.ADMIN_LOGIN, {
       method: 'POST',
       body: req,
-      powDifficulty: POW_CONFIG.DIFFICULTY.MEDIUM,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
       honeypotFields: honeypot,
     });
   }
@@ -142,22 +166,44 @@ export class ApiClient {
       method: 'POST',
       body: req,
       token,
-      powDifficulty: POW_CONFIG.DIFFICULTY.MEDIUM,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
     });
   }
 
-  async adminTotpSetup(token: string): Promise<TotpSetupResponse> {
-    return this.request<TotpSetupResponse>(API_PATHS.ADMIN_TOTP_SETUP, {
+  async getAdminPasskeyChallenge(): Promise<PasskeyChallengeResponse> {
+    return this.request<PasskeyChallengeResponse>(API_PATHS.ADMIN_PASSKEY_CHALLENGE, {
+      method: 'GET',
+    });
+  }
+
+  async verifyAdminPasskey(
+    req: PasskeyVerifyRequest,
+    honeypot: Record<string, string>,
+  ): Promise<PasskeyVerifyResponse> {
+    return this.request<PasskeyVerifyResponse>(API_PATHS.ADMIN_PASSKEY_VERIFY, {
       method: 'POST',
+      body: req,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+      honeypotFields: honeypot,
+    });
+  }
+
+  async getAdminPasskeyRegisterChallenge(token: string): Promise<PasskeyChallengeResponse> {
+    return this.request<PasskeyChallengeResponse>(API_PATHS.ADMIN_PASSKEY_REGISTER_CHALLENGE, {
+      method: 'GET',
       token,
     });
   }
 
-  async adminTotpVerify(req: TotpVerifyRequest, token: string): Promise<TotpVerifyResponse> {
-    return this.request<TotpVerifyResponse>(API_PATHS.ADMIN_TOTP_VERIFY, {
+  async registerAdminPasskey(
+    req: PasskeyRegisterRequest,
+    token: string,
+  ): Promise<PasskeyRegisterResponse> {
+    return this.request<PasskeyRegisterResponse>(API_PATHS.ADMIN_PASSKEY_REGISTER, {
       method: 'POST',
       body: req,
       token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
     });
   }
 

@@ -14,6 +14,7 @@
   "dependencies": {
     "@heroicons/react": "^2.2.0",
     "@passvault/shared": "*",
+    "@simplewebauthn/browser": "^13.0.0",
     "hash-wasm": "^4.12.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

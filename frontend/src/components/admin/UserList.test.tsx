@@ -24,7 +24,7 @@ const mockUsers: UserSummary[] = [
   {
     userId: 'u3',
     username: 'bob',
-    status: 'pending_totp_setup',
+    status: 'pending_passkey_setup',
     createdAt: '2024-01-20T00:00:00Z',
     lastLoginAt: '2024-02-15T00:00:00Z',
     vaultSizeBytes: 512,
@@ -89,7 +89,7 @@ describe('UserList', () => {
     render(<UserList users={mockUsers} loading={false} onDownload={vi.fn()} />);
     expect(screen.getByText('Active')).toBeInTheDocument();
     expect(screen.getByText('Awaiting first login')).toBeInTheDocument();
-    expect(screen.getByText('Awaiting TOTP setup')).toBeInTheDocument();
+    expect(screen.getByText('Awaiting passkey setup')).toBeInTheDocument();
   });
 
   it('calls onDownload with userId and username when the download button is clicked', async () => {

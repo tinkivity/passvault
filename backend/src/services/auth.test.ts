@@ -8,7 +8,7 @@ vi.mock('../config.js', () => ({
     features: {
       powEnabled: false,
       honeypotEnabled: true,
-      totpRequired: false,
+      passkeyRequired: false,
       wafEnabled: false,
       cloudFrontEnabled: false,
     },
@@ -21,6 +21,7 @@ vi.mock('../config.js', () => ({
 
 vi.mock('../utils/dynamodb.js', () => ({
   getUserByUsername: vi.fn(),
+  getUserById: vi.fn(),
   updateUser: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -35,20 +36,21 @@ vi.mock('../utils/jwt.js', () => ({
   signToken: vi.fn().mockResolvedValue('signed.jwt.token'),
 }));
 
-vi.mock('./totp.js', () => ({
-  verifyCode: vi.fn(),
+vi.mock('./passkey.js', () => ({
+  verifyPasskeyToken: vi.fn(),
 }));
 
 import { login, changePassword } from './auth.js';
-import { getUserByUsername, updateUser } from '../utils/dynamodb.js';
+import { getUserByUsername, getUserById, updateUser } from '../utils/dynamodb.js';
 import { verifyPassword, hashPassword } from '../utils/crypto.js';
-import { verifyCode } from './totp.js';
+import { verifyPasskeyToken } from './passkey.js';
 import { config } from '../config.js';
 import type { User } from '@passvault/shared';
 
-const mockGetUser = vi.mocked(getUserByUsername);
+const mockGetUserByUsername = vi.mocked(getUserByUsername);
+const mockGetUserById = vi.mocked(getUserById);
 const mockVerifyPw = vi.mocked(verifyPassword);
-const mockVerifyTotp = vi.mocked(verifyCode);
+const mockVerifyPasskeyToken = vi.mocked(verifyPasskeyToken);
 const mockUpdateUser = vi.mocked(updateUser);
 const mockHashPw = vi.mocked(hashPassword);
 
@@ -62,8 +64,11 @@ function makeUser(overrides: Partial<User> = {}): User {
     oneTimePasswordHash: '$2b$12$otphash',
     role: 'user',
     status: 'pending_first_login',
-    totpSecret: null,
-    totpEnabled: false,
+    passkeyCredentialId: null,
+    passkeyPublicKey: null,
+    passkeyCounter: 0,
+    passkeyTransports: null,
+    passkeyAaguid: null,
     encryptionSalt: 'base64salt==',
     createdAt: '2024-01-01T00:00:00.000Z',
     lastLoginAt: null,
@@ -74,34 +79,34 @@ function makeUser(overrides: Partial<User> = {}): User {
   };
 }
 
-// ── login() ───────────────────────────────────────────────────────────────────
+// ── login() — dev/beta (passkeyRequired: false) ───────────────────────────────
 
-describe('login — user not found', () => {
+describe('login — user not found (dev/beta)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    config.features.totpRequired = false;
+    config.features.passkeyRequired = false;
   });
 
   it('returns 401 when user does not exist', async () => {
-    mockGetUser.mockResolvedValue(null);
+    mockGetUserByUsername.mockResolvedValue(null);
     const result = await login({ username: 'nobody', password: 'pass' });
     expect(result.error).toBe(ERRORS.INVALID_CREDENTIALS);
     expect(result.statusCode).toBe(401);
   });
 
   it('returns 401 when account has admin role', async () => {
-    mockGetUser.mockResolvedValue(makeUser({ role: 'admin' }));
+    mockGetUserByUsername.mockResolvedValue(makeUser({ role: 'admin' }));
     const result = await login({ username: 'admin', password: 'pass' });
     expect(result.error).toBe(ERRORS.INVALID_CREDENTIALS);
     expect(result.statusCode).toBe(401);
   });
 });
 
-describe('login — pending_first_login', () => {
+describe('login — pending_first_login (dev/beta)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    config.features.totpRequired = false;
-    mockGetUser.mockResolvedValue(makeUser({ status: 'pending_first_login' }));
+    config.features.passkeyRequired = false;
+    mockGetUserByUsername.mockResolvedValue(makeUser({ status: 'pending_first_login' }));
   });
 
   it('returns 401 for wrong OTP', async () => {
@@ -120,13 +125,11 @@ describe('login — pending_first_login', () => {
   });
 });
 
-describe('login — active user, totpRequired: false (dev/beta)', () => {
+describe('login — active user (dev/beta, passkeyRequired: false)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    config.features.totpRequired = false;
-    mockGetUser.mockResolvedValue(
-      makeUser({ status: 'active', totpEnabled: true, totpSecret: 'TOTP_SECRET' }),
-    );
+    config.features.passkeyRequired = false;
+    mockGetUserByUsername.mockResolvedValue(makeUser({ status: 'active' }));
   });
 
   it('returns 401 for wrong password', async () => {
@@ -135,77 +138,90 @@ describe('login — active user, totpRequired: false (dev/beta)', () => {
     expect(result.error).toBe(ERRORS.INVALID_CREDENTIALS);
   });
 
-  it('succeeds without TOTP even when user has it enabled (dev/beta)', async () => {
+  it('succeeds with correct password', async () => {
     mockVerifyPw.mockResolvedValue(true);
     const result = await login({ username: 'alice', password: 'correct' });
     expect(result.error).toBeUndefined();
     expect(result.response?.token).toBe('signed.jwt.token');
-    // TOTP not required in this env so no requireTotpSetup flag
-    expect(result.response?.requirePasswordChange).toBeUndefined();
   });
 });
 
-describe('login — active user, totpRequired: true (prod)', () => {
+// ── login() — prod (passkeyRequired: true) ────────────────────────────────────
+
+describe('login — passkeyRequired: true (prod)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    config.features.totpRequired = true;
-    mockGetUser.mockResolvedValue(
-      makeUser({ status: 'active', totpEnabled: true, totpSecret: 'TOTP_SECRET' }),
-    );
-    mockVerifyPw.mockResolvedValue(true);
+    config.features.passkeyRequired = true;
   });
 
-  it('returns 401 when TOTP code is missing', async () => {
-    const result = await login({ username: 'alice', password: 'correct' });
-    expect(result.error).toBe(ERRORS.INVALID_TOTP);
+  it('returns 401 when passkeyToken is missing', async () => {
+    const result = await login({ password: 'correct' });
+    expect(result.error).toBe(ERRORS.INVALID_PASSKEY);
+    expect(result.statusCode).toBe(401);
+    expect(mockGetUserById).not.toHaveBeenCalled();
+  });
+
+  it('returns 401 when passkeyToken is invalid', async () => {
+    mockVerifyPasskeyToken.mockRejectedValue(new Error('jwt expired'));
+    const result = await login({ passkeyToken: 'bad.token', password: 'correct' });
+    expect(result.error).toBe(ERRORS.INVALID_PASSKEY);
     expect(result.statusCode).toBe(401);
   });
 
-  it('returns 401 for an invalid TOTP code', async () => {
-    mockVerifyTotp.mockReturnValue(false);
-    const result = await login({ username: 'alice', password: 'correct', totpCode: '000000' });
-    expect(result.error).toBe(ERRORS.INVALID_TOTP);
+  it('returns 401 when user not found by userId from token', async () => {
+    mockVerifyPasskeyToken.mockResolvedValue('user-1');
+    mockGetUserById.mockResolvedValue(null);
+    const result = await login({ passkeyToken: 'valid.token', password: 'correct' });
+    expect(result.error).toBe(ERRORS.INVALID_CREDENTIALS);
+    expect(result.statusCode).toBe(401);
   });
 
-  it('succeeds with a valid TOTP code', async () => {
-    mockVerifyTotp.mockReturnValue(true);
-    const result = await login({ username: 'alice', password: 'correct', totpCode: '123456' });
+  it('returns 401 for wrong password after valid passkey', async () => {
+    mockVerifyPasskeyToken.mockResolvedValue('user-1');
+    mockGetUserById.mockResolvedValue(makeUser({ status: 'active' }));
+    mockVerifyPw.mockResolvedValue(false);
+    const result = await login({ passkeyToken: 'valid.token', password: 'wrong' });
+    expect(result.error).toBe(ERRORS.INVALID_CREDENTIALS);
+    expect(mockUpdateUser).toHaveBeenCalledWith('user-1', expect.objectContaining({ failedLoginAttempts: 1 }));
+  });
+
+  it('succeeds with valid passkey token and correct password', async () => {
+    mockVerifyPasskeyToken.mockResolvedValue('user-1');
+    mockGetUserById.mockResolvedValue(makeUser({ status: 'active' }));
+    mockVerifyPw.mockResolvedValue(true);
+    const result = await login({ passkeyToken: 'valid.token', password: 'correct' });
     expect(result.error).toBeUndefined();
     expect(result.response?.token).toBe('signed.jwt.token');
+    expect(result.response?.username).toBe('alice');
   });
 });
 
-describe('login — pending_totp_setup', () => {
+describe('login — pending_passkey_setup (prod)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    config.features.totpRequired = true;
-    mockGetUser.mockResolvedValue(makeUser({ status: 'pending_totp_setup' }));
+    config.features.passkeyRequired = true;
+    mockVerifyPasskeyToken.mockResolvedValue('user-1');
+    mockGetUserById.mockResolvedValue(makeUser({ status: 'pending_passkey_setup' }));
     mockVerifyPw.mockResolvedValue(true);
   });
 
-  it('returns requireTotpSetup flag when totpRequired is true', async () => {
-    const result = await login({ username: 'alice', password: 'correct' });
-    expect(result.response?.requireTotpSetup).toBe(true);
-  });
-
-  it('does not return requireTotpSetup when totpRequired is false', async () => {
-    config.features.totpRequired = false;
-    const result = await login({ username: 'alice', password: 'correct' });
-    expect(result.response?.requireTotpSetup).toBeUndefined();
+  it('returns requirePasskeySetup flag when passkeyRequired is true', async () => {
+    const result = await login({ passkeyToken: 'valid.token', password: 'correct' });
+    expect(result.response?.requirePasskeySetup).toBe(true);
   });
 });
 
 // ── login() — lockout + input validation ──────────────────────────────────────
 
-describe('login — account lockout', () => {
+describe('login — account lockout (dev/beta)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    config.features.totpRequired = false;
+    config.features.passkeyRequired = false;
   });
 
   it('returns 429 when lockedUntil is in the future', async () => {
     const future = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-    mockGetUser.mockResolvedValue(makeUser({ status: 'active', lockedUntil: future }));
+    mockGetUserByUsername.mockResolvedValue(makeUser({ status: 'active', lockedUntil: future }));
     mockVerifyPw.mockResolvedValue(true);
     const result = await login({ username: 'alice', password: 'correct' });
     expect(result.statusCode).toBe(429);
@@ -214,21 +230,21 @@ describe('login — account lockout', () => {
 
   it('allows login when lockedUntil is in the past', async () => {
     const past = new Date(Date.now() - 1000).toISOString();
-    mockGetUser.mockResolvedValue(makeUser({ status: 'active', lockedUntil: past }));
+    mockGetUserByUsername.mockResolvedValue(makeUser({ status: 'active', lockedUntil: past }));
     mockVerifyPw.mockResolvedValue(true);
     const result = await login({ username: 'alice', password: 'correct' });
     expect(result.response?.token).toBeDefined();
   });
 
   it('increments failedLoginAttempts on wrong password', async () => {
-    mockGetUser.mockResolvedValue(makeUser({ status: 'active', failedLoginAttempts: 2 }));
+    mockGetUserByUsername.mockResolvedValue(makeUser({ status: 'active', failedLoginAttempts: 2 }));
     mockVerifyPw.mockResolvedValue(false);
     await login({ username: 'alice', password: 'wrong' });
     expect(mockUpdateUser).toHaveBeenCalledWith('user-1', expect.objectContaining({ failedLoginAttempts: 3 }));
   });
 
   it('sets lockedUntil after 5 failed attempts', async () => {
-    mockGetUser.mockResolvedValue(makeUser({ status: 'active', failedLoginAttempts: 4 }));
+    mockGetUserByUsername.mockResolvedValue(makeUser({ status: 'active', failedLoginAttempts: 4 }));
     mockVerifyPw.mockResolvedValue(false);
     await login({ username: 'alice', password: 'wrong' });
     expect(mockUpdateUser).toHaveBeenCalledWith('user-1', expect.objectContaining({
@@ -238,7 +254,7 @@ describe('login — account lockout', () => {
   });
 
   it('resets counter on successful login', async () => {
-    mockGetUser.mockResolvedValue(makeUser({ status: 'active', failedLoginAttempts: 3 }));
+    mockGetUserByUsername.mockResolvedValue(makeUser({ status: 'active', failedLoginAttempts: 3 }));
     mockVerifyPw.mockResolvedValue(true);
     await login({ username: 'alice', password: 'correct' });
     expect(mockUpdateUser).toHaveBeenCalledWith('user-1', expect.objectContaining({
@@ -248,26 +264,22 @@ describe('login — account lockout', () => {
   });
 });
 
-describe('login — input validation (M3)', () => {
-  beforeEach(() => vi.clearAllMocks());
+describe('login — input validation (dev/beta)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    config.features.passkeyRequired = false;
+  });
 
   it('returns 401 for oversized username without hitting DynamoDB', async () => {
     const result = await login({ username: 'a'.repeat(31), password: 'Password1!' });
     expect(result.statusCode).toBe(401);
-    expect(mockGetUser).not.toHaveBeenCalled();
+    expect(mockGetUserByUsername).not.toHaveBeenCalled();
   });
 
   it('returns 401 for oversized password without hitting DynamoDB', async () => {
     const result = await login({ username: 'alice', password: 'x'.repeat(1025) });
     expect(result.statusCode).toBe(401);
-    expect(mockGetUser).not.toHaveBeenCalled();
-  });
-
-  it('returns 401 for non-string username', async () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result = await login({ username: 123 as any, password: 'pass' });
-    expect(result.statusCode).toBe(401);
-    expect(mockGetUser).not.toHaveBeenCalled();
+    expect(mockGetUserByUsername).not.toHaveBeenCalled();
   });
 });
 
@@ -293,10 +305,10 @@ describe('changePassword — validation', () => {
   });
 });
 
-describe('changePassword — totpRequired: false (dev/beta)', () => {
+describe('changePassword — passkeyRequired: false (dev/beta)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    config.features.totpRequired = false;
+    config.features.passkeyRequired = false;
   });
 
   it('sets status to active', async () => {
@@ -310,18 +322,18 @@ describe('changePassword — totpRequired: false (dev/beta)', () => {
   });
 });
 
-describe('changePassword — totpRequired: true (prod)', () => {
+describe('changePassword — passkeyRequired: true (prod)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    config.features.totpRequired = true;
+    config.features.passkeyRequired = true;
   });
 
-  it('sets status to pending_totp_setup', async () => {
+  it('sets status to pending_passkey_setup', async () => {
     const result = await changePassword('user-1', 'alice', { newPassword: 'StrongPass123!' });
     expect(result.error).toBeUndefined();
     expect(mockUpdateUser).toHaveBeenCalledWith(
       'user-1',
-      expect.objectContaining({ status: 'pending_totp_setup' }),
+      expect.objectContaining({ status: 'pending_passkey_setup' }),
     );
   });
 });

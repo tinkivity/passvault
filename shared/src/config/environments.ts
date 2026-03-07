@@ -7,7 +7,7 @@ export const devConfig: EnvironmentConfig = {
   subdomain: 'dev.pv',
   adminUsername: 'admin',
   features: {
-    totpRequired: false,
+    passkeyRequired: false,
     wafEnabled: false,
     powEnabled: false,
     honeypotEnabled: true,
@@ -30,7 +30,7 @@ export const betaConfig: EnvironmentConfig = {
   subdomain: 'beta.pv',
   adminUsername: 'admin',
   features: {
-    totpRequired: false,
+    passkeyRequired: false,
     wafEnabled: false,
     powEnabled: true,
     honeypotEnabled: true,
@@ -53,7 +53,7 @@ export const prodConfig: EnvironmentConfig = {
   subdomain: 'pv',
   adminUsername: 'admin',
   features: {
-    totpRequired: true,
+    passkeyRequired: true,
     wafEnabled: true,
     powEnabled: true,
     honeypotEnabled: true,

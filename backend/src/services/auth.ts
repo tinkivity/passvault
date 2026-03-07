@@ -7,25 +7,44 @@ import {
   type ChangePasswordResponse,
   type UserStatus,
 } from '@passvault/shared';
-import { getUserByUsername, updateUser } from '../utils/dynamodb.js';
+import { getUserById, getUserByUsername, updateUser } from '../utils/dynamodb.js';
 import { hashPassword, verifyPassword } from '../utils/crypto.js';
 import { validatePassword } from '../utils/password.js';
 import { signToken } from '../utils/jwt.js';
-import { verifyCode } from './totp.js';
+import { verifyPasskeyToken } from './passkey.js';
 import { config } from '../config.js';
 
 export async function login(request: LoginRequest): Promise<{ response?: LoginResponse; error?: string; statusCode?: number }> {
-  // M3: Guard against oversized inputs before hitting DynamoDB
-  if (typeof request.username !== 'string' || request.username.length > LIMITS.USERNAME_MAX_LENGTH) {
-    return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
-  }
   if (typeof request.password !== 'string' || request.password.length > LIMITS.MAX_PASSWORD_LENGTH) {
     return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
   }
 
-  const user = await getUserByUsername(request.username);
-  if (!user || user.role !== 'user') {
-    return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
+  let user;
+
+  if (config.features.passkeyRequired) {
+    // prod: passkey token identifies the user; password is the second factor
+    if (!request.passkeyToken) {
+      return { error: ERRORS.INVALID_PASSKEY, statusCode: 401 };
+    }
+    let userId: string;
+    try {
+      userId = await verifyPasskeyToken(request.passkeyToken);
+    } catch {
+      return { error: ERRORS.INVALID_PASSKEY, statusCode: 401 };
+    }
+    user = await getUserById(userId);
+    if (!user || user.role !== 'user') {
+      return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
+    }
+  } else {
+    // dev/beta: traditional username + password
+    if (typeof request.username !== 'string' || request.username.length > LIMITS.USERNAME_MAX_LENGTH) {
+      return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
+    }
+    user = await getUserByUsername(request.username);
+    if (!user || user.role !== 'user') {
+      return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
+    }
   }
 
   // H2: Check account lockout
@@ -50,17 +69,6 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
     if (!passwordValid) {
       await recordFailedAttempt(user.userId, user.failedLoginAttempts ?? 0);
       return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
-    }
-
-    // Check TOTP if required and user is active
-    if (config.features.totpRequired && user.status === 'active' && user.totpEnabled) {
-      if (!request.totpCode) {
-        return { error: ERRORS.INVALID_TOTP, statusCode: 401 };
-      }
-      if (!user.totpSecret || !verifyCode(request.totpCode, user.totpSecret)) {
-        await recordFailedAttempt(user.userId, user.failedLoginAttempts ?? 0);
-        return { error: ERRORS.INVALID_TOTP, statusCode: 401 };
-      }
     }
   }
 
@@ -87,8 +95,8 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
 
   if (user.status === 'pending_first_login') {
     response.requirePasswordChange = true;
-  } else if (user.status === 'pending_totp_setup' && config.features.totpRequired) {
-    response.requireTotpSetup = true;
+  } else if (user.status === 'pending_passkey_setup' && config.features.passkeyRequired) {
+    response.requirePasskeySetup = true;
   }
 
   return { response };
@@ -105,7 +113,7 @@ export async function changePassword(
   }
 
   const newHash = await hashPassword(request.newPassword);
-  const nextStatus: UserStatus = config.features.totpRequired ? 'pending_totp_setup' : 'active';
+  const nextStatus: UserStatus = config.features.passkeyRequired ? 'pending_passkey_setup' : 'active';
 
   await updateUser(userId, {
     passwordHash: newHash,

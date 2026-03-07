@@ -8,11 +8,11 @@ This guide provides complete instructions for deploying PassVault to AWS using A
 - Frontend: React SPA hosted on S3 + CloudFront
 - Backend: API Gateway + Lambda functions (Node.js)
 - Storage: S3 (encrypted files) + DynamoDB (user metadata)
-- Security: AWS WAF with Bot Control, TOTP-based 2FA (prod only)
+- Security: AWS WAF with Bot Control, passkey-based 2FA / WebAuthn (prod only)
 - Encryption: Client-side end-to-end encryption (Argon2id + AES-256-GCM)
 
 **Estimated Monthly Cost:**
-- Dev/Beta: ~$0 (no WAF, no TOTP, within AWS free tier)
+- Dev/Beta: ~$0 (no WAF, no passkey requirement, within AWS free tier)
 - Prod: $9-11 for 3-10 users (primarily AWS WAF costs)
 
 See [SPECIFICATION.md Section 2.5](SPECIFICATION.md) for full environment comparison.
@@ -84,7 +84,7 @@ passvault/
 │   ├── src/
 │   │   ├── types/                # EnvironmentConfig, User, Auth, Admin, Vault, Challenge, Api types
 │   │   ├── config/               # Environment configs, password policy, crypto params
-│   │   ├── constants.ts          # API paths, PoW config, TOTP config, error messages, limits
+│   │   ├── constants.ts          # API paths, PoW config, passkey config, error messages, limits
 │   │   └── index.ts              # Barrel export
 │   ├── package.json
 │   └── tsconfig.json
@@ -107,15 +107,15 @@ passvault/
 ├── backend/                      # Lambda function code
 │   ├── src/
 │   │   ├── handlers/
-│   │   │   ├── auth.ts           # POST /auth/login, change-password, totp/*
-│   │   │   ├── admin.ts          # POST /admin/login, change-password, totp/*, users; GET /admin/users
+│   │   │   ├── auth.ts           # POST /auth/login, change-password, passkey/*
+│   │   │   ├── admin.ts          # POST /admin/login, change-password, passkey/*, users; GET /admin/users
 │   │   │   ├── vault.ts          # GET/PUT /vault, GET /vault/download
 │   │   │   ├── challenge.ts      # GET /challenge
 │   │   │   └── health.ts         # GET /health
 │   │   ├── services/
 │   │   │   ├── auth.ts           # login(), changePassword()
 │   │   │   ├── admin.ts          # adminLogin(), createUserInvitation(), listUsers()
-│   │   │   ├── totp.ts           # generateSecret(), generateQrUri(), verifyCode()
+│   │   │   ├── passkey.ts        # challenge JWTs, passkey tokens, WebAuthn verify/register
 │   │   │   ├── vault.ts          # getVault(), putVault(), downloadVault()
 │   │   │   └── challenge.ts      # generateChallenge(), validateSolution()
 │   │   ├── middleware/
@@ -286,7 +286,7 @@ All Lambda functions use **ARM_64 (Graviton)** architecture for ~20% cost saving
 - Timeout: 10 seconds
 - Reserved concurrency: 3 (prod only)
 - Handler: `auth.handler`
-- Purpose: Login, password change, TOTP setup/verify
+- Purpose: Login, password change, passkey challenge/verify/register
 
 **Admin Function:** `passvault-admin-{env}`
 - Runtime: Node.js 22.x (ARM64)
@@ -344,13 +344,17 @@ GET  /health             → Health check Lambda
 
 POST /auth/login         → Auth Lambda
 POST /auth/change-password → Auth Lambda
-POST /auth/totp/setup    → Auth Lambda
-POST /auth/totp/verify   → Auth Lambda
+GET  /auth/passkey/challenge          → Auth Lambda
+POST /auth/passkey/verify             → Auth Lambda
+GET  /auth/passkey/register/challenge → Auth Lambda
+POST /auth/passkey/register           → Auth Lambda
 
 POST /admin/login        → Admin Lambda
 POST /admin/change-password → Admin Lambda
-POST /admin/totp/setup   → Admin Lambda
-POST /admin/totp/verify  → Admin Lambda
+GET  /admin/passkey/challenge          → Admin Lambda
+POST /admin/passkey/verify             → Admin Lambda
+GET  /admin/passkey/register/challenge → Admin Lambda
+POST /admin/passkey/register           → Admin Lambda
 POST /admin/users        → Admin Lambda
 GET  /admin/users        → Admin Lambda
 
@@ -437,13 +441,15 @@ A Route 53 alias A record is created automatically and **deleted on `cdk destroy
 
 ### CDK Context Variables Reference
 
-All `cdk` commands accept context variables via `--context key=value`. The three variables below are the only ones used by the PassVault CDK app:
+All `cdk` commands accept context variables via `--context key=value`:
 
 | Variable | Required | Applies to | Description |
 |---|---|---|---|
 | `env` | **Yes** | All commands | Deployment environment. Must be `dev`, `beta`, or `prod`. Selects the environment config from `shared/src/config/environments.ts` and names the CloudFormation stack (`PassVault-Dev`, `PassVault-Beta`, `PassVault-Prod`). |
 | `domain` | No | All commands | Root domain name of an existing Route 53 hosted zone (e.g. `example.com`). When provided and `cloudFrontEnabled` is true for the selected environment, CDK creates a `CertificateStack` in `us-east-1` and configures CloudFront with a custom subdomain (`pv.example.com` for prod, `beta.pv.example.com` for beta, `dev.pv.example.com` for dev). Omit to use the auto-generated CloudFront URL. |
 | `alertEmail` | No | `env=prod` only | Email address to subscribe to the SNS alert topic. Receives traffic spike alarms and daily cost alerts. After deploy, AWS sends a confirmation email — the subscription is inactive until the link is clicked. Has no effect in dev or beta (no SNS topic is created). |
+| `passkeyRpId` | `env=prod` | `env=prod` | WebAuthn relying party ID — the domain users will authenticate from (e.g. `vault.example.com`). Required when `passkeyRequired=true`. Can also be set via the `PASSKEY_RP_ID` environment variable before running `cdk deploy`. |
+| `passkeyOrigin` | `env=prod` | `env=prod` | WebAuthn relying party origin — the full origin URL (e.g. `https://vault.example.com`). Required when `passkeyRequired=true`. Can also be set via `PASSKEY_ORIGIN` environment variable. |
 
 **Minimal (dev):**
 ```bash
@@ -457,7 +463,12 @@ cdk deploy --context env=beta --context domain=example.com
 
 **Full production:**
 ```bash
-cdk deploy --all --context env=prod --context domain=example.com --context alertEmail=you@example.com
+cdk deploy --all \
+  --context env=prod \
+  --context domain=example.com \
+  --context alertEmail=you@example.com \
+  --context passkeyRpId=vault.example.com \
+  --context passkeyOrigin=https://vault.example.com
 ```
 
 ---
@@ -532,7 +543,7 @@ export const prodConfig: EnvironmentConfig = {
   adminUsername: 'admin',
 
   features: {
-    totpRequired: true,      // Mandatory in prod
+    passkeyRequired: true,   // Mandatory in prod
     wafEnabled: true,         // Enabled in prod
     powEnabled: true,
     honeypotEnabled: true,
@@ -551,7 +562,7 @@ export const prodConfig: EnvironmentConfig = {
 };
 
 // Dev and beta configs override specific values:
-// - features.totpRequired = false
+// - features.passkeyRequired = false
 // - features.wafEnabled = false
 // - Relaxed session timeouts (5min view, 10min edit)
 // - Smaller Lambda memory (256 MB)
@@ -644,10 +655,11 @@ You will be prompted to set a new password on first login.
 ```bash
 cd ../frontend
 
-# Configure API endpoint (Vite uses VITE_ prefix)
+# Configure API endpoint and feature flags (Vite uses VITE_ prefix)
 cat > .env.production << EOF
 VITE_ENVIRONMENT=prod
 VITE_API_BASE_URL=https://d1234567890.cloudfront.net
+VITE_PASSKEY_REQUIRED=true
 EOF
 
 # Build production bundle
@@ -697,11 +709,10 @@ For the complete testing guide — unit tests, type checking, the dev UI testing
    - Username: `admin`
    - Password: (printed to console by `scripts/init-admin.ts`)
 4. Change password immediately
-5. **Prod only**: Set up TOTP (scan QR code with authenticator app)
-6. **Prod only**: Verify TOTP code
-7. Access admin dashboard
+5. **Prod only**: Register passkey (biometric/PIN/security key) on the passkey setup page
+6. Access admin dashboard
 
-> In dev/beta environments, TOTP setup is skipped — admin goes directly to the dashboard after changing the password.
+> In dev/beta environments, passkey setup is skipped — admin goes directly to the dashboard after changing the password.
 
 ### 7.2 Create User Accounts
 
@@ -753,10 +764,10 @@ aws logs tail /aws/wafv2/passvault-waf-prod --follow
 Deploy separate, fully isolated stacks for dev, beta, and production:
 
 ```bash
-# Deploy dev stack (~$0/month, no WAF, no TOTP)
+# Deploy dev stack (~$0/month, no WAF, no passkey required)
 cdk deploy PassVault-Dev --context env=dev
 
-# Deploy beta stack (~$0/month, no WAF, no TOTP, with CloudFront)
+# Deploy beta stack (~$0/month, no WAF, no passkey required, with CloudFront)
 cdk deploy PassVault-Beta --context env=beta --context domain=example.com
 
 # Deploy prod stack (~$8-10/month, full security)
@@ -773,13 +784,13 @@ All environments are defined in a single file (`shared/src/config/environments.t
 ```typescript
 // Key differences between environments:
 //
-// Dev:  totpRequired=false, wafEnabled=false, powEnabled=false
+// Dev:  passkeyRequired=false, wafEnabled=false, powEnabled=false
 //       cloudFrontEnabled=false, relaxed timeouts, 256MB Lambda
 //
-// Beta: totpRequired=false, wafEnabled=false, powEnabled=true
+// Beta: passkeyRequired=false, wafEnabled=false, powEnabled=true
 //       cloudFrontEnabled=true, relaxed timeouts, 256MB Lambda
 //
-// Prod: totpRequired=true, wafEnabled=true, powEnabled=true
+// Prod: passkeyRequired=true, wafEnabled=true, powEnabled=true
 //       cloudFrontEnabled=true, strict timeouts, 512MB Lambda
 ```
 
@@ -968,7 +979,7 @@ aws s3 sync s3://passvault-files-prod-xyz123/ \
 Dev and beta stacks are designed to run at ~$0/month by default:
 
 - **WAF**: Disabled (saves $8/month per stack)
-- **TOTP**: Disabled (no authenticator app needed during development)
+- **Passkeys**: Disabled (no WebAuthn device needed during development)
 - **Lambda memory**: 256 MB (reduced from 512 MB)
 - **CloudWatch log retention**: 1 week (dev) / 2 weeks (beta)
 - **DynamoDB PITR**: Disabled

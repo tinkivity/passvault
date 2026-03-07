@@ -15,9 +15,9 @@ This document provides a comprehensive breakdown of PassVault's monthly operatio
 
 ## Cost by Environment
 
-PassVault supports three deployment environments (see [SPECIFICATION.md Section 2.5](SPECIFICATION.md) for details). Dev and beta disable WAF and TOTP, running entirely within AWS free tier:
+PassVault supports three deployment environments (see [SPECIFICATION.md Section 2.5](SPECIFICATION.md) for details). Dev and beta disable WAF and passkeys, running entirely within AWS free tier:
 
-| Environment | WAF | TOTP | CloudFront | Other Services | **Monthly Total** |
+| Environment | WAF | Passkeys | CloudFront | Other Services | **Monthly Total** |
 |-------------|-----|------|------------|----------------|-------------------|
 | **Dev** | $0 *(disabled)* | N/A *(disabled)* | $0 *(optional)* | ~$0 *(free tier)* | **~$0.00** |
 | **Beta** | $0 *(disabled)* | N/A *(disabled)* | ~$0 *(free tier)* | ~$0 *(free tier)* | **~$0.00** |
@@ -162,7 +162,7 @@ Total: $0.0023 + $0.0048 + $0.015 = $0.0221 ≈ $0.02/month
 | 1,000 users| 0.001        | 510,000       | 30,000         | ✅ Yes    | **$0.17**    |
 
 **User Record Size:**
-- ~3 KB per user (userId, username, passwordHash, role, status, TOTP secret, salt, timestamps)
+- ~3 KB per user (userId, username, passwordHash, role, status, passkey fields, salt, timestamps)
 
 **Calculation Example (100 users):**
 ```
@@ -515,7 +515,7 @@ Dev and beta environments are pre-configured to minimize costs via the environme
 | Setting | Dev/Beta | Prod |
 |---------|----------|------|
 | WAF | Disabled (saves $8/month) | Enabled |
-| TOTP | Disabled | Mandatory |
+| Passkeys | Disabled | Mandatory |
 | Lambda memory | 256 MB | 512 MB |
 | Log retention | 1 week (dev) / 2 weeks (beta) | 30 days |
 | DynamoDB PITR | Disabled | Enabled |
@@ -802,7 +802,7 @@ aws budgets create-budget \
 ✅ **Enable CloudFront compression** - 60-80% data transfer savings
 ✅ **Use S3 + CloudFront hosting** - Leverages AWS free tier maximally
 ✅ **Monitor costs weekly** - Set up CloudWatch alarms at $20/month threshold
-✅ **Use dev/beta stacks for development** - WAF and TOTP disabled by default, ~$0/month
+✅ **Use dev/beta stacks for development** - WAF and passkeys disabled by default, ~$0/month
 ✅ **Start with default settings** - Optimize only if costs exceed $20/month
 
 ### Cost-Effectiveness

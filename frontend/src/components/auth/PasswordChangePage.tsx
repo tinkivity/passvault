@@ -5,6 +5,8 @@ import { useAuthContext } from '../../context/AuthContext.js';
 import { validatePassword } from '@passvault/shared';
 import { Layout, Card, Button, Input, ErrorMessage } from '../layout/Layout.js';
 
+const PASSKEY_REQUIRED = import.meta.env.VITE_PASSKEY_REQUIRED === 'true';
+
 interface PasswordChangePageProps {
   isAdmin?: boolean;
 }
@@ -46,8 +48,13 @@ export function PasswordChangePage({ isAdmin = false }: PasswordChangePageProps)
   };
 
   const handleSuccessConfirm = () => {
-    logout();
-    navigate(isAdmin || role === 'admin' ? '/admin/login' : '/login', { replace: true });
+    if (PASSKEY_REQUIRED) {
+      // Keep JWT in context so the passkey setup page can use it immediately
+      navigate(isAdmin || role === 'admin' ? '/admin/passkey-setup' : '/passkey-setup', { replace: true });
+    } else {
+      logout();
+      navigate(isAdmin || role === 'admin' ? '/admin/login' : '/login', { replace: true });
+    }
   };
 
   if (success) {
@@ -56,11 +63,13 @@ export function PasswordChangePage({ isAdmin = false }: PasswordChangePageProps)
         <Card>
           <h1 className="text-xl font-bold mb-4 text-center">Password Changed</h1>
           <p className="text-center text-sm text-base-content/70 mb-6">
-            Your password has been set successfully. Please log in with your new password.
+            {PASSKEY_REQUIRED
+              ? 'Your password has been set successfully. Next, register your passkey.'
+              : 'Your password has been set successfully. Please log in with your new password.'}
           </p>
           <div className="flex justify-center">
             <Button onClick={handleSuccessConfirm}>
-              Continue to Login
+              {PASSKEY_REQUIRED ? 'Set Up Passkey' : 'Continue to Login'}
             </Button>
           </div>
         </Card>

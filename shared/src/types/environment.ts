@@ -1,7 +1,7 @@
 export type EnvironmentName = 'dev' | 'beta' | 'prod';
 
 export interface FeatureFlags {
-  totpRequired: boolean;
+  passkeyRequired: boolean;
   wafEnabled: boolean;
   powEnabled: boolean;
   honeypotEnabled: boolean;
