@@ -339,28 +339,28 @@ All Lambda functions use **ARM_64 (Graviton)** architecture for ~20% cost saving
 
 **Endpoints:**
 ```
-GET  /challenge          → Challenge Lambda
-GET  /health             → Health check Lambda
+GET  /api/challenge          → Challenge Lambda
+GET  /api/health             → Health check Lambda
 
-POST /auth/login         → Auth Lambda
-POST /auth/change-password → Auth Lambda
-GET  /auth/passkey/challenge          → Auth Lambda
-POST /auth/passkey/verify             → Auth Lambda
-GET  /auth/passkey/register/challenge → Auth Lambda
-POST /auth/passkey/register           → Auth Lambda
+POST /api/auth/login         → Auth Lambda
+POST /api/auth/change-password → Auth Lambda
+GET  /api/auth/passkey/challenge          → Auth Lambda
+POST /api/auth/passkey/verify             → Auth Lambda
+GET  /api/auth/passkey/register/challenge → Auth Lambda
+POST /api/auth/passkey/register           → Auth Lambda
 
-POST /admin/login        → Admin Lambda
-POST /admin/change-password → Admin Lambda
-GET  /admin/passkey/challenge          → Admin Lambda
-POST /admin/passkey/verify             → Admin Lambda
-GET  /admin/passkey/register/challenge → Admin Lambda
-POST /admin/passkey/register           → Admin Lambda
-POST /admin/users        → Admin Lambda
-GET  /admin/users        → Admin Lambda
+POST /api/admin/login        → Admin Lambda
+POST /api/admin/change-password → Admin Lambda
+GET  /api/admin/passkey/challenge          → Admin Lambda
+POST /api/admin/passkey/verify             → Admin Lambda
+GET  /api/admin/passkey/register/challenge → Admin Lambda
+POST /api/admin/passkey/register           → Admin Lambda
+POST /api/admin/users        → Admin Lambda
+GET  /api/admin/users        → Admin Lambda
 
-GET  /vault              → Vault Lambda
-PUT  /vault              → Vault Lambda
-GET  /vault/download     → Vault Lambda
+GET  /api/vault              → Vault Lambda
+PUT  /api/vault              → Vault Lambda
+GET  /api/vault/download     → Vault Lambda
 ```
 
 ### 5.5 AWS WAF (Prod Only)
@@ -407,9 +407,7 @@ GET  /vault/download     → Vault Lambda
 - HTTP/2 and HTTP/3 enabled
 - Compression: Enabled (gzip, brotli)
 - Default root object: `index.html`
-- Error pages:
-  - 404 → /index.html (for SPA routing)
-  - 403 → /index.html
+- SPA routing: A CloudFront Function (`passvault-spa-{env}`) on the default behavior rewrites all paths without a file extension to `/index.html`, so React Router routes (`/admin/login`, `/vault`, etc.) are served correctly. API paths (`/api/*`) are matched by the more-specific behavior first and never reach this function.
 
 **Custom domain (optional):** When `--context domain=example.com` is provided, the distribution is configured with a custom subdomain and an ACM certificate. Subdomains per environment:
 
@@ -422,13 +420,11 @@ GET  /vault/download     → Vault Lambda
 A Route 53 alias A record is created automatically and **deleted on `cdk destroy`**.
 
 **Behaviors:**
-- Default (`*`) → S3 bucket (frontend)
-- `/challenge`, `/health` → API Gateway (GET only)
-- `/auth/*`, `/admin/*`, `/vault/*`, `/vault` → API Gateway (backend)
+- Default (`*`) → S3 bucket (frontend); SPA function rewrites extensionless paths to `/index.html`
+- `/api/*` → API Gateway (all methods, no cache); covers all backend endpoints
 - Cache policies:
-  - Static assets: 1 year
-  - API responses: No cache (CacheDisabled)
-  - HTML: 5 minutes
+  - Static assets: Optimized (long TTL, immutable)
+  - API responses (`/api/*`): No cache (CacheDisabled)
 
 ---
 
@@ -453,12 +449,19 @@ All `cdk` commands accept context variables via `--context key=value`:
 
 **Minimal (dev):**
 ```bash
-cdk deploy --context env=dev
+cdk deploy PassVault-Dev --context env=dev
 ```
 
 **With custom domain (beta):**
+
+When `domain` is provided and `cloudFrontEnabled` is `true` (beta and prod), CDK synthesises **two stacks**: a `CertificateStack` in `us-east-1` (CloudFront requires ACM certificates there) and the main `PassVaultStack` in `eu-central-1`. Both must be deployed together. Use `--all` or name both stacks explicitly:
+
 ```bash
-cdk deploy --context env=beta --context domain=example.com
+# Recommended — CDK resolves the dependency order automatically
+cdk deploy --all --context env=beta --context domain=example.com
+
+# Equivalent explicit form
+cdk deploy PassVault-Beta-Cert PassVault-Beta --context env=beta --context domain=example.com
 ```
 
 **Full production:**
@@ -593,15 +596,25 @@ cdk deploy PassVault-Beta --context env=beta
 cdk deploy PassVault-Prod --context env=prod --context alertEmail=you@example.com --require-approval broadening
 ```
 
-**With custom domain** (requires an existing Route 53 hosted zone for `example.com`):
+**With custom domain** (requires an existing Route 53 hosted zone for the domain):
+
+Providing `--context domain=...` when `cloudFrontEnabled` is `true` causes CDK to synthesise a second stack — `{StackName}-Cert` — deployed to `us-east-1` to hold the ACM certificate (CloudFront requires certificates in that region). **Both stacks must be deployed.** Use `--all` so CDK handles the dependency order automatically:
+
 ```bash
-# This deploys two stacks: PassVault-Prod-Cert (us-east-1) and PassVault-Prod (eu-central-1)
-cdk deploy --all --context env=prod --context domain=example.com --context alertEmail=you@example.com --require-approval broadening
+# Beta with custom domain — deploys PassVault-Beta-Cert (us-east-1) then PassVault-Beta (eu-central-1)
+cdk deploy --all --context env=beta --context domain=example.com
+
+# Prod with custom domain — deploys PassVault-Prod-Cert (us-east-1) then PassVault-Prod (eu-central-1)
+cdk deploy --all \
+  --context env=prod \
+  --context domain=example.com \
+  --context alertEmail=you@example.com \
+  --require-approval broadening
 ```
 
-The certificate stack (`PassVault-Prod-Cert`) must be deployed before the main stack. Running `cdk deploy --all` handles ordering automatically.
+If you name a single stack (e.g. `cdk deploy PassVault-Beta`) when a domain is provided, the cert stack is silently skipped and the deployment will fail or produce a distribution without a custom domain.
 
-> **Note:** CDK performs a Route 53 hosted zone lookup during synthesis. AWS credentials must have `route53:ListHostedZonesByName` permission, and the hosted zone for `domain` must already exist.
+> **Note:** CDK performs a Route 53 hosted zone lookup during synthesis. AWS credentials must have `route53:ListHostedZonesByName` permission, and the hosted zone for the domain must already exist.
 
 **Expected output (prod with custom domain):**
 ```
@@ -650,15 +663,21 @@ You will be prompted to set a new password on first login.
 
 > **Dev stack note:** `scripts/dev-ui.sh` runs `init-admin.ts` automatically on first launch if the admin account is absent. You do not need to run it manually for dev.
 
+> **Beta stack note:** `scripts/beta-deploy-ui.sh` automates admin initialisation and the full frontend deploy (build → S3 sync → CloudFront invalidation). See [scripts/beta-deploy-ui.sh](scripts/beta-deploy-ui.sh) for usage.
+
 ### Step 5: Build and Deploy Frontend
 
 ```bash
 cd ../frontend
 
 # Configure API endpoint and feature flags (Vite uses VITE_ prefix)
+# VITE_API_BASE_URL must be EMPTY for beta/prod — API calls are made as relative paths
+# (/api/auth/login, etc.) which CloudFront routes to API Gateway via the /api/* behavior.
+# Setting it to the CloudFront or API Gateway URL causes CORS failures when the page
+# is served from a custom domain whose Origin doesn't match the Lambda's FRONTEND_ORIGIN.
 cat > .env.production << EOF
 VITE_ENVIRONMENT=prod
-VITE_API_BASE_URL=https://d1234567890.cloudfront.net
+VITE_API_BASE_URL=
 VITE_PASSKEY_REQUIRED=true
 EOF
 
@@ -679,14 +698,14 @@ aws cloudfront create-invalidation \
 ### Step 6: Verify Deployment
 
 ```bash
-# Test health endpoint (no /api/ prefix — CloudFront routes directly)
-curl https://d1234567890.cloudfront.net/health
+# Test health endpoint (all API paths are under /api/)
+curl https://d1234567890.cloudfront.net/api/health
 
 # Expected response:
 # {"success":true,"data":{"status":"ok","environment":"prod","timestamp":"2026-02-17T..."}}
 
 # Test challenge endpoint
-curl https://d1234567890.cloudfront.net/challenge
+curl https://d1234567890.cloudfront.net/api/challenge
 
 # Expected response:
 # {"success":true,"data":{"nonce":"...","difficulty":16,"timestamp":1234567890,"ttl":60}}
@@ -704,7 +723,7 @@ For the complete testing guide — unit tests, type checking, the dev UI testing
 ### 7.1 Admin First Login
 
 1. Navigate to CloudFront URL (or API Gateway URL for dev)
-2. Click "Admin Login" (or use `/admin` route)
+2. Click "Admin Login" (or navigate to `/admin/login`)
 3. Enter credentials:
    - Username: `admin`
    - Password: (printed to console by `scripts/init-admin.ts`)
@@ -768,7 +787,8 @@ Deploy separate, fully isolated stacks for dev, beta, and production:
 cdk deploy PassVault-Dev --context env=dev
 
 # Deploy beta stack (~$0/month, no WAF, no passkey required, with CloudFront)
-cdk deploy PassVault-Beta --context env=beta --context domain=example.com
+# --all is required when domain is provided: deploys PassVault-Beta-Cert (us-east-1) + PassVault-Beta
+cdk deploy --all --context env=beta --context domain=example.com
 
 # Deploy prod stack (~$8-10/month, full security)
 cdk deploy --all --context env=prod --context domain=example.com --require-approval broadening

@@ -199,28 +199,41 @@ The dev stack has `passkeyRequired: false` and `powEnabled: false`, so the login
 
 ## 4. API Smoke Tests
 
-After deploying any environment, verify the API directly with curl. Use `--profile` if your default credentials lack access.
+`scripts/smoke-test.ts` runs automated API tests against any deployed stack. It reads the API URL from CloudFormation outputs, solves PoW challenges automatically, and exits 0 on success / 1 on failure.
 
 ```bash
-# Get the API URL (add --profile <name> if needed)
-API=$(aws cloudformation describe-stacks \
-  --stack-name PassVault-Dev \
+# Public + rejection tests only (no credentials needed)
+ENVIRONMENT=beta npx tsx scripts/smoke-test.ts
+
+# Full suite including admin login and user listing
+ENVIRONMENT=beta npx tsx scripts/smoke-test.ts --password <admin-password>
+
+# Override the API base URL (skips CloudFormation lookup)
+ENVIRONMENT=beta npx tsx scripts/smoke-test.ts \
+  --base-url https://beta.pv.example.com \
+  --password <admin-password>
+
+# Named AWS profile + custom region
+AWS_PROFILE=my-profile ENVIRONMENT=prod npx tsx scripts/smoke-test.ts \
   --region eu-central-1 \
-  --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue | [0]" \
-  --output text)
-API="${API%/}"   # strip trailing slash
-
-# Health check — should return {"success":true,"data":{"status":"ok",...}}
-curl -s "$API/health" | jq .
-
-# Challenge endpoint — should return a nonce and difficulty
-curl -s "$API/challenge" | jq .
-
-# Admin login (substitute the OTP shown by init-admin.ts)
-curl -s -X POST "$API/admin/login" \
-  -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"<otp>"}' | jq .
+  --password <admin-password>
 ```
+
+**What is tested:**
+
+| Test | Auth required |
+|---|---|
+| `GET /api/health` → `{status:"ok"}` | No |
+| `GET /api/challenge` → nonce/difficulty/timestamp/ttl | No |
+| `POST /api/admin/login` with wrong password → 401 | No |
+| `POST /api/auth/login` with wrong password → 401 | No |
+| `GET /api/vault` without token → 401 | No |
+| `GET /api/admin/users` without token → 401 | No |
+| `POST /api/admin/login` with real password → token | `--password` |
+| `GET /api/admin/users` → list | `--password` |
+| `GET /api/admin/users` with bad token → 401 | `--password` |
+
+PoW is solved automatically using the same algorithm as the frontend worker (SHA-256 with leading zero bits). Dev stacks skip PoW entirely; beta/prod solve to the correct difficulty per endpoint.
 
 ---
 
@@ -231,7 +244,7 @@ Before promoting from dev → beta → prod, verify:
 - [ ] `npm test` passes (all unit tests green)
 - [ ] `npm run typecheck` passes (no type errors in any package)
 - [ ] `npm run build` succeeds (shared → backend → frontend)
-- [ ] Health check returns `{"success":true}` on the target environment
+- [ ] `ENVIRONMENT=<env> npx tsx scripts/smoke-test.ts --password <pw>` passes (all 9 tests)
 - [ ] Admin login and first-password-change flow works end-to-end
 - [ ] User creation, login, vault save/load, and backup download work
 - [ ] (Prod only) Passkey registration and login work correctly end-to-end

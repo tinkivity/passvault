@@ -15,9 +15,10 @@
 #   1. Reads ApiUrl and UsersTableName from the deployed CloudFormation stack
 #   2. Checks DynamoDB for the admin user; if absent, runs init-admin.ts and
 #      prints the one-time password
-#   3. Writes frontend/.env.local with VITE_* variables
-#   4. Starts `npm run dev` in the frontend/ directory
-#   5. On exit (Ctrl-C or normal termination): kills the dev server and
+#   3. Runs smoke-test.ts to verify public endpoints and auth rejection
+#   4. Writes frontend/.env.local with VITE_* variables
+#   5. Starts `npm run dev` in the frontend/ directory
+#   6. On exit (Ctrl-C or normal termination): kills the dev server and
 #      deletes frontend/.env.local
 
 set -euo pipefail
@@ -146,6 +147,13 @@ if [[ "$ADMIN_COUNT" -eq 0 ]]; then
 else
   echo "→ Admin account already exists — skipping initialisation."
 fi
+
+# ── Run smoke tests ───────────────────────────────────────────────────────────
+echo "→ Running smoke tests against $API_URL ..."
+ENVIRONMENT="$CDK_ENV" \
+  npx tsx "$REPO_ROOT/scripts/smoke-test.ts" \
+    --base-url "$API_URL" \
+    --region "$REGION"
 
 # ── Write frontend/.env.local ─────────────────────────────────────────────────
 # Timeout values match devConfig in shared/src/config/environments.ts.

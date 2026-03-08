@@ -2,10 +2,7 @@ import {
   startAuthentication,
   startRegistration,
 } from '@simplewebauthn/browser';
-import type {
-  AuthenticationResponseJSON,
-  RegistrationResponseJSON,
-} from '@simplewebauthn/browser';
+import type { PasskeyAssertionJSON, PasskeyAttestationJSON } from '@passvault/shared';
 
 // Decode the challenge bytes from the challenge JWT payload (no signature verification —
 // the server verifies the JWT on both ends). The challenge is base64url-encoded inside
@@ -24,9 +21,12 @@ function extractChallengeFromJwt(jwt: string): string {
 // Returns the raw assertion to be submitted to POST /auth/passkey/verify.
 export async function authenticateWithPasskey(
   challengeJwt: string,
-): Promise<AuthenticationResponseJSON> {
+): Promise<PasskeyAssertionJSON> {
   const challenge = extractChallengeFromJwt(challengeJwt);
-  return startAuthentication({ optionsJSON: { challenge, rpId: undefined } });
+  const result = await startAuthentication({ optionsJSON: { challenge, rpId: undefined } });
+  // Cast clientExtensionResults: the library types it as AuthenticationExtensionsClientOutputs
+  // (no index signature) but the value is always a plain object compatible with Record<string, unknown>.
+  return { ...result, clientExtensionResults: result.clientExtensionResults as Record<string, unknown> };
 }
 
 // Step 5 of onboarding: present the browser WebAuthn dialog for registration.
@@ -35,9 +35,9 @@ export async function registerPasskey(
   challengeJwt: string,
   userId: string,
   username: string,
-): Promise<RegistrationResponseJSON> {
+): Promise<PasskeyAttestationJSON> {
   const challenge = extractChallengeFromJwt(challengeJwt);
-  return startRegistration({
+  const result = await startRegistration({
     optionsJSON: {
       challenge,
       rp: { name: 'PassVault' },
@@ -58,4 +58,5 @@ export async function registerPasskey(
       attestation: 'none',
     },
   });
+  return { ...result, clientExtensionResults: result.clientExtensionResults as Record<string, unknown> };
 }

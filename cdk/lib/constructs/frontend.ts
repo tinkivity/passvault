@@ -35,6 +35,27 @@ export class FrontendConstruct extends Construct {
       originPath: `/${env}`,
     });
 
+    // CloudFront Function for SPA routing.
+    // Rewrites any request whose URI has no file extension to /index.html so
+    // that React Router routes (e.g. /admin-login, /vault) are served by the
+    // SPA entry point.  Static assets (e.g. /assets/index-abc.js) pass through
+    // unchanged.  This runs on the default (S3) behavior only — API paths
+    // (/admin/*, /auth/*, etc.) are matched by more-specific behaviors first
+    // and never reach this function, so API 4xx responses are never rewritten.
+    const spaFunction = new cloudfront.Function(this, 'SpaFunction', {
+      functionName: `passvault-spa-${env}`,
+      runtime: cloudfront.FunctionRuntime.JS_2_0,
+      code: cloudfront.FunctionCode.fromInline(
+        `async function handler(event) {
+  var request = event.request;
+  var uri = request.uri;
+  if (uri.lastIndexOf('.') > uri.lastIndexOf('/')) { return request; }
+  request.uri = '/index.html';
+  return request;
+}`,
+      ),
+    });
+
     this.distribution = new cloudfront.Distribution(this, 'Distribution', {
       comment: `PassVault CDN - ${env}`,
       defaultRootObject: 'index.html',
@@ -49,46 +70,16 @@ export class FrontendConstruct extends Construct {
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
         compress: true,
+        functionAssociations: [{
+          function: spaFunction,
+          eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
+        }],
       },
 
       additionalBehaviors: {
-        // API requests — no caching
-        '/challenge': {
-          origin: apiOrigin,
-          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-          cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
-          originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
-          allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
-        },
-        '/health': {
-          origin: apiOrigin,
-          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-          cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
-          originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
-          allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
-        },
-        '/auth/*': {
-          origin: apiOrigin,
-          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-          cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
-          originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
-          allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
-        },
-        '/admin/*': {
-          origin: apiOrigin,
-          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-          cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
-          originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
-          allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
-        },
-        '/vault/*': {
-          origin: apiOrigin,
-          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-          cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
-          originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
-          allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
-        },
-        '/vault': {
+        // All API requests live under /api/* — no SPA routes share this prefix,
+        // so browser navigations to /admin/*, /vault, etc. fall through to S3.
+        '/api/*': {
           origin: apiOrigin,
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
           cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
@@ -97,21 +88,6 @@ export class FrontendConstruct extends Construct {
         },
       },
 
-      // SPA: route 404/403 back to index.html
-      errorResponses: [
-        {
-          httpStatus: 404,
-          responseHttpStatus: 200,
-          responsePagePath: '/index.html',
-          ttl: cdk.Duration.seconds(0),
-        },
-        {
-          httpStatus: 403,
-          responseHttpStatus: 200,
-          responsePagePath: '/index.html',
-          ttl: cdk.Duration.seconds(0),
-        },
-      ],
     });
 
     if (fullDomain && domain) {

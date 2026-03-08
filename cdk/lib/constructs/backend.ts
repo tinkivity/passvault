@@ -217,14 +217,17 @@ export class BackendConstruct extends Construct {
       responseHeaders: corsHeaders,
     });
 
-    // Routes
-    const challenge = this.api.root.addResource('challenge');
+    // Routes — all nested under /api so CloudFront can route /api/* to API GW
+    // without conflicting with SPA paths (/admin/login, /vault, etc.)
+    const apiRoot = this.api.root.addResource('api');
+
+    const challenge = apiRoot.addResource('challenge');
     challenge.addMethod('GET', new apigateway.LambdaIntegration(this.challengeFn));
 
-    const health = this.api.root.addResource('health');
+    const health = apiRoot.addResource('health');
     health.addMethod('GET', new apigateway.LambdaIntegration(this.healthFn));
 
-    const auth = this.api.root.addResource('auth');
+    const auth = apiRoot.addResource('auth');
     const authLogin = auth.addResource('login');
     authLogin.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
     const authChangePassword = auth.addResource('change-password');
@@ -239,7 +242,7 @@ export class BackendConstruct extends Construct {
     authPasskeyRegisterChallenge.addMethod('GET', new apigateway.LambdaIntegration(this.authFn));
     authPasskeyRegister.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
 
-    const admin = this.api.root.addResource('admin');
+    const admin = apiRoot.addResource('admin');
     const adminLogin = admin.addResource('login');
     adminLogin.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
     const adminChangePassword = admin.addResource('change-password');
@@ -259,7 +262,7 @@ export class BackendConstruct extends Construct {
     const adminVault = admin.addResource('vault');
     adminVault.addMethod('GET', new apigateway.LambdaIntegration(this.adminFn));
 
-    const vault = this.api.root.addResource('vault');
+    const vault = apiRoot.addResource('vault');
     vault.addMethod('GET', new apigateway.LambdaIntegration(this.vaultFn));
     vault.addMethod('PUT', new apigateway.LambdaIntegration(this.vaultFn));
     const vaultDownload = vault.addResource('download');

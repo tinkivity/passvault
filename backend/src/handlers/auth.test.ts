@@ -250,6 +250,7 @@ describe('POST /auth/passkey/verify', () => {
     vi.clearAllMocks();
     mockValidatePow.mockReturnValue({ valid: true, errorResponse: null });
     mockValidateHoneypot.mockReturnValue({ valid: true, errorResponse: null });
+    vi.mocked(verifyChallengeJwt).mockResolvedValue('base64urlchallenge');
   });
 
   it('returns 403 when PoW fails', async () => {
@@ -333,6 +334,7 @@ describe('POST /auth/passkey/register', () => {
     vi.clearAllMocks();
     config.features.passkeyRequired = true;
     mockValidatePow.mockReturnValue({ valid: true, errorResponse: null });
+    vi.mocked(verifyChallengeJwt).mockResolvedValue('base64urlchallenge');
   });
 
   it('returns 400 when attestation is invalid', async () => {

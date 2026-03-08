@@ -19,7 +19,7 @@ const config = getEnvironmentConfig(env);
 let certificate: acm.ICertificate | undefined;
 if (config.features.cloudFrontEnabled && domain) {
   const certStack = new CertificateStack(app, `${config.stackName}-Cert`, {
-    env: { region: 'us-east-1' },
+    env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: 'us-east-1' },
     crossRegionReferences: true,
     domain,
     subdomain: config.subdomain,
@@ -28,7 +28,7 @@ if (config.features.cloudFrontEnabled && domain) {
 }
 
 new PassVaultStack(app, config.stackName, config, {
-  env: { region: config.region },
+  env: { account: process.env.CDK_DEFAULT_ACCOUNT, region: config.region },
   crossRegionReferences: true,
   certificate,
   domain,

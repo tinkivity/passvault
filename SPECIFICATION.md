@@ -185,7 +185,7 @@ async function solveProofOfWork(challenge) {
 // API call wrapper with PoW
 async function apiCall(endpoint, options) {
   // Get challenge from server
-  const challenge = await fetch('/challenge').then(r => r.json());
+  const challenge = await fetch('/api/challenge').then(r => r.json());
 
   // Solve PoW
   const solution = await solveProofOfWork(challenge);
@@ -204,7 +204,7 @@ async function apiCall(endpoint, options) {
 ```
 
 **Backend (Lambda) Changes:**
-- New endpoint: `GET /challenge` - returns PoW challenge
+- New endpoint: `GET /api/challenge` - returns PoW challenge
 - All protected endpoints validate PoW solution before processing
 - Track failed PoW attempts per IP → escalate to IP block
 - Cache challenges in memory (short TTL: 60 seconds)
@@ -446,7 +446,7 @@ Protection Layers:
 
 ### 4.1 Public Endpoints (Bot Protection)
 
-- **GET /challenge**
+- **GET /api/challenge**
   - Request: None
   - Response: `{ "nonce": "string", "difficulty": "number", "timestamp": "number", "ttl": 60 }`
   - Returns a proof-of-work challenge that client must solve
@@ -458,7 +458,7 @@ Protection Layers:
   - **Rate limited**: 100 requests per minute per IP
   - Challenge response cached and reused for same IP (avoid regeneration spam)
 
-- **GET /health**
+- **GET /api/health**
   - Request: None
   - Response: `{ "status": "ok" }`
   - Health check endpoint for monitoring
@@ -477,17 +477,17 @@ Protection Layers:
 
 ### 4.2 Admin Endpoints
 
-- **GET /admin/passkey/challenge**
+- **GET /api/admin/passkey/challenge**
   - Response: `{ "challengeJwt": "string" }` — signed JWT containing the WebAuthn challenge bytes
   - No auth required; no PoW required
 
-- **POST /admin/passkey/verify** (PoW HIGH + honeypot)
+- **POST /api/admin/passkey/verify** (PoW HIGH + honeypot)
   - Request: `{ "challengeJwt": "string", "assertion": PasskeyAssertionJSON }`
   - Response: `{ "passkeyToken": "string", "username": "string", "encryptionSalt": "string" }`
   - Verifies the passkey assertion against the stored credential
   - Returns a short-lived passkey token (5 min) encoding the userId; used with POST /admin/login
 
-- **POST /admin/login** (PoW HIGH + honeypot)
+- **POST /api/admin/login** (PoW HIGH + honeypot)
   - Request (prod): `{ "passkeyToken": "string", "password": "string" }` — passkeyToken identifies the admin
   - Request (dev/beta): `{ "username": "string", "password": "string" }` — direct username+password
   - Response:
@@ -497,23 +497,23 @@ Protection Layers:
   - Returns JWT token with admin role and encryption salt for key derivation
   - Flags if password change or passkey setup is required
 
-- **POST /admin/change-password** (Requires admin auth)
+- **POST /api/admin/change-password** (Requires admin auth)
   - Request: `{ "newPassword": "string" }`
   - Response: `{ "success": true }` or error with policy violations
   - Validates new password against security policy
   - Updates admin password; sets status to "pending_passkey_setup" (prod) or "active" (dev/beta)
 
-- **GET /admin/passkey/register/challenge** (Requires admin auth, status must be "pending_passkey_setup")
+- **GET /api/admin/passkey/register/challenge** (Requires admin auth, status must be "pending_passkey_setup")
   - Response: `{ "challengeJwt": "string" }`
 
-- **POST /admin/passkey/register** (Requires admin auth, status must be "pending_passkey_setup", PoW HIGH)
+- **POST /api/admin/passkey/register** (Requires admin auth, status must be "pending_passkey_setup", PoW HIGH)
   - Request: `{ "challengeJwt": "string", "attestation": PasskeyAttestationJSON }`
   - Response: `{ "success": true }`
   - Verifies and stores the passkey credential; changes admin status to "active"
 
 > **Passkey endpoints (dev/beta)**: When `passkeyRequired=false`, the passkey challenge/verify/register endpoints are still deployed but will not be exercised by the UI. POST /admin/login accepts `username` + `password` directly.
 
-- **POST /admin/users** (Requires admin auth, blocked if admin status is not "active")
+- **POST /api/admin/users** (Requires admin auth, blocked if admin status is not "active")
   - Request: `{ "username": "string" }`
   - Response: `{ "success": true, "username": "string", "oneTimePassword": "string", "userId": "string" }`
   - Creates new user invitation
@@ -523,21 +523,21 @@ Protection Layers:
   - User status set to "pending_first_login"
   - Returns OTP to display to admin (only shown once)
 
-- **GET /admin/users** (Requires admin auth, blocked if admin status is not "active")
+- **GET /api/admin/users** (Requires admin auth, blocked if admin status is not "active")
   - Response: `{ "users": [{ "userId": "string", "username": "string", "status": "string", "createdAt": "timestamp", "lastLoginAt": "timestamp", "vaultSizeBytes": number | null }] }`
   - Returns list of all users with their status (pending_first_login / pending_passkey_setup / active) and current vault file size
 
 ### 4.3 User Authentication Endpoints
 
-- **GET /auth/passkey/challenge**
+- **GET /api/auth/passkey/challenge**
   - Response: `{ "challengeJwt": "string" }`
   - No auth required; no PoW required
 
-- **POST /auth/passkey/verify** (PoW MEDIUM + honeypot)
+- **POST /api/auth/passkey/verify** (PoW MEDIUM + honeypot)
   - Request: `{ "challengeJwt": "string", "assertion": PasskeyAssertionJSON }`
   - Response: `{ "passkeyToken": "string", "username": "string", "encryptionSalt": "string" }`
 
-- **POST /auth/login** (PoW MEDIUM + honeypot)
+- **POST /api/auth/login** (PoW MEDIUM + honeypot)
   - Request (prod): `{ "passkeyToken": "string", "password": "string" }` — passkeyToken from verify step
   - Request (dev/beta): `{ "username": "string", "password": "string" }` — direct
   - Response:
@@ -546,16 +546,16 @@ Protection Layers:
     - Active login: `{ "token": "string", "username": "string", "encryptionSalt": "string (base64)" }`
   - Returns JWT token with user ID and role, plus encryption salt for key derivation
 
-- **POST /auth/change-password** (Requires user auth)
+- **POST /api/auth/change-password** (Requires user auth)
   - Request: `{ "newPassword": "string" }`
   - Response: `{ "success": true }` or error with policy violations
   - Validates new password against security policy
   - Updates user password; sets status to "pending_passkey_setup" (prod) or "active" (dev/beta)
 
-- **GET /auth/passkey/register/challenge** (Requires user auth, status must be "pending_passkey_setup")
+- **GET /api/auth/passkey/register/challenge** (Requires user auth, status must be "pending_passkey_setup")
   - Response: `{ "challengeJwt": "string" }`
 
-- **POST /auth/passkey/register** (Requires user auth, status must be "pending_passkey_setup", PoW MEDIUM)
+- **POST /api/auth/passkey/register** (Requires user auth, status must be "pending_passkey_setup", PoW MEDIUM)
   - Request: `{ "challengeJwt": "string", "attestation": PasskeyAttestationJSON }`
   - Response: `{ "success": true }`
   - Verifies and stores the passkey credential; changes user status to "active"
@@ -582,7 +582,7 @@ All endpoints require user authentication via Authorization header (Bearer token
   - User ID extracted from auth token ensures users can only update their own file
   - Blocked if user status is not "active" (must complete password change and passkey setup)
 
-- **GET /vault/download**
+- **GET /api/vault/download**
   - Response: `{ "encryptedContent": "string (base64)", "encryptionSalt": "string (base64)", "algorithm": "argon2id+aes-256-gcm", "parameters": { "argon2": { "memory": 65536, "iterations": 3, "parallelism": 4, "hashLength": 32 }, "aes": { "keySize": 256, "ivSize": 96, "tagSize": 128 } }, "lastModified": "timestamp", "username": "string" }`
   - Returns complete recovery package with encrypted file and all metadata needed for offline decryption
   - Includes: encrypted content, salt, algorithm details, Argon2id + AES parameters (nested)
@@ -804,13 +804,13 @@ PassVault implements **complete separation** between admin privileges and user d
   - After first admin login and password change, admin access is controlled by the chosen password
 
 - **Role-Based Access Control (RBAC)**:
-  - Admin role: access to /admin/* endpoints
-  - User role: access to /vault endpoints
+  - Admin role: access to /api/admin/* endpoints
+  - User role: access to /api/vault endpoints
   - JWT token includes role claim
   - Single admin account only (enforced at application level)
 
 - **User Authorization**:
-  - All /vault endpoints require valid user authentication (passkey + password in prod)
+  - All /api/vault endpoints require valid user authentication (passkey + password in prod)
   - User ID extracted from JWT token, never from request body
   - Vault operations blocked if user status is not "active"
   - User must complete both password change and passkey setup before accessing vault
@@ -819,7 +819,7 @@ PassVault implements **complete separation** between admin privileges and user d
     - PUT /vault → writes `user-{tokenUserId}.enc`
 
 - **Admin Authorization**:
-  - All /admin/* endpoints (except login, passkey/challenge, passkey/verify, change-password, passkey/register/*) require valid admin authentication
+  - All /api/admin/* endpoints (except login, passkey/challenge, passkey/verify, change-password, passkey/register/*) require valid admin authentication
   - JWT token must have role="admin"
   - Admin operations (create users, list users) blocked if admin status is not "active"
   - Admin must complete both password change and passkey setup before accessing admin functions
@@ -1107,24 +1107,24 @@ Stacks share nothing — they can be deployed and destroyed independently.
   - Counter-based replay protection (updated on every login)
 - [ ] Implement admin endpoints (with environment-conditional passkeys):
   - POST /admin/login (handle initial password; in prod, accept passkeyToken + password; in dev/beta, accept username + password; return requirePasswordChange flag)
-  - POST /admin/change-password (with policy validation; set status to "active" directly when passkeys disabled, otherwise "pending_passkey_setup")
-  - GET /admin/passkey/challenge (stateless signed challenge JWT; return 404 when passkeys disabled)
-  - POST /admin/passkey/verify (verify passkey credential, return passkeyToken + username; return 404 when passkeys disabled)
-  - GET /admin/passkey/register/challenge (Bearer JWT required, status=pending_passkey_setup; return 404 when passkeys disabled)
-  - POST /admin/passkey/register (store credential, activate account; return 404 when passkeys disabled)
-  - POST /admin/users (create user invitation with OTP generation, blocked if admin not active)
-  - GET /admin/users (list all users, blocked if admin not active)
+  - POST /api/admin/change-password (with policy validation; set status to "active" directly when passkeys disabled, otherwise "pending_passkey_setup")
+  - GET /api/admin/passkey/challenge (stateless signed challenge JWT; return 404 when passkeys disabled)
+  - POST /api/admin/passkey/verify (verify passkey credential, return passkeyToken + username; return 404 when passkeys disabled)
+  - GET /api/admin/passkey/register/challenge (Bearer JWT required, status=pending_passkey_setup; return 404 when passkeys disabled)
+  - POST /api/admin/passkey/register (store credential, activate account; return 404 when passkeys disabled)
+  - POST /api/admin/users (create user invitation with OTP generation, blocked if admin not active)
+  - GET /api/admin/users (list all users, blocked if admin not active)
 - [ ] Implement user authentication endpoints (with environment-conditional passkeys):
   - POST /auth/login (handle OTP first login; in prod, accept passkeyToken + password; in dev/beta, accept username + password; return requirePasswordChange flag)
-  - POST /auth/change-password (with policy validation; set status to "active" directly when passkeys disabled, otherwise "pending_passkey_setup")
-  - GET /auth/passkey/challenge (stateless signed challenge JWT; return 404 when passkeys disabled)
-  - POST /auth/passkey/verify (verify passkey credential, return passkeyToken + username + encryptionSalt; return 404 when passkeys disabled)
-  - GET /auth/passkey/register/challenge (Bearer JWT required, status=pending_passkey_setup; return 404 when passkeys disabled)
-  - POST /auth/passkey/register (store credential, activate account; return 404 when passkeys disabled)
+  - POST /api/auth/change-password (with policy validation; set status to "active" directly when passkeys disabled, otherwise "pending_passkey_setup")
+  - GET /api/auth/passkey/challenge (stateless signed challenge JWT; return 404 when passkeys disabled)
+  - POST /api/auth/passkey/verify (verify passkey credential, return passkeyToken + username + encryptionSalt; return 404 when passkeys disabled)
+  - GET /api/auth/passkey/register/challenge (Bearer JWT required, status=pending_passkey_setup; return 404 when passkeys disabled)
+  - POST /api/auth/passkey/register (store credential, activate account; return 404 when passkeys disabled)
 - [ ] Implement vault endpoints:
   - GET /vault (read user's file)
   - PUT /vault (update user's file)
-  - GET /vault/download (download complete recovery package with metadata)
+  - GET /api/vault/download (download complete recovery package with metadata)
 - [ ] Create React frontend:
   - **Encryption module**:
     - Derive encryption key from password using Argon2id on login

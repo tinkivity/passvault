@@ -30,7 +30,7 @@ export interface PasskeyAuthenticatorAssertionResponse {
   clientDataJSON: string;
   authenticatorData: string;
   signature: string;
-  userHandle: string | null;
+  userHandle?: string | null;
 }
 
 export interface PasskeyAssertionJSON {

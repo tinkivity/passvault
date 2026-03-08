@@ -222,13 +222,14 @@ export class ApiClient {
     return this.request<ListUsersResponse>(API_PATHS.ADMIN_USERS, {
       method: 'GET',
       token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
     });
   }
 
   async downloadUserVault(userId: string, token: string): Promise<VaultDownloadResponse> {
     return this.request<VaultDownloadResponse>(
       `${API_PATHS.ADMIN_USER_VAULT}?userId=${encodeURIComponent(userId)}`,
-      { method: 'GET', token },
+      { method: 'GET', token, powDifficulty: POW_CONFIG.DIFFICULTY.HIGH },
     );
   }
 

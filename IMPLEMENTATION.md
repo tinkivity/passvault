@@ -164,11 +164,11 @@ Lambda entry points. Thin layer: parse event → call middleware → call servic
 
 ```
 backend/src/handlers/
-├── auth.ts               # POST /auth/login, /auth/change-password, /auth/passkey/*
-├── admin.ts              # POST /admin/login, /admin/change-password, /admin/passkey/*, /admin/users; GET /admin/users
-├── vault.ts              # GET /vault, PUT /vault, GET /vault/download
-├── challenge.ts          # GET /challenge
-└── health.ts             # GET /health
+├── auth.ts               # POST /api/auth/login, /api/auth/change-password, /api/auth/passkey/*
+├── admin.ts              # POST /api/admin/login, /api/admin/change-password, /api/admin/passkey/*, /api/admin/users; GET /api/admin/users
+├── vault.ts              # GET /api/vault, PUT /api/vault, GET /api/vault/download
+├── challenge.ts          # GET /api/challenge
+└── health.ts             # GET /api/health
 ```
 
 Each handler is a router: parses `event.httpMethod` + `event.path`, delegates to the right service function.
