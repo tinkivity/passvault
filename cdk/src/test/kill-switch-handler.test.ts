@@ -1,11 +1,20 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 
-const { mockSend } = vi.hoisted(() => ({ mockSend: vi.fn() }));
+const { mockLambdaSend, mockSchedulerSend } = vi.hoisted(() => ({
+  mockLambdaSend: vi.fn(),
+  mockSchedulerSend: vi.fn(),
+}));
 
-vi.mock('@aws-sdk/client-wafv2', () => ({
-  WAFV2Client: vi.fn(() => ({ send: mockSend })),
-  GetWebACLCommand: vi.fn(),
-  UpdateWebACLCommand: vi.fn(),
+vi.mock('@aws-sdk/client-lambda', () => ({
+  LambdaClient: vi.fn(() => ({ send: mockLambdaSend })),
+  PutFunctionConcurrencyCommand: vi.fn(),
+  GetFunctionConcurrencyCommand: vi.fn(),
+}));
+
+vi.mock('@aws-sdk/client-scheduler', () => ({
+  SchedulerClient: vi.fn(() => ({ send: mockSchedulerSend })),
+  CreateScheduleCommand: vi.fn(),
+  FlexibleTimeWindowMode: { OFF: 'OFF' },
 }));
 
 import { handler } from '../../lib/kill-switch-handler.js';
@@ -14,10 +23,17 @@ import { handler } from '../../lib/kill-switch-handler.js';
 // Helpers
 // ---------------------------------------------------------------------------
 
+const FN_ARNS = [
+  'arn:aws:lambda:eu-central-1:123:function:challenge',
+  'arn:aws:lambda:eu-central-1:123:function:auth',
+].join(',');
+
 const ENV_VARS = {
-  WAF_ACL_NAME: 'passvault-waf-prod',
-  WAF_ACL_ID: 'test-acl-id',
-  KILL_SWITCH_RULE: 'KillSwitchBlock',
+  FUNCTION_ARNS: FN_ARNS,
+  REENABLE_FUNCTION_ARN: 'arn:aws:lambda:eu-central-1:123:function:reenable',
+  SCHEDULER_ROLE_ARN: 'arn:aws:iam::123:role/scheduler-role',
+  SCHEDULER_GROUP_NAME: 'passvault-kill-switch-prod',
+  REENABLE_AFTER_MINUTES: '4',
 };
 
 function snsEvent(state: string): { Records: { Sns: { Message: string } }[] } {
@@ -32,45 +48,6 @@ function snsEvent(state: string): { Records: { Sns: { Message: string } }[] } {
   };
 }
 
-const BASE_VISIBILITY = {
-  CloudWatchMetricsEnabled: true,
-  MetricName: 'test',
-  SampledRequestsEnabled: false,
-};
-
-const WEBACL_COUNT_MODE = {
-  WebACL: {
-    Rules: [
-      {
-        Name: 'KillSwitchBlock',
-        Priority: 0,
-        Action: { Count: {} },
-        Statement: { ByteMatchStatement: {} },
-        VisibilityConfig: BASE_VISIBILITY,
-      },
-    ],
-    DefaultAction: { Allow: {} },
-    VisibilityConfig: BASE_VISIBILITY,
-  },
-  LockToken: 'test-lock-token',
-};
-
-const WEBACL_BLOCK_MODE = {
-  ...WEBACL_COUNT_MODE,
-  WebACL: {
-    ...WEBACL_COUNT_MODE.WebACL,
-    Rules: [
-      {
-        Name: 'KillSwitchBlock',
-        Priority: 0,
-        Action: { Block: {} },
-        Statement: { ByteMatchStatement: {} },
-        VisibilityConfig: BASE_VISIBILITY,
-      },
-    ],
-  },
-};
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -78,7 +55,9 @@ const WEBACL_BLOCK_MODE = {
 describe('kill-switch handler', () => {
   beforeEach(() => {
     Object.assign(process.env, ENV_VARS);
-    mockSend.mockReset();
+    mockLambdaSend.mockReset();
+    mockSchedulerSend.mockReset();
+    mockSchedulerSend.mockResolvedValue({}); // CreateSchedule always succeeds by default
   });
 
   afterEach(() => {
@@ -89,69 +68,87 @@ describe('kill-switch handler', () => {
 
   it('ignores a non-ALARM SNS message (state=OK)', async () => {
     await handler(snsEvent('OK'));
-    expect(mockSend).not.toHaveBeenCalled();
+    expect(mockLambdaSend).not.toHaveBeenCalled();
   });
 
   it('ignores a non-ALARM SNS message (state=INSUFFICIENT_DATA)', async () => {
     await handler(snsEvent('INSUFFICIENT_DATA'));
-    expect(mockSend).not.toHaveBeenCalled();
+    expect(mockLambdaSend).not.toHaveBeenCalled();
   });
 
-  it('calls GetWebACL and UpdateWebACL when state is ALARM', async () => {
-    mockSend
-      .mockResolvedValueOnce(WEBACL_COUNT_MODE) // GetWebACL
-      .mockResolvedValueOnce({}); // UpdateWebACL
+  it('calls PutFunctionConcurrency(0) for all functions when state is ALARM', async () => {
+    // GetFunctionConcurrency returns non-zero → kill switch not yet active
+    mockLambdaSend.mockResolvedValueOnce({ ReservedConcurrentExecutions: 5 }); // GetFunctionConcurrency
+    mockLambdaSend.mockResolvedValue({}); // PutFunctionConcurrency for each fn
+
     await handler(snsEvent('ALARM'));
-    expect(mockSend).toHaveBeenCalledTimes(2);
+
+    // 1 GetFunctionConcurrency + 2 PutFunctionConcurrency (one per ARN in FN_ARNS)
+    expect(mockLambdaSend).toHaveBeenCalledTimes(3);
   });
 
-  it('is idempotent: skips UpdateWebACL when kill switch already active', async () => {
-    mockSend.mockResolvedValueOnce(WEBACL_BLOCK_MODE); // GetWebACL — already blocking
+  it('creates an EventBridge schedule for auto re-enablement', async () => {
+    mockLambdaSend.mockResolvedValueOnce({ ReservedConcurrentExecutions: 5 });
+    mockLambdaSend.mockResolvedValue({});
+
     await handler(snsEvent('ALARM'));
-    // Only GetWebACL is called; UpdateWebACL is skipped
-    expect(mockSend).toHaveBeenCalledTimes(1);
+
+    expect(mockSchedulerSend).toHaveBeenCalledTimes(1);
   });
 
-  it('throws when WAF_ACL_NAME env var is missing', async () => {
-    delete process.env.WAF_ACL_NAME;
+  it('is idempotent: skips PutFunctionConcurrency when concurrency already 0', async () => {
+    // GetFunctionConcurrency returns 0 → kill switch already active
+    mockLambdaSend.mockResolvedValueOnce({ ReservedConcurrentExecutions: 0 });
+
+    await handler(snsEvent('ALARM'));
+
+    // Only GetFunctionConcurrency is called; no PutFunctionConcurrency
+    expect(mockLambdaSend).toHaveBeenCalledTimes(1);
+  });
+
+  it('still creates schedule even when concurrency already 0 (idempotent re-schedule)', async () => {
+    mockLambdaSend.mockResolvedValueOnce({ ReservedConcurrentExecutions: 0 });
+
+    await handler(snsEvent('ALARM'));
+
+    expect(mockSchedulerSend).toHaveBeenCalledTimes(1);
+  });
+
+  it('throws when FUNCTION_ARNS env var is missing', async () => {
+    delete process.env.FUNCTION_ARNS;
     await expect(handler(snsEvent('ALARM'))).rejects.toThrow('Missing required env vars');
   });
 
-  it('throws when WAF_ACL_ID env var is missing', async () => {
-    delete process.env.WAF_ACL_ID;
+  it('throws when REENABLE_FUNCTION_ARN env var is missing', async () => {
+    delete process.env.REENABLE_FUNCTION_ARN;
+    mockLambdaSend.mockResolvedValueOnce({ ReservedConcurrentExecutions: 5 });
     await expect(handler(snsEvent('ALARM'))).rejects.toThrow('Missing required env vars');
   });
 
-  it('throws when KILL_SWITCH_RULE env var is missing', async () => {
-    delete process.env.KILL_SWITCH_RULE;
+  it('throws when SCHEDULER_ROLE_ARN env var is missing', async () => {
+    delete process.env.SCHEDULER_ROLE_ARN;
+    mockLambdaSend.mockResolvedValueOnce({ ReservedConcurrentExecutions: 5 });
     await expect(handler(snsEvent('ALARM'))).rejects.toThrow('Missing required env vars');
   });
 
-  it('throws when GetWebACL returns no WebACL object', async () => {
-    mockSend.mockResolvedValueOnce({ LockToken: 'token' }); // WebACL absent
-    await expect(handler(snsEvent('ALARM'))).rejects.toThrow('GetWebACL returned no WebACL');
-  });
-
-  it('throws when GetWebACL returns no LockToken', async () => {
-    mockSend.mockResolvedValueOnce({ WebACL: WEBACL_COUNT_MODE.WebACL }); // LockToken absent
-    await expect(handler(snsEvent('ALARM'))).rejects.toThrow('GetWebACL returned no WebACL');
-  });
-
-  it('throws when the kill switch rule name is not found in the WebACL', async () => {
-    const noMatchWebACL = {
-      WebACL: {
-        ...WEBACL_COUNT_MODE.WebACL,
-        Rules: [{ Name: 'SomeOtherRule', Priority: 99, Action: { Count: {} }, Statement: {}, VisibilityConfig: BASE_VISIBILITY }],
-      },
-      LockToken: 'token',
-    };
-    mockSend.mockResolvedValueOnce(noMatchWebACL);
-    await expect(handler(snsEvent('ALARM'))).rejects.toThrow('not found in WebACL');
+  it('throws when SCHEDULER_GROUP_NAME env var is missing', async () => {
+    delete process.env.SCHEDULER_GROUP_NAME;
+    mockLambdaSend.mockResolvedValueOnce({ ReservedConcurrentExecutions: 5 });
+    await expect(handler(snsEvent('ALARM'))).rejects.toThrow('Missing required env vars');
   });
 
   it('silently skips a non-JSON SNS message without throwing', async () => {
     const badEvent = { Records: [{ Sns: { Message: 'not-valid-json' } }] };
     await expect(handler(badEvent)).resolves.toBeUndefined();
-    expect(mockSend).not.toHaveBeenCalled();
+    expect(mockLambdaSend).not.toHaveBeenCalled();
+  });
+
+  it('does not throw when schedule creation fails (non-fatal)', async () => {
+    mockLambdaSend.mockResolvedValueOnce({ ReservedConcurrentExecutions: 5 });
+    mockLambdaSend.mockResolvedValue({});
+    mockSchedulerSend.mockRejectedValueOnce(new Error('Scheduler unavailable'));
+
+    // Should not throw — scheduling failure is non-fatal
+    await expect(handler(snsEvent('ALARM'))).resolves.toBeUndefined();
   });
 });

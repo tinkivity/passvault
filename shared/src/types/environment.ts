@@ -2,10 +2,17 @@ export type EnvironmentName = 'dev' | 'beta' | 'prod';
 
 export interface FeatureFlags {
   passkeyRequired: boolean;
-  wafEnabled: boolean;
   powEnabled: boolean;
   honeypotEnabled: boolean;
   cloudFrontEnabled: boolean;
+  killSwitchEnabled: boolean;
+}
+
+export interface ThrottleConfig {
+  /** Sustained request rate limit (req/s) applied at the API Gateway stage level. */
+  rateLimit: number;
+  /** Burst request rate limit (req/s) applied at the API Gateway stage level. */
+  burstLimit: number;
 }
 
 export interface SessionConfig {
@@ -23,6 +30,8 @@ export interface LambdaConfig {
 export interface MonitoringConfig {
   logRetentionDays: number;
   costAlertThreshold: number;
+  /** How many minutes after kill switch activates before Lambda concurrency is auto-restored. */
+  killSwitchReEnableMinutes: number;
 }
 
 export interface EnvironmentConfig {
@@ -35,4 +44,5 @@ export interface EnvironmentConfig {
   session: SessionConfig;
   lambda: LambdaConfig;
   monitoring: MonitoringConfig;
+  throttle: ThrottleConfig;
 }

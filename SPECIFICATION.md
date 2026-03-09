@@ -116,36 +116,22 @@ PassVault is an invitation-only, personal secure text storage application where 
   - Bots/Crawlers: Expensive to compute, makes mass requests cost-prohibitive
   - DDoS attacks: Significantly more expensive to execute
 
-**Layer 2: AWS WAF (Web Application Firewall)**
-- **Deployed at**: CloudFront (if used) or API Gateway level
-- **Rules Enabled**:
-  - AWS Managed Rules - Bot Control (detects common bots, scrapers, crawlers)
-  - AWS Managed Rules - Known Bad Inputs (SQL injection, XSS attempts)
-  - Rate-based rule: Block IPs exceeding 100 requests per 5 minutes
-  - Geographic restrictions (optional): Block countries if needed
-  - Custom rules for suspicious patterns
-- **Challenge Actions**:
-  - Suspected bots → CAPTCHA challenge (AWS WAF CAPTCHA)
-  - Known bad bots → Block immediately
-  - Rate limit violators → Temporary block (1 hour)
-- **Cost Optimization**: WAF costs ~$8/month baseline, saves potentially $100s in Lambda/API costs
+**Layer 2: CloudFront Flat-Rate Plan (Edge WAF + DDoS + Bot Management)**
+- **Deployed at**: CloudFront edge (all requests pass through before reaching API Gateway)
+- **Included in**: CloudFront flat-rate Free plan ($0/month, enrolled in AWS console — not CDK)
+- **Protection provided**:
+  - AWS-managed WAF with bot control rules
+  - DDoS protection (Shield Standard)
+  - Bot management and analytics
+- **Key property**: Blocked requests do not count against the monthly allowance
+- For full details and enrollment instructions, see [BOTPROTECTION.md](BOTPROTECTION.md)
 
 **Layer 3: API Gateway Rate Limiting**
-- **Per-IP Throttling**:
-  - Burst limit: 20 requests per second
-  - Steady-state limit: 10 requests per second per IP
+- **Stage-Level Throttling** (configurable per environment in `shared/src/config/environments.ts`):
+  - Burst limit: 20 requests per second (default all envs)
+  - Steady-state limit: 10 requests per second (default all envs)
   - Exceeding limits returns HTTP 429 (Too Many Requests)
-- **Per-User Throttling** (authenticated):
-  - Burst limit: 10 requests per second
-  - Steady-state limit: 5 requests per second per user
-- **Usage Plans**: Different tiers for admin vs regular users
-- **API Key Requirement** (optional): Require API key in addition to auth token
-
-**Layer 4: Cloudflare Turnstile (Optional, if using Cloudflare)**
-- **Privacy-Friendly CAPTCHA Alternative**: Invisible challenge for most users
-- **Placement**: Login page only (one-time verification)
-- **Fallback**: If not using Cloudflare, use AWS WAF CAPTCHA instead
-- **Cost**: Free tier available (1M requests/month)
+- Throttle values are set via `config.throttle.burstLimit` / `config.throttle.rateLimit`
 
 **Layer 5: Honeypot & Bot Traps**
 - **Hidden Form Fields**: CSS-hidden fields that bots fill but humans don't
@@ -210,27 +196,14 @@ async function apiCall(endpoint, options) {
 - Cache challenges in memory (short TTL: 60 seconds)
 
 **Infrastructure Changes:**
-- Deploy AWS WAF with Bot Control managed rules
-- Configure CloudFront (if used) with WAF
-- Enable API Gateway throttling and usage plans
-- Optional: Add Cloudflare in front of CloudFront for additional protection
+- Enroll CloudFront distribution in the flat-rate Free plan (AWS console, one-time)
+- Enable API Gateway stage throttling (configured in `shared/src/config/environments.ts`)
 
 #### Cost Analysis
 
-**Without Protection (Vulnerability):**
-- Bot makes 10,000 requests/minute to API Gateway
-- Each request invokes Lambda (even if authentication fails)
-- Cost: ~$50-100/day in Lambda invocations alone
-- Potential: $1,500-3,000/month from bot attack
+For a detailed bot attack cost analysis including worst-case calculations and defense layer breakdown, see **[BOTPROTECTION.md](BOTPROTECTION.md)**.
 
-**With Protection:**
-- PoW challenges make bot attacks expensive (bots must compute PoW)
-- AWS WAF blocks 90%+ of bot traffic before reaching API Gateway
-- Rate limiting prevents burst attacks
-- Cost: WAF ~$10/month + normal Lambda usage
-- Savings: $1,400+ per month during attack scenarios
-
-**ROI**: $10/month investment saves $1,400+/month in potential bot costs
+**Summary:** CloudFront flat-rate plan (Free) blocks most bot traffic at $0 cost. API Gateway throttling caps the maximum rate of requests reaching the backend to 10 req/s. The concurrency kill switch fires after 3 minutes of sustained traffic and eliminates Lambda invocation costs. Worst-case monthly cost under a sustained bot attack: **~$91** (API Gateway charges for all throttled requests).
 
 ### 2.4 User Interface
 
@@ -312,10 +285,10 @@ PassVault supports three deployment environments with different security profile
 |---------|-----|------|------|
 | **Purpose** | Developer testing | QA / integration / demos | Live |
 | **Passkeys** | Disabled | Disabled | Mandatory |
-| **WAF** | Disabled | Disabled | Enabled |
+| **CloudFront flat-rate plan** | N/A | Free (optional) | Free (enroll after deploy) |
 | **Proof of Work** | Disabled | Enabled | Enabled |
 | **Honeypot** | Enabled | Enabled | Enabled |
-| **CloudFront** | Optional (direct S3/APIGW) | Enabled | Enabled |
+| **CloudFront CDN** | Optional (direct S3/APIGW) | Enabled | Enabled |
 | **View timeout** | 5 min | 5 min | 60 sec |
 | **Edit timeout** | 10 min | 10 min | 120 sec |
 | **Admin token expiry** | 24 hours | 24 hours | 8 hours |
@@ -326,12 +299,11 @@ PassVault supports three deployment environments with different security profile
 | **S3 versioning** | Disabled | Disabled | Enabled |
 | **Monitoring** | Disabled (logs only) | Disabled (logs only) | Dashboard + alarms |
 | **UI indicator** | "DEV ENVIRONMENT" banner | "BETA ENVIRONMENT" banner | None |
-| **Monthly cost** | ~$0 | ~$0 | ~$8-10 |
+| **Monthly cost** | ~$0 | ~$0 | ~$0-2 |
 
 #### Dev Environment
 - **Purpose**: Individual developer testing and local development
 - **Passkeys**: Disabled — status goes directly from "pending_first_login" → "active" after password change
-- **WAF**: Disabled
 - **Proof of Work**: Disabled — faster iteration
 - **CloudFront**: Optional — can access API Gateway directly
 - **Session timeouts**: Relaxed (5 min view, 10 min edit)
@@ -343,7 +315,6 @@ PassVault supports three deployment environments with different security profile
 #### Beta Environment
 - **Purpose**: QA, integration testing, stakeholder demos
 - **Passkeys**: Disabled — same simplified flow as dev
-- **WAF**: Disabled — saves cost, bot protection not needed for internal testing
 - **Proof of Work**: Enabled — validates PoW flow works correctly
 - **CloudFront**: Enabled — matches prod architecture
 - **Session timeouts**: Relaxed (5 min view, 10 min edit)
@@ -353,9 +324,9 @@ PassVault supports three deployment environments with different security profile
 #### Production Environment
 - **Purpose**: Live deployment with full security
 - **Passkeys**: Mandatory — all users and admin must register a passkey after password change
-- **WAF**: Enabled — full bot control, rate limiting, CAPTCHA
+- **CloudFront flat-rate plan**: Enrolled (AWS console) — provides edge WAF + DDoS + bot management at $0
 - **Proof of Work**: Enabled with production difficulty levels
-- **CloudFront**: Enabled with WAF attached
+- **CloudFront**: Enabled
 - **Session timeouts**: Strict (60s view, 120s edit)
 - **Token expiry**: Strict (8h admin, 5m user)
 - **Visual indicator**: None
@@ -399,8 +370,8 @@ All environment differences are driven by a single `EnvironmentConfig` type. The
 - **Storage**: AWS S3 bucket for text file storage
 - **Authentication**: JWT-based auth with Lambda middleware
 - **CORS**: `Access-Control-Allow-Origin` set to CloudFront domain in beta/prod; `*` in dev — driven by `FRONTEND_ORIGIN` Lambda environment variable set at deploy time
-- **Bot Protection**: AWS WAF with Bot Control managed rules
-- **CDN** (Optional): CloudFront for static content delivery and WAF attachment
+- **Bot Protection**: CloudFront flat-rate plan (edge WAF + DDoS + bot management) — see [BOTPROTECTION.md](BOTPROTECTION.md)
+- **CDN** (Optional): CloudFront for static content delivery
 - **Rate Limiting**: API Gateway throttling + usage plans
 
 ### 3.3 Architecture Diagram
@@ -412,14 +383,9 @@ All environment differences are driven by a single `EnvironmentConfig` type. The
                            │ HTTPS
                            ▼
                     ┌──────────────┐
-                    │  CloudFront  │◄──── Optional: CDN + Static hosting
-                    │   + WAF      │
-                    └──────┬───────┘
-                           │
-                           ▼
-                    ┌──────────────┐
-                    │   AWS WAF    │◄──── Bot Control, Rate Limiting
-                    │ (Bot Control)│      CAPTCHA challenges
+                    │  CloudFront  │◄──── CDN + Static hosting
+                    │  Flat-Rate   │      Edge WAF + DDoS + Bot mgmt
+                    │    Plan      │      (enrolled in AWS console)
                     └──────┬───────┘
                            │
                            ▼
@@ -437,9 +403,10 @@ All environment differences are driven by a single `EnvironmentConfig` type. The
 
 Protection Layers:
 1. Client-side: PoW computation (deters mass requests)
-2. WAF Layer: Bot detection, CAPTCHA, geographic blocking
-3. API Gateway: Rate limiting, throttling, usage plans
+2. CloudFront edge: Bot detection, DDoS, WAF (flat-rate plan)
+3. API Gateway: Stage throttling (10 req/s sustained, 20 burst)
 4. Lambda: PoW validation, authentication, authorization
+5. Kill switch: auto-fires after 3 min sustained throttle (prod only)
 ```
 
 ## 4. API Design
@@ -880,8 +847,8 @@ PassVault implements **complete separation** between admin privileges and user d
 - ❌ Can be bypassed by determined attackers with compute resources
 - **Implementation**: SHA-256 based challenge with dynamic difficulty
 
-**Layer 2: AWS WAF (Primary Defense)**
-- ✅ **Blocks 90%+ of bot traffic** before reaching API Gateway
+**Layer 2: CloudFront Flat-Rate Plan (Primary Defense)**
+- ✅ **Blocks bot traffic at the edge** before reaching API Gateway
 - ✅ **Prevents Lambda invocation costs** from bot requests
 - ✅ **CAPTCHA challenges** for suspected bots (user-solvable, bot-hard)
 - ✅ **Geographic blocking** (optional: restrict to specific countries)
@@ -909,57 +876,27 @@ PassVault implements **complete separation** between admin privileges and user d
 
 | Attack Type | Protection | Result |
 |-------------|-----------|--------|
-| **Mass login attempts** (10k/min) | WAF rate limit + PoW | Blocked at WAF, 99% cost savings |
-| **DDoS to API Gateway** (100k/min) | WAF Bot Control | Blocked before API Gateway, $0 Lambda cost |
-| **Slow credential stuffing** (10/min) | PoW + honeypot + progressive challenges | Expensive for attacker, eventual IP block |
-| **Legitimate traffic spike** (100/min) | Rate limit returns 429, PoW still works | Users may see slowdowns but can proceed |
-| **AI crawler** (1k/min) | WAF Bot Control detects user-agent | Blocked or challenged with CAPTCHA |
+| **Mass login attempts** (10k/min) | CloudFront WAF + API GW throttle + PoW | Blocked at CloudFront, ~$0 Lambda cost |
+| **DDoS to API Gateway** (100k/min) | CloudFront flat-rate plan (WAF + DDoS) | Blocked before API Gateway, $0 Lambda cost |
+| **Slow credential stuffing** (10/min) | PoW + honeypot + progressive challenges | Expensive for attacker |
+| **Legitimate traffic spike** (100/min) | API GW throttle returns 429, PoW still works | Users may see slowdowns but can proceed |
+| **Sustained bot attack** (>550/min × 3 min) | Concurrency kill switch → all Lambdas → 0 | API GW returns 429; auto-recovers in 4 hours |
 
 **Cost Comparison:**
 
-**Without Protection:**
-```
-Bot attack: 10,000 requests/min × 60 min = 600,000 requests
-Lambda invocations: 600,000 × $0.20 per 1M = $0.12
-Lambda compute: 600,000 × 100ms × $0.0000166667 per GB-sec = $1.00
-API Gateway: 600,000 × $3.50 per 1M = $2.10
-Total per hour: $3.22
-Total per day: $77.28
-Total per month (sustained attack): $2,318.40
-```
+For detailed bot attack cost calculations, see **[BOTPROTECTION.md](BOTPROTECTION.md)**.
 
-**With WAF Protection:**
-```
-Bot attack: 10,000 requests/min × 60 min = 600,000 requests
-WAF blocks: 540,000 requests (90%)
-WAF cost: 600,000 × $1.00 per 1M = $0.60
-Passed to API Gateway: 60,000 requests (10% leak + legitimate traffic)
-Lambda invocations: 60,000 × $0.20 per 1M = $0.012
-Lambda compute: 60,000 × 100ms × $0.0000166667 per GB-sec = $0.10
-API Gateway: 60,000 × $3.50 per 1M = $0.21
-Total per hour: $0.92
-Total per day: $22.08
-Total per month: $662.40
-WAF baseline: $5/month
-Total with WAF: $667.40/month
-
-Savings: $2,318.40 - $667.40 = $1,651/month (71% cost reduction)
-```
-
-**Best Case (With PoW + WAF):**
-- PoW deters 50% of attacks before they start (compute too expensive)
-- WAF blocks 95% of remaining traffic
-- **Total monthly cost during attack: ~$340** (85% savings vs no protection)
+**Summary:**
+- Without protection: ~$2,300+/month (full Lambda invocations at 10k req/min)
+- With CloudFront flat-rate plan + API GW throttle: **~$91/month worst case** (API GW charges for all throttled requests; Lambda cost eliminated by kill switch within 3 minutes)
+- With CloudFront WAF blocking ≥99% of bots: **< $1/month realistic**
 
 **Security Recommendations:**
-1. **Always deploy WAF** - ROI is positive after first day of attack
-2. **Enable PoW on all protected endpoints** - free protection layer
-3. **Monitor CloudWatch WAF metrics** - alert on >1000 blocked requests/hour
-4. **Set up cost alerts** - notify if Lambda costs exceed $10/day
-5. **Review WAF logs weekly** - identify attack patterns and tune rules
-6. **Keep WAF rules updated** - AWS updates Bot Control signatures regularly
-7. **Test rate limits** - verify legitimate users aren't blocked during normal usage
-8. **Document escalation** - plan for sustained attacks (add geographic blocks, stricter rate limits)
+1. **Enroll CloudFront flat-rate plan** — $0/month, provides WAF + DDoS at edge (see [BOTPROTECTION.md](BOTPROTECTION.md))
+2. **Enable PoW on all protected endpoints** — free protection layer
+3. **Set up cost alerts** — notify if Lambda costs exceed $10/day
+4. **Test rate limits** — verify legitimate users aren't blocked during normal usage
+5. **Document escalation** — plan for sustained attacks
 
 ## 7. Deployment
 
@@ -967,8 +904,7 @@ Savings: $2,318.40 - $667.40 = $1,651/month (71% cost reduction)
 - Build React app for production
 - Host on **AWS S3 + CloudFront** (deployed via CDK)
   - Static hosting on S3
-  - CloudFront CDN for global distribution
-  - WAF integration for bot protection
+  - CloudFront CDN for global distribution (with flat-rate plan for edge protection)
   - HTTPS with TLS 1.2+
   - Automatic cache invalidation on deployment
 
@@ -984,11 +920,10 @@ Savings: $2,318.40 - $667.40 = $1,651/month (71% cost reduction)
 - All infrastructure defined in TypeScript using AWS CDK
 - CDK Stack components:
   - **StorageConstruct**: DynamoDB tables, S3 buckets (PITR and versioning conditional on environment)
-  - **BackendConstruct**: Lambda functions, API Gateway (memory/timeout from config)
-  - **SecurityConstruct**: WAF, IAM roles, security policies (entire construct conditional on `wafEnabled`)
+  - **BackendConstruct**: Lambda functions, API Gateway with configurable throttle (memory/timeout from config)
   - **FrontendConstruct**: CloudFront distribution, S3 static hosting (CloudFront optional for dev)
   - **MonitoringConstruct**: CloudWatch alarms, dashboards, SNS alert topic (**prod only**)
-  - **KillSwitchConstruct**: Kill switch Lambda + SNS subscription; auto-blocks all traffic via WAF on alarm (**prod only**)
+  - **KillSwitchConstruct**: Kill switch Lambda (sets concurrency to 0 on sustained-traffic alarm) + re-enable Lambda (restores concurrency via EventBridge Scheduler after 4 hours) (**prod only**)
 - Three environments via CDK contexts: `--context env=dev|beta|prod`
 - Each environment deploys as a fully isolated CloudFormation stack (see Section 7.5)
 - Environment configs defined in single file: `shared/src/config/environments.ts`
@@ -1001,14 +936,6 @@ const env = app.node.tryGetContext('env');
 if (!env) throw new Error('Missing required context: --context env=dev|beta|prod');
 const config = getEnvironmentConfig(env);
 new PassVaultStack(app, config.stackName, config, { env: { region: config.region } });
-```
-
-**Conditional WAF Deployment:**
-```typescript
-// lib/passvault-stack.ts
-if (config.features.wafEnabled) {
-  new SecurityConstruct(this, 'Security', { ... });
-}
 ```
 
 - Automated deployment via `cdk deploy` command
@@ -1026,7 +953,6 @@ Each environment deploys as a fully independent CloudFormation stack:
 | S3 frontend bucket    | passvault-frontend-dev-{hash}  | passvault-frontend-beta-{hash} | passvault-frontend-prod-{hash}|
 | API Gateway           | passvault-api-dev              | passvault-api-beta             | passvault-api-prod            |
 | CloudFront            | *(optional)*                   | passvault-cdn-beta             | passvault-cdn-prod            |
-| WAF                   | *(not deployed)*               | *(not deployed)*               | passvault-waf-prod            |
 | Lambda functions      | passvault-{fn}-dev             | passvault-{fn}-beta            | passvault-{fn}-prod           |
 
 Stacks share nothing — they can be deployed and destroyed independently.
@@ -1059,16 +985,13 @@ Stacks share nothing — they can be deployed and destroyed independently.
 - [ ] **Implement CDK Constructs (environment-aware)**:
   - StorageConstruct: DynamoDB users table, S3 buckets (PITR and versioning conditional on environment)
   - BackendConstruct: Lambda functions, API Gateway, IAM roles (memory/timeout from config)
-  - SecurityConstruct: WAF Web ACL, security groups, encryption policies (only instantiated when `wafEnabled=true`)
   - FrontendConstruct: CloudFront distribution, S3 static hosting, OAI (CloudFront optional for dev)
   - MonitoringConstruct: CloudWatch alarms, dashboards, SNS alert topic (prod only)
-  - KillSwitchConstruct: Kill switch Lambda + SNS subscription (prod only)
-- [ ] **Setup AWS WAF for bot protection**:
-  - Create WAF Web ACL with Bot Control managed rules
-  - Configure rate-based rules (100 requests per 5 minutes per IP)
-  - Enable AWS Managed Rules for Known Bad Inputs
-  - Attach WAF to API Gateway (or CloudFront if using CDN)
-  - Configure CAPTCHA action for suspected bots
+  - KillSwitchConstruct: Lambda concurrency kill switch + EventBridge Scheduler auto-recovery (prod only)
+- [x] **Setup bot protection**:
+  - Enroll CloudFront distribution in flat-rate Free plan (AWS console, post-deploy)
+  - Includes: AWS-managed WAF, DDoS protection, bot management — $0/month Free tier
+  - See [BOTPROTECTION.md](BOTPROTECTION.md) for full details
   - Set up CloudWatch logging for WAF events
 - [ ] **Implement Proof of Work (PoW) system**:
   - Backend: GET /challenge endpoint (returns nonce, difficulty, timestamp)
@@ -1197,7 +1120,7 @@ Stacks share nothing — they can be deployed and destroyed independently.
   - CloudWatch dashboards (via MonitoringConstruct)
   - Cost alerts (threshold: $20/month)
   - Error rate alerts (threshold: 5%)
-  - WAF blocked request alerts
+  - Sustained traffic alarm (triggers kill switch after 3 min at throttle limit)
   - Lambda error and throttle alarms
 - [ ] **Documentation**:
   - Complete [DEPLOYMENT.md](DEPLOYMENT.md) with actual values (API endpoints, CloudFront URLs)
@@ -1220,18 +1143,12 @@ Stacks share nothing — they can be deployed and destroyed independently.
   - Admin operations: HIGH (20 bits, ~500ms)
   - Public endpoints: LOW (16 bits, ~100ms)
   - Balance: security vs user experience (aim for < 500ms delay)
-- [ ] **AWS WAF configuration**:
-  - Enable Bot Control (adds ~$10/month + $1 per million requests)
-  - Geographic restrictions: Block specific countries if applicable
-  - Rate limits: 100 requests per 5 minutes per IP (adjustable)
-  - CAPTCHA challenge vs Block for suspected bots
-- [ ] **CloudFront usage decision**:
-  - Option A: Use CloudFront for static hosting + WAF (recommended for cost savings)
-  - Option B: S3 static hosting + WAF at API Gateway only
-  - Option C: Vercel/Netlify hosting (limited WAF integration)
-- [ ] **Optional Cloudflare Turnstile**:
-  - If using Cloudflare: Enable Turnstile on login page (free tier: 1M/month)
-  - Otherwise: Use AWS WAF CAPTCHA
+- [x] **CloudFront flat-rate plan for bot protection**:
+  - Enroll distribution in Free plan after first deploy (AWS console, one-time)
+  - Provides: AWS-managed WAF + DDoS + bot management at $0/month
+  - See [BOTPROTECTION.md](BOTPROTECTION.md) for full details
+- [x] **CloudFront for static hosting**:
+  - S3 + CloudFront (deployed via CDK); CloudFront flat-rate plan provides edge protection
 - [ ] **PoW challenge caching strategy**:
   - In-memory cache (fast but lost on Lambda cold start)
   - DynamoDB cache (persistent but adds latency and cost)
@@ -1256,8 +1173,7 @@ Stacks share nothing — they can be deployed and destroyed independently.
   - Built-in best practices
   - See [DEPLOYMENT.md](DEPLOYMENT.md) for implementation details
 - [x] **Frontend hosting: S3 + CloudFront (deployed via CDK)**
-  - Full AWS integration with WAF support
-  - Low cost (~$0-1/month for static hosting)
+  - Low cost (~$0/month for static hosting with flat-rate Free plan)
   - Global CDN for fast content delivery
   - Automatic SSL/TLS certificate management
 - [ ] Define file content size limit (recommended: 1MB)

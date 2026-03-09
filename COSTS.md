@@ -5,25 +5,25 @@
 This document provides a comprehensive breakdown of PassVault's monthly operational costs on AWS. PassVault is designed to be extremely cost-effective for small to medium-scale deployments, with most AWS services staying within free tier limits.
 
 **Key Cost Highlights:**
-- **3-10 users**: $9-11/month (primarily AWS WAF)
-- **50 users**: $10-12/month
-- **100 users**: $11-13/month
-- **Primary cost driver**: AWS WAF (~80-90% of total costs)
-- **Without WAF (not recommended)**: ~$0-1/month (but vulnerable to costly attacks)
+- **3-10 users**: ~$0.17/month (Year 2+)
+- **50 users**: ~$0.88/month (Year 2+)
+- **100 users**: ~$2.00/month (Year 2+)
+- **Primary cost driver**: CloudFront data transfer at 100+ users
+- **Bot protection**: CloudFront flat-rate plan (Free tier) provides AWS-managed WAF + DDoS + bot management at $0/month — see [BOTPROTECTION.md](BOTPROTECTION.md) for attack cost scenarios
 
 ---
 
 ## Cost by Environment
 
-PassVault supports three deployment environments (see [SPECIFICATION.md Section 2.5](SPECIFICATION.md) for details). Dev and beta disable WAF and passkeys, running entirely within AWS free tier:
+PassVault supports three deployment environments (see [SPECIFICATION.md Section 2.5](SPECIFICATION.md) for details). Dev and beta run entirely within AWS free tier:
 
-| Environment | WAF | Passkeys | CloudFront | Other Services | **Monthly Total** |
-|-------------|-----|------|------------|----------------|-------------------|
-| **Dev** | $0 *(disabled)* | N/A *(disabled)* | $0 *(optional)* | ~$0 *(free tier)* | **~$0.00** |
-| **Beta** | $0 *(disabled)* | N/A *(disabled)* | ~$0 *(free tier)* | ~$0 *(free tier)* | **~$0.00** |
-| **Prod** | $9.00 | N/A | $0-5.22 | $0-1.78 | **$9-11** |
+| Environment | CloudFront Flat-Rate Plan | Passkeys | CloudFront CDN | Other Services | **Monthly Total** |
+|-------------|--------------------------|----------|----------------|----------------|-------------------|
+| **Dev** | N/A *(no CloudFront)* | N/A *(disabled)* | $0 *(optional)* | ~$0 *(free tier)* | **~$0.00** |
+| **Beta** | Free *(external, $0)* | N/A *(disabled)* | ~$0 *(free tier)* | ~$0 *(free tier)* | **~$0.00** |
+| **Prod** | Free *(external, $0)* | Required | $0-1.53 | $0-0.50 | **~$0-2** |
 
-**Running all three stacks:** ~$8-10/month total (only prod incurs meaningful costs)
+**Running all three stacks:** ~$0-2/month total (only prod incurs any meaningful costs)
 
 > All cost breakdowns below apply to the **prod** environment. Dev and beta costs are negligible.
 
@@ -178,12 +178,26 @@ But within free tier (25 RCU/WCU): $0.00/month
 
 ### 1.5 Amazon CloudFront (CDN)
 
-**Pricing Model:**
+PassVault uses the **CloudFront Flat-Rate Pricing Plan** (Free tier) which includes AWS-managed WAF, DDoS protection, bot management, and CDN. The flat-rate plan provides a fixed monthly cost regardless of attack traffic — malicious requests blocked by the plan's WAF do not count against the usage allowance.
+
+See [BOTPROTECTION.md](BOTPROTECTION.md) for full details on what's included and how to enroll.
+
+**CloudFront Flat-Rate Plan Tiers:**
+
+| Tier | Monthly Cost | Requests | Data Transfer | Includes |
+|------|-------------|----------|---------------|---------|
+| **Free** | **$0** | 1M | 100 GB | WAF, DDoS, bot mgmt, TLS, CF Functions |
+| Pro | TBD | 10M | 50 TB | All above + S3 credits |
+| Business | TBD | 125M | 50 TB | All above |
+| Premium | TBD | 500M | 50 TB | All above |
+
+> For PassVault with ≤100 users, the **Free tier** covers all normal CloudFront usage. The Free tier is permanent and never expires.
+
+**Standard CloudFront Pricing** (if usage exceeds Free tier — rare for ≤100 users):
 - Data transfer out: $0.085 per GB (first 10 TB, US/EU)
 - HTTP/HTTPS requests: $0.0075 per 10,000 requests
-- **Free Tier**: 1 TB data transfer out, 10 million requests (first 12 months)
 
-**PassVault Usage:**
+**PassVault Usage (standard pricing reference):**
 
 | User Count | Data Transfer (GB) | Requests | Cost (Year 1) | Cost (Year 2+) |
 |------------|-------------------|----------|---------------|----------------|
@@ -194,28 +208,9 @@ But within free tier (25 RCU/WCU): $0.00/month
 | 500 users  | 300.0             | 800,000  | **$0.00**     | **$26.10**     |
 | 1,000 users| 600.0             | 1,600,000| **$0.00**     | **$52.20**     |
 
-**Assumptions:**
-- 4 page loads per user per day (login sessions)
-- 5 MB per page load (including cached assets)
-- Formula: Users × 4 sessions/day × 30 days × 5 MB
+> Note: All user-facing traffic stays within the Free tier (1M req/100GB) for ≤100 users in normal operation. The table above shows what standard pay-per-use pricing would be at scale.
 
-**Calculation Example (100 users, Year 2+):**
-```
-Data Transfer: 100 × 4 × 30 × 5MB = 60 GB/month
-Cost: 60 GB × $0.085 = $5.10/month
-
-Requests: 100 × 4 × 30 = 12,000/month
-Cost: 12,000 × $0.0075 / 10,000 = $0.12/month
-
-Total CloudFront: $5.10 + $0.12 = $5.22/month
-```
-
-**⚠️ Note:** CloudFront becomes significant at 100+ users. Consider optimizing:
-- Enable compression (reduces data transfer by 60-80%)
-- Increase cache TTL for static assets
-- Use S3 direct access for API (bypass CloudFront for API calls)
-
-**With Optimization (100 users):**
+**With Compression (100 users, Year 2+ — outside Free tier):**
 ```
 Data Transfer (with 70% compression): 60 GB × 0.3 = 18 GB
 Cost: 18 GB × $0.085 = $1.53/month
@@ -223,51 +218,7 @@ Cost: 18 GB × $0.085 = $1.53/month
 
 ---
 
-### 1.6 AWS WAF (Web Application Firewall) — Prod Only
-
-> WAF is only deployed in the prod environment. Dev and beta stacks do not include WAF.
-
-**Pricing Model:**
-- Web ACL: $5.00 per month
-- Managed rule groups: $1.00 per rule per month
-- Requests: $0.60 per 1 million requests
-- CAPTCHA: $0.40 per 1,000 challenge attempts
-- **No Free Tier**
-
-**PassVault Configuration:**
-- 1 Web ACL: $5.00/month
-- 4 Rules: KillSwitchBlock (custom), Bot Control (managed), Known Bad Inputs (managed), Rate Limiting (custom): $4.00/month
-- Request processing: Variable based on traffic
-
-**PassVault Usage:**
-
-| User Count | Monthly Requests | WAF Request Cost | Total WAF Cost |
-|------------|------------------|------------------|----------------|
-| 3 users    | 1,530            | $0.001           | **$9.00**      |
-| 10 users   | 5,100            | $0.003           | **$9.00**      |
-| 50 users   | 25,500           | $0.015           | **$9.02**      |
-| 100 users  | 51,000           | $0.031           | **$9.03**      |
-| 500 users  | 255,000          | $0.153           | **$9.15**      |
-| 1,000 users| 510,000          | $0.306           | **$9.31**      |
-
-**Calculation Example (100 users):**
-```
-Web ACL: $5.00/month
-Rules: 4 × $1.00 = $4.00/month  (KillSwitchBlock, BotControl, KnownBadInputs, RateLimit)
-Requests: 51,000 × $0.60 / 1,000,000 = $0.0306/month
-
-Total WAF: $5.00 + $4.00 + $0.03 = $9.03/month
-```
-
-**WAF ROI Analysis:**
-- **Monthly cost**: $8/month
-- **Prevents**: $100-1,000s in bot attack costs
-- **Break-even**: First bot attack attempt (hours to days)
-- **Recommendation**: ✅ Always enable in production
-
----
-
-### 1.7 Data Transfer & Other Services
+### 1.6 Data Transfer & Other Services
 
 **CloudWatch Logs:**
 - $0.50 per GB ingested
@@ -303,11 +254,10 @@ Lambda:          $0.00  (free tier)
 API Gateway:     $0.00  (free tier)
 S3:              $0.00  (free tier)
 DynamoDB:        $0.00  (free tier)
-CloudFront:      $0.00  (free tier)
-WAF:             $9.00
+CloudFront:      $0.00  (flat-rate Free tier)
 Data Transfer:   $0.00
 -----------------------------------
-TOTAL:           $9.00/month
+TOTAL:           $0.00/month
 ```
 
 **Monthly Costs (Year 2+):**
@@ -316,14 +266,13 @@ Lambda:          $0.00  (free tier)
 API Gateway:     $0.01
 S3:              $0.001
 DynamoDB:        $0.00  (free tier)
-CloudFront:      $0.16
-WAF:             $9.00
+CloudFront:      $0.00  (flat-rate Free tier)
 Data Transfer:   $0.00
 -----------------------------------
-TOTAL:           $9.17/month
+TOTAL:           $0.01/month
 ```
 
-**Per User Cost:** $3.06/month
+**Per User Cost:** $0.004/month
 
 ---
 
@@ -340,11 +289,10 @@ Lambda:          $0.00  (free tier)
 API Gateway:     $0.00  (free tier)
 S3:              $0.00  (free tier)
 DynamoDB:        $0.00  (free tier)
-CloudFront:      $0.00  (free tier)
-WAF:             $9.02
+CloudFront:      $0.00  (flat-rate Free tier)
 Data Transfer:   $0.00
 -----------------------------------
-TOTAL:           $9.02/month
+TOTAL:           $0.00/month
 ```
 
 **Monthly Costs (Year 2+, optimized):**
@@ -353,14 +301,13 @@ Lambda:          $0.00  (free tier)
 API Gateway:     $0.09
 S3:              $0.01
 DynamoDB:        $0.00  (free tier)
-CloudFront:      $0.78  (with compression)
-WAF:             $9.02
+CloudFront:      $0.00  (flat-rate Free tier — within 1M req/100GB)
 Data Transfer:   $0.00
 -----------------------------------
-TOTAL:           $9.90/month
+TOTAL:           $0.10/month
 ```
 
-**Per User Cost:** $0.20/month
+**Per User Cost:** $0.002/month
 
 ---
 
@@ -377,11 +324,10 @@ Lambda:          $0.00  (free tier)
 API Gateway:     $0.00  (free tier)
 S3:              $0.00  (free tier)
 DynamoDB:        $0.00  (free tier)
-CloudFront:      $0.00  (free tier)
-WAF:             $9.03
+CloudFront:      $0.00  (flat-rate Free tier)
 Data Transfer:   $0.00
 -----------------------------------
-TOTAL:           $9.03/month
+TOTAL:           $0.00/month
 ```
 
 **Monthly Costs (Year 2+, optimized):**
@@ -390,14 +336,13 @@ Lambda:          $0.10
 API Gateway:     $0.30
 S3:              $0.03
 DynamoDB:        $0.00  (free tier)
-CloudFront:      $1.53  (with compression)
-WAF:             $9.05
+CloudFront:      $1.53  (with compression — exceeds Free tier at this usage)
 Data Transfer:   $0.00
 -----------------------------------
-TOTAL:           $11.01/month
+TOTAL:           $1.96/month
 ```
 
-**Per User Cost:** $0.11/month
+**Per User Cost:** $0.02/month
 
 ---
 
@@ -405,104 +350,31 @@ TOTAL:           $11.01/month
 
 ### Cost vs User Count (Year 2+, Optimized)
 
-| Users | Lambda | API GW | S3   | DynamoDB | CloudFront | WAF   | **Total** | Per User |
-|-------|--------|--------|------|----------|------------|-------|-----------|----------|
-| 3     | $0.00  | $0.01  | $0.00| $0.00    | $0.16      | $9.00 | **$9.17** | $3.06    |
-| 10    | $0.00  | $0.02  | $0.00| $0.00    | $0.52      | $9.00 | **$9.54** | $0.95    |
-| 25    | $0.00  | $0.04  | $0.01| $0.00    | $0.65      | $9.01 | **$9.71** | $0.39    |
-| 50    | $0.00  | $0.09  | $0.01| $0.00    | $0.78      | $9.02 | **$9.90** | $0.20    |
-| 100   | $0.10  | $0.18  | $0.02| $0.00    | $1.53      | $9.03 | **$11.01**| $0.11    |
-| 250   | $0.26  | $0.45  | $0.06| $0.00    | $3.83      | $9.08 | **$13.68**| $0.05    |
-| 500   | $0.51  | $0.89  | $0.12| $0.08    | $7.65      | $9.15 | **$18.40**| $0.037   |
-| 1,000 | $1.02  | $1.79  | $0.24| $0.17    | $15.30     | $9.31 | **$27.83**| $0.028   |
+| Users | Lambda | API GW | S3   | DynamoDB | CloudFront | **Total** | Per User |
+|-------|--------|--------|------|----------|------------|-----------|----------|
+| 3     | $0.00  | $0.01  | $0.00| $0.00    | $0.00      | **$0.01** | $0.004   |
+| 10    | $0.00  | $0.02  | $0.00| $0.00    | $0.00      | **$0.02** | $0.002   |
+| 25    | $0.00  | $0.04  | $0.01| $0.00    | $0.00      | **$0.05** | $0.002   |
+| 50    | $0.00  | $0.09  | $0.01| $0.00    | $0.00      | **$0.10** | $0.002   |
+| 100   | $0.10  | $0.18  | $0.02| $0.00    | $1.53      | **$1.83** | $0.018   |
+| 250   | $0.26  | $0.45  | $0.06| $0.00    | $3.83      | **$4.60** | $0.018   |
+| 500   | $0.51  | $0.89  | $0.12| $0.08    | $7.65      | **$9.25** | $0.019   |
+| 1,000 | $1.02  | $1.79  | $0.24| $0.17    | $15.30     | **$18.52**| $0.019   |
+
+> CloudFront is $0 at ≤50 users (within the permanent Free tier of 1M req/100GB/month). Cost appears at 100+ users where traffic begins to exceed the free tier in a given month.
 
 **Key Insights:**
-- **Economies of scale**: Per-user cost drops dramatically with more users
-- **WAF dominates** at low user counts (>90% of costs for <100 users)
-- **CloudFront grows** as primary cost driver for 100+ users
-- **Excellent value**: Even at 1,000 users, only $26.83/month
+- **Near-zero costs**: ≤50 users runs at essentially $0/month (all within free tier)
+- **CloudFront grows** as the primary cost driver at 100+ users
+- **Excellent value**: Even at 1,000 users, only ~$18/month
 
 ---
 
 ## 4. Attack Scenario Costs
 
-### 4.1 Bot Attack Without Protection
+For a complete analysis of bot attack scenarios, worst-case cost calculations, and the full defense layer stack, see **[BOTPROTECTION.md](BOTPROTECTION.md)**.
 
-**Attack Pattern:**
-- 10,000 requests/minute (600,000 requests/hour)
-- All requests hit API Gateway and invoke Lambda
-
-**Hourly Cost:**
-```
-Lambda invocations: 600,000 × $0.20 / 1,000,000 = $0.12
-Lambda compute: 600,000 × 0.2s × 0.5GB × $0.0000166667 = $1.00
-API Gateway: 600,000 × $3.50 / 1,000,000 = $2.10
-Data Transfer: ~$0.50
-
-Total per hour: $3.72
-Total per day: $89.28
-Total per month (sustained): $2,678.40
-```
-
-**Impact:** 💸 Devastating - Could cost $100s per day
-
----
-
-### 4.2 Bot Attack With WAF Protection
-
-**Attack Pattern:**
-- 10,000 requests/minute
-- WAF blocks 90% before reaching API Gateway
-
-**Hourly Cost:**
-```
-WAF processing: 600,000 × $0.60 / 1,000,000 = $0.36
-Lambda invocations (10%): 60,000 × $0.20 / 1,000,000 = $0.012
-Lambda compute (10%): 60,000 × 0.2s × 0.5GB × $0.0000166667 = $0.10
-API Gateway (10%): 60,000 × $3.50 / 1,000,000 = $0.21
-Data Transfer: ~$0.05
-
-Total per hour: $0.73
-Total per day: $17.52
-Total per month (sustained): $525.60
-WAF baseline: $9.00
-
-Total with WAF: $534.60/month
-
-Savings vs no protection: $2,678.40 - $534.60 = $2,143.80/month (80% savings)
-```
-
-**Impact:** ✅ Manageable - WAF pays for itself in first hour of attack
-
----
-
-### 4.3 Bot Attack With WAF + PoW Protection
-
-**Attack Pattern:**
-- 10,000 requests/minute attempted
-- PoW deters 50% of attackers (too expensive to compute)
-- WAF blocks 95% of remaining traffic
-
-**Hourly Cost:**
-```
-Actual requests: 10,000 × 0.5 = 5,000/minute (300,000/hour)
-WAF processing: 300,000 × $0.60 / 1,000,000 = $0.18
-Lambda invocations (5%): 15,000 × $0.20 / 1,000,000 = $0.003
-Lambda compute (5%): 15,000 × 0.2s × 0.5GB × $0.0000166667 = $0.025
-API Gateway (5%): 15,000 × $3.50 / 1,000,000 = $0.053
-Data Transfer: ~$0.02
-
-Total per hour: $0.28
-Total per day: $6.72
-Total per month (sustained): $201.60
-WAF baseline: $9.00
-
-Total with WAF + PoW: $210.60/month
-
-Savings vs no protection: $2,678.40 - $210.60 = $2,467.80/month (92% savings)
-```
-
-**Impact:** ✅✅ Excellent - Multi-layer defense dramatically reduces costs
+**Summary:** With the CloudFront flat-rate plan (Free tier) providing edge-level WAF + DDoS protection and API Gateway throttling capping backend request rates at 10 req/s, the worst-case monthly cost under a sustained bot attack is approximately **$91/month** (API Gateway charges for all throttled requests). The realistic case with CloudFront WAF blocking ≥99% of bots is **< $1/month**.
 
 ---
 
@@ -514,7 +386,7 @@ Dev and beta environments are pre-configured to minimize costs via the environme
 
 | Setting | Dev/Beta | Prod |
 |---------|----------|------|
-| WAF | Disabled (saves $8/month) | Enabled |
+| CloudFront flat-rate plan | N/A / Free (external) | Free (external) |
 | Passkeys | Disabled | Mandatory |
 | Lambda memory | 256 MB | 512 MB |
 | Log retention | 1 week (dev) / 2 weeks (beta) | 30 days |
@@ -538,10 +410,8 @@ aws s3api put-bucket-intelligent-tiering-configuration \
 
 **CloudFront Compression:**
 ```typescript
-// Enable in CDK
-cloudFront: {
-  compress: true  // Automatic gzip/brotli
-}
+// Enabled in CDK (compress: true in Distribution defaultBehavior)
+// Automatic gzip/brotli — no additional configuration needed
 ```
 **Savings:** 60-80% reduction in data transfer costs
 **Impact:** Significant at 100+ users (~$3.50/month at 100 users)
@@ -556,26 +426,16 @@ cloudFront: {
 
 **Use CloudFront Price Class 100:**
 ```typescript
-cloudFront: {
-  priceClass: PriceClass.PRICE_CLASS_100  // US, Canada, Europe only
-}
+// Already configured in CDK: PriceClass.PRICE_CLASS_100 (US, Canada, Europe)
 ```
 **Savings:** 20-30% on CloudFront costs vs global distribution
 **Impact:** ~$1/month at 100 users
 
-**Total Production Savings:** ~$4-5/month at 100 users
+**Total Production Savings:** ~$1-2/month at 100 users
 
 ---
 
 ### 5.3 Architecture Optimizations
-
-**API Direct Access (Bypass CloudFront for API):**
-```typescript
-// Route API calls directly to API Gateway
-// Only serve static frontend through CloudFront
-```
-**Savings:** 70-80% reduction in CloudFront costs
-**Trade-off:** Lose WAF protection on API (must use API Gateway WAF instead)
 
 **Lambda Reserved Concurrency:**
 ```typescript
@@ -601,7 +461,7 @@ reservedConcurrentExecutions: 5  // example — varies per function
 | DynamoDB WCU    | 25 units                | <1 unit                      | ✅ Yes        |
 | CloudWatch Logs | 5 GB ingestion          | ~0.5 GB/month                | ✅ Yes        |
 
-**Total Permanent Free Tier Value:** ~$15-20/month for PassVault at 100 users
+**Total Permanent Free Tier Value:** ~$5-10/month for PassVault at 100 users
 
 ---
 
@@ -616,9 +476,9 @@ reservedConcurrentExecutions: 5  // example — varies per function
 | CloudFront    | 1 TB data transfer  | 60 GB/month                  | ✅ Yes        |
 | CloudFront    | 10M requests        | 160,000/month                | ✅ Yes        |
 
-**Total First Year Savings:** ~$6-8/month (API Gateway + CloudFront + S3)
+**Total First Year Savings:** ~$2/month (API Gateway + S3 after free tier)
 
-**After Year 1:** Costs increase by ~$6-8/month for 100 users
+**After Year 1:** Costs increase primarily from API Gateway and CloudFront data transfer
 
 ---
 
@@ -649,16 +509,6 @@ aws cloudwatch put-metric-alarm \
   --alarm-name passvault-daily-cost \
   --threshold 5 \
   --comparison-operator GreaterThanThreshold
-```
-
-**WAF Blocked Requests Alert:**
-```bash
-aws cloudwatch put-metric-alarm \
-  --alarm-name passvault-waf-high-blocks \
-  --alarm-description "Alert on >1000 blocked requests/hour" \
-  --metric-name BlockedRequests \
-  --namespace AWS/WAFV2 \
-  --threshold 1000
 ```
 
 ---
@@ -737,22 +587,22 @@ aws budgets create-budget \
 
 | Users | Monthly (Avg) | Annual Total | Per User/Year |
 |-------|---------------|--------------|---------------|
-| 3     | $9.00         | **$108**     | $36.00        |
-| 10    | $9.00         | **$108**     | $10.80        |
-| 50    | $9.02         | **$108**     | $2.16         |
-| 100   | $9.03         | **$108**     | $1.08         |
-| 500   | $9.15         | **$110**     | $0.22         |
+| 3     | $0.00         | **$0**       | $0.00         |
+| 10    | $0.00         | **$0**       | $0.00         |
+| 50    | $0.00         | **$0**       | $0.00         |
+| 100   | $0.00         | **$0**       | $0.00         |
+| 500   | $0.00         | **$0**       | $0.00         |
 
 **Year 2+ (after free tier expires):**
 
 | Users | Monthly (Avg) | Annual Total | Per User/Year |
 |-------|---------------|--------------|---------------|
-| 3     | $9.17         | **$110**     | $36.67        |
-| 10    | $9.54         | **$114**     | $11.40        |
-| 50    | $9.90         | **$119**     | $2.38         |
-| 100   | $11.01        | **$132**     | $1.32         |
-| 500   | $18.40        | **$221**     | $0.44         |
-| 1,000 | $27.83        | **$334**     | $0.33         |
+| 3     | $0.01         | **$0.12**    | $0.04         |
+| 10    | $0.02         | **$0.24**    | $0.02         |
+| 50    | $0.10         | **$1.20**    | $0.02         |
+| 100   | $1.83         | **$22**      | $0.22         |
+| 500   | $9.25         | **$111**     | $0.22         |
+| 1,000 | $18.52        | **$222**     | $0.22         |
 
 ---
 
@@ -761,17 +611,17 @@ aws budgets create-budget \
 **Assumptions:**
 - 100 users
 - Growth: 0% (stable user base)
-- Optimizations applied in year 2
+- Optimizations applied from year 1
 
 | Year | Monthly | Annual | Cumulative |
 |------|---------|--------|------------|
-| 1    | $9.03   | $108   | $108       |
-| 2    | $11.01  | $132   | $240       |
-| 3    | $11.01  | $132   | $372       |
-| 4    | $11.01  | $132   | $504       |
-| 5    | $11.01  | $132   | $636       |
+| 1    | $0.00   | $0     | $0         |
+| 2    | $1.83   | $22    | $22        |
+| 3    | $1.83   | $22    | $44        |
+| 4    | $1.83   | $22    | $66        |
+| 5    | $1.83   | $22    | $88        |
 
-**5-Year TCO:** $636 for 100 users ($1.27 per user per year)
+**5-Year TCO:** $88 for 100 users ($0.18 per user per year)
 
 ---
 
@@ -780,45 +630,48 @@ aws budgets create-budget \
 ### Cost Summary (100 Users, Production)
 
 **Year 1:**
-- Monthly: $9.03
-- Annual: $108
-- Per user: $1.08/year
+- Monthly: $0.00
+- Annual: $0
+- Per user: $0.00/year
 
 **Year 2+ (Optimized):**
-- Monthly: $11.01
-- Annual: $132
-- Per user: $1.32/year
+- Monthly: ~$1.83
+- Annual: ~$22
+- Per user: $0.22/year
 
 ### Primary Cost Drivers
 
-1. **AWS WAF**: 80-90% of costs (<100 users)
-2. **CloudFront**: Growing cost driver at 100+ users
-3. **API Gateway**: Minimal after free tier expires
-4. **Lambda/DynamoDB/S3**: Negligible due to free tier
+1. **CloudFront data transfer**: Primary cost at 100+ users (but $0 with flat-rate Free tier up to 100 users)
+2. **API Gateway**: Minimal after free tier expires (~$0.18/month at 100 users)
+3. **Lambda/DynamoDB/S3**: Negligible due to free tier
+4. **CloudFront flat-rate plan**: $0 (Free tier for ≤1M req/100GB/month)
 
 ### Recommendations
 
-✅ **Always enable WAF in prod** - $8/month prevents $100-1,000s in attack costs
-✅ **Enable CloudFront compression** - 60-80% data transfer savings
-✅ **Use S3 + CloudFront hosting** - Leverages AWS free tier maximally
-✅ **Monitor costs weekly** - Set up CloudWatch alarms at $20/month threshold
-✅ **Use dev/beta stacks for development** - WAF and passkeys disabled by default, ~$0/month
-✅ **Start with default settings** - Optimize only if costs exceed $20/month
+✅ **Enroll in CloudFront flat-rate Free plan** — provides AWS-managed WAF + DDoS + bot management at $0/month (see [BOTPROTECTION.md](BOTPROTECTION.md))
+✅ **Enable CloudFront compression** — 60-80% data transfer savings (already configured in CDK)
+✅ **Use S3 + CloudFront hosting** — leverages AWS free tier maximally
+✅ **Monitor costs monthly** — set up CloudWatch alarms at $20/month threshold
+✅ **Use dev/beta stacks for development** — passkeys disabled by default, ~$0/month
+✅ **Start with default settings** — optimize only if costs exceed $20/month
 
 ### Cost-Effectiveness
 
 PassVault is **extremely cost-effective**:
-- **3-100 users**: $9-11/month (less than a Netflix subscription)
-- **500 users**: $18/month ($0.44/user/year)
-- **1,000 users**: $28/month ($0.33/user/year)
+- **3-50 users**: ~$0/month (year 1), ~$0.10/month (year 2+)
+- **100 users**: ~$0/month (year 1), ~$1.83/month (year 2+)
+- **500 users**: ~$9.25/month
+- **1,000 users**: ~$18.52/month
 
 **Competitive Analysis:**
 - 1Password Business: $7.99/user/month = $799/month for 100 users
 - Bitwarden Teams: $4/user/month = $400/month for 100 users
-- **PassVault**: $11/month for 100 users = **99% cost savings**
+- **PassVault**: $1.83/month for 100 users (Year 2+) = **99.8% cost savings**
 
 ---
 
 For deployment instructions and infrastructure setup, see [DEPLOYMENT.md](DEPLOYMENT.md).
+
+For bot protection details and attack cost analysis, see [BOTPROTECTION.md](BOTPROTECTION.md).
 
 For technical specifications, see [SPECIFICATION.md](SPECIFICATION.md).

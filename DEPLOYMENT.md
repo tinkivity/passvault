@@ -8,12 +8,14 @@ This guide provides complete instructions for deploying PassVault to AWS using A
 - Frontend: React SPA hosted on S3 + CloudFront
 - Backend: API Gateway + Lambda functions (Node.js)
 - Storage: S3 (encrypted files) + DynamoDB (user metadata)
-- Security: AWS WAF with Bot Control, passkey-based 2FA / WebAuthn (prod only)
+- Security: CloudFront flat-rate plan (WAF + DDoS + bot management), passkey-based 2FA / WebAuthn (prod only)
 - Encryption: Client-side end-to-end encryption (Argon2id + AES-256-GCM)
 
 **Estimated Monthly Cost:**
-- Dev/Beta: ~$0 (no WAF, no passkey requirement, within AWS free tier)
-- Prod: $9-11 for 3-10 users (primarily AWS WAF costs)
+- Dev/Beta: ~$0 (no passkey requirement, within AWS free tier)
+- Prod: ~$0-2 for 3-100 users (CloudFront flat-rate plan is free; primary cost is CloudFront data transfer at scale)
+
+See [BOTPROTECTION.md](BOTPROTECTION.md) for bot attack defense layers and worst-case cost analysis.
 
 See [SPECIFICATION.md Section 2.5](SPECIFICATION.md) for full environment comparison.
 
@@ -56,7 +58,6 @@ See [SPECIFICATION.md Section 2.5](SPECIFICATION.md) for full environment compar
   - DynamoDB tables (1)
   - S3 buckets (2-3)
   - CloudFront distributions (1)
-  - WAF Web ACLs (1)
 
 ### Installation
 
@@ -93,14 +94,14 @@ passvault/
 │   │   └── passvault.ts          # CDK app entry point
 │   ├── lib/
 │   │   ├── passvault-stack.ts    # Main stack definition
-│   │   ├── kill-switch-handler.ts# Lambda handler: SNS → WAF KillSwitchBlock flip
+│   │   ├── kill-switch-handler.ts        # Lambda handler: SNS → set Lambda concurrency to 0
+│   │   ├── kill-switch-reenable-handler.ts # Lambda handler: EventBridge → restore concurrency
 │   │   └── constructs/
 │   │       ├── storage.ts        # DynamoDB + 2 S3 buckets
 │   │       ├── backend.ts        # 5 Lambdas + API Gateway + IAM
-│   │       ├── security.ts       # WAF (prod only)
 │   │       ├── frontend.ts       # CloudFront + S3 static hosting
 │   │       ├── monitoring.ts     # CloudWatch dashboards + alarms + SNS (prod only)
-│   │       └── kill-switch.ts    # Kill switch Lambda + SNS subscription (prod only)
+│   │       └── kill-switch.ts    # Kill switch + re-enable Lambdas + EventBridge Scheduler (prod only)
 │   ├── package.json
 │   ├── tsconfig.json
 │   └── cdk.json
@@ -208,10 +209,9 @@ The deployment uses one or two CloudFormation stacks depending on whether a cust
 **`PassVaultStack`** (always, deployed to the primary region):
 1. **StorageConstruct**: DynamoDB table and S3 buckets (PITR/versioning: prod only)
 2. **BackendConstruct**: Lambda functions and API Gateway (memory/timeout from config)
-3. **SecurityConstruct**: WAF with KillSwitchBlock rule, IAM roles, security policies (**prod only**)
-4. **FrontendConstruct**: CloudFront distribution, S3 static hosting, optional Route 53 alias record
-5. **MonitoringConstruct**: CloudWatch alarms, dashboards, and SNS alert topic (**prod only**)
-6. **KillSwitchConstruct**: Kill switch Lambda + SNS subscription (**prod only**, requires security + monitoring)
+3. **FrontendConstruct**: CloudFront distribution, S3 static hosting, optional Route 53 alias record
+4. **MonitoringConstruct**: CloudWatch alarms, dashboards, and SNS alert topic (**prod only**)
+5. **KillSwitchConstruct**: Kill switch + re-enable Lambdas + EventBridge Scheduler (**prod only**, requires monitoring)
 
 ### Stack Dependencies
 
@@ -220,8 +220,8 @@ CertificateStack (us-east-1, optional)
        ↓
 StorageConstruct
        ↓
-BackendConstruct → SecurityConstruct
-       ↓                ↓
+BackendConstruct
+       ↓
 FrontendConstruct   MonitoringConstruct
                          ↓
                    KillSwitchConstruct
@@ -312,12 +312,19 @@ All Lambda functions use **ARM_64 (Graviton)** architecture for ~20% cost saving
 - Handler: `health.handler`
 - Purpose: Health check endpoint
 
-**Kill Switch Function:** `passvault-kill-switch` (prod only)
+**Kill Switch Function:** `passvault-kill-switch-{env}` (prod only)
 - Runtime: Node.js 22.x (ARM64)
 - Memory: 128 MB
 - Timeout: 30 seconds
 - Trigger: SNS (subscribed to alert topic)
-- Purpose: Flip WAF KillSwitchBlock rule from Count → Block on traffic spike alarm
+- Purpose: Sets all Lambda concurrency to 0 on sustained-traffic alarm; schedules re-enable via EventBridge Scheduler in 4 hours
+
+**Re-enable Function:** `passvault-kill-switch-reenable-{env}` (prod only)
+- Runtime: Node.js 22.x (ARM64)
+- Memory: 128 MB
+- Timeout: 30 seconds
+- Trigger: EventBridge Scheduler (one-time, 4 hours after kill switch fires)
+- Purpose: Restores original Lambda reserved concurrency (challenge=5, auth=3, admin=2, vault=5, health=2)
 
 > **Log Groups**: All Lambda functions use explicit `logs.LogGroup` constructs with `removalPolicy: DESTROY`. Log groups are named `/aws/lambda/{function-name}` and are deleted when the stack is destroyed.
 
@@ -329,12 +336,9 @@ All Lambda functions use **ARM_64 (Graviton)** architecture for ~20% cost saving
 - Type: REST API
 - Endpoint: Regional
 - CORS: Enabled for frontend domain
-- Throttling:
-  - Burst: 20 requests/second
-  - Rate: 10 requests/second
-- Usage Plans:
-  - Free tier: Default (no API key required)
-  - Admin tier: Higher limits
+- Throttling (configurable per environment in `shared/src/config/environments.ts`):
+  - Burst: 20 requests/second (default for all environments)
+  - Rate: 10 requests/second (default for all environments)
 - Stages: `dev`, `beta`, `prod`
 
 **Endpoints:**
@@ -363,37 +367,26 @@ PUT  /api/vault              → Vault Lambda
 GET  /api/vault/download     → Vault Lambda
 ```
 
-### 5.5 AWS WAF (Prod Only)
+### 5.5 CloudFront Flat-Rate Plan (Bot Protection) {#cloudfront-flat-rate-plan}
 
-**Web ACL Name:** `passvault-waf-prod`
+PassVault uses the **CloudFront Flat-Rate Pricing Plan** (Free tier) for edge-level protection. This is configured outside CDK — enroll the distribution after the first deployment.
 
-> **Note**: WAF is only deployed in the prod environment. Dev and beta stacks do not include WAF to save costs (~$8/month).
+**What's included (Free tier, $0/month):**
+- AWS-managed WAF with bot control rules
+- DDoS protection (Shield Standard)
+- Bot management and analytics
+- Included in the Free tier: 1M requests/month + 100GB data transfer
 
-**Attached to:** CloudFront distribution
+**Blocked attacks do not count against your monthly allowance.**
 
-**Rules (in order):**
-1. **KillSwitchBlock** (Priority: 0)
-   - Deployed in **Count** mode (no effect on traffic)
-   - Automatically flipped to **Block** by the kill switch Lambda on traffic spike alarm
-   - Returns HTTP 503 with inline HTML maintenance page when active
-   - Recovery: WAF Console (us-east-1) → Web ACLs → passvault-waf-prod → Rules → KillSwitchBlock → Edit → change Block → Count
+**One-time enrollment (after first `cdk deploy`):**
+1. Open the [AWS CloudFront console](https://console.aws.amazon.com/cloudfront/)
+2. Select the `passvault-cdn-prod` distribution
+3. Navigate to **Security** → **Pricing plan**
+4. Choose **Flat-Rate Plan** → select **Free**
+5. Accept the plan terms
 
-2. **AWS Managed - Bot Control** (Priority: 1)
-   - Detects and blocks common bots
-   - Challenge suspected bots with CAPTCHA
-
-3. **AWS Managed - Known Bad Inputs** (Priority: 2)
-   - Blocks SQL injection, XSS attempts
-   - Protects against OWASP Top 10
-
-4. **Rate Limiting Rule** (Priority: 3)
-   - Limit: 100 requests per 5 minutes per IP
-   - Action: Block
-
-**CAPTCHA Configuration:**
-- Immunity time: 300 seconds (5 minutes)
-- Challenge action for suspected bots
-- Silent challenge (invisible to most users)
+For full details on all defense layers and worst-case attack cost analysis, see [BOTPROTECTION.md](BOTPROTECTION.md).
 
 ### 5.6 CloudFront Distribution
 
@@ -547,7 +540,6 @@ export const prodConfig: EnvironmentConfig = {
 
   features: {
     passkeyRequired: true,   // Mandatory in prod
-    wafEnabled: true,         // Enabled in prod
     powEnabled: true,
     honeypotEnabled: true,
     cloudFrontEnabled: true,
@@ -562,13 +554,14 @@ export const prodConfig: EnvironmentConfig = {
 
   lambda: { memorySize: 512, timeout: 15 },
   monitoring: { logRetentionDays: 30, costAlertThreshold: 20 },
+  throttle: { rateLimit: 10, burstLimit: 20 },
 };
 
 // Dev and beta configs override specific values:
 // - features.passkeyRequired = false
-// - features.wafEnabled = false
 // - Relaxed session timeouts (5min view, 10min edit)
 // - Smaller Lambda memory (256 MB)
+// Throttle limits (rateLimit/burstLimit) are configurable per environment.
 ```
 
 ### Step 2: Synthesize CDK Stack
@@ -748,31 +741,24 @@ All CloudWatch alarms, the SNS alert topic, and the kill switch are deployed aut
 
 **What is deployed:**
 - **SNS topic** `passvault-prod-alerts` — receives all alarm notifications
-- **Traffic spike alarm** — triggers when API Gateway request count exceeds 100,000 in 5 minutes; sends ALARM and OK notifications to the SNS topic
+- **Sustained traffic alarm** — triggers when API Gateway request count is ≥ 550/minute for 3 consecutive minutes (≈ 92% of the 10 req/s steady-state throttle limit); sends ALARM and OK notifications to the SNS topic
 - **AWS Budget** — `$5/day` daily cost budget; sends alert to SNS topic at 100% threshold
-- **Kill switch Lambda** `passvault-kill-switch` — subscribed to the SNS topic; on ALARM, flips the WAF `KillSwitchBlock` rule from Count → Block (HTTP 503 maintenance page returned to all clients)
+- **Kill switch Lambda** `passvault-kill-switch-prod` — subscribed to the SNS topic; on ALARM, sets all Lambda concurrency to 0 (API Gateway returns 429) and schedules auto-recovery via EventBridge Scheduler in 4 hours
+- **Re-enable Lambda** `passvault-kill-switch-reenable-prod` — invoked by EventBridge Scheduler 4 hours after kill switch fires; restores original Lambda reserved concurrency
 - **Email subscription** (optional) — pass `--context alertEmail=you@example.com` during `cdk deploy` to receive email alerts
 
-**Kill switch recovery** (after a traffic spike is resolved):
-1. Open AWS Console → WAF & Shield (region: **us-east-1**) → Web ACLs
-2. Select `passvault-waf-prod` → Rules → `KillSwitchBlock` → Edit
-3. Change action from **Block** → **Count** → Save
-4. Traffic is immediately unblocked
+**Kill switch automatic recovery:** EventBridge Scheduler automatically re-enables Lambda functions 4 hours after the kill switch fires.
 
-### 7.4 WAF Monitoring
-
+**Kill switch manual recovery** (to restore before the 4-hour window):
 ```bash
-# View WAF blocked requests
-aws wafv2 get-sampled-requests \
-  --web-acl-arn <web-acl-arn> \
-  --rule-metric-name BlockedRequests \
-  --scope CLOUDFRONT \
-  --time-window StartTime=<start>,EndTime=<end> \
-  --max-items 100
-
-# Review WAF logs in CloudWatch
-aws logs tail /aws/wafv2/passvault-waf-prod --follow
+aws lambda put-function-concurrency --function-name passvault-challenge-prod --reserved-concurrent-executions 5
+aws lambda put-function-concurrency --function-name passvault-auth-prod     --reserved-concurrent-executions 3
+aws lambda put-function-concurrency --function-name passvault-admin-prod    --reserved-concurrent-executions 2
+aws lambda put-function-concurrency --function-name passvault-vault-prod    --reserved-concurrent-executions 5
+aws lambda put-function-concurrency --function-name passvault-health-prod   --reserved-concurrent-executions 2
 ```
+
+See [BOTPROTECTION.md](BOTPROTECTION.md) for full kill switch details and worst-case cost analysis.
 
 ---
 
@@ -783,14 +769,14 @@ aws logs tail /aws/wafv2/passvault-waf-prod --follow
 Deploy separate, fully isolated stacks for dev, beta, and production:
 
 ```bash
-# Deploy dev stack (~$0/month, no WAF, no passkey required)
+# Deploy dev stack (~$0/month, no passkey required)
 cdk deploy PassVault-Dev --context env=dev
 
-# Deploy beta stack (~$0/month, no WAF, no passkey required, with CloudFront)
+# Deploy beta stack (~$0/month, no passkey required, with CloudFront)
 # --all is required when domain is provided: deploys PassVault-Beta-Cert (us-east-1) + PassVault-Beta
 cdk deploy --all --context env=beta --context domain=example.com
 
-# Deploy prod stack (~$8-10/month, full security)
+# Deploy prod stack (~$0-2/month, full security)
 cdk deploy --all --context env=prod --context domain=example.com --require-approval broadening
 
 # Destroy (Route 53 alias record is removed automatically)
@@ -804,14 +790,16 @@ All environments are defined in a single file (`shared/src/config/environments.t
 ```typescript
 // Key differences between environments:
 //
-// Dev:  passkeyRequired=false, wafEnabled=false, powEnabled=false
+// Dev:  passkeyRequired=false, powEnabled=false
 //       cloudFrontEnabled=false, relaxed timeouts, 256MB Lambda
 //
-// Beta: passkeyRequired=false, wafEnabled=false, powEnabled=true
+// Beta: passkeyRequired=false, powEnabled=true
 //       cloudFrontEnabled=true, relaxed timeouts, 256MB Lambda
 //
-// Prod: passkeyRequired=true, wafEnabled=true, powEnabled=true
+// Prod: passkeyRequired=true, powEnabled=true
 //       cloudFrontEnabled=true, strict timeouts, 512MB Lambda
+//
+// All envs: throttle.rateLimit=10 req/s, throttle.burstLimit=20 req/s
 ```
 
 See [SPECIFICATION.md Section 2.5](SPECIFICATION.md) for the full environment comparison table.
@@ -841,8 +829,8 @@ aws logs tail /aws/apigateway/passvault-api-prod --follow
 aws logs tail /aws/lambda/passvault-auth-prod --follow
 aws logs tail /aws/lambda/passvault-vault-prod --follow
 
-# View WAF logs
-aws logs tail /aws/wafv2/passvault-waf-prod --follow
+# View kill switch logs
+aws logs tail /aws/lambda/passvault-kill-switch-prod --follow
 ```
 
 ### 9.3 Cost Monitoring
@@ -890,21 +878,21 @@ const lambdaTimeout = Duration.seconds(30); // Increase from 15 to 30
 cdk deploy --context env=<env>
 ```
 
-#### Issue: API Gateway 403 Forbidden
+#### Issue: API Gateway 429 Too Many Requests (Unexpected)
 
-**Cause:** WAF blocking legitimate requests
+**Cause:** Kill switch active (Lambda concurrency set to 0) or throttle limit hit.
 
 ```bash
-# Temporarily disable WAF
-aws wafv2 update-web-acl \
-  --id <web-acl-id> \
-  --scope CLOUDFRONT \
-  --default-action Allow={}
+# Check Lambda concurrency
+aws lambda get-function-concurrency --function-name passvault-auth-prod
 
-# Check WAF logs for blocked requests
-aws logs filter-log-events \
-  --log-group-name /aws/wafv2/passvault-waf-prod \
-  --filter-pattern "BLOCK"
+# If ReservedConcurrentExecutions is 0, kill switch is active.
+# Restore manually:
+aws lambda put-function-concurrency --function-name passvault-challenge-prod --reserved-concurrent-executions 5
+aws lambda put-function-concurrency --function-name passvault-auth-prod     --reserved-concurrent-executions 3
+aws lambda put-function-concurrency --function-name passvault-admin-prod    --reserved-concurrent-executions 2
+aws lambda put-function-concurrency --function-name passvault-vault-prod    --reserved-concurrent-executions 5
+aws lambda put-function-concurrency --function-name passvault-health-prod   --reserved-concurrent-executions 2
 ```
 
 #### Issue: PoW Challenge Validation Failing
@@ -929,7 +917,7 @@ aws ce get-cost-and-usage \
   --metrics "BlendedCost" \
   --group-by Type=SERVICE
 
-# Check for bot attacks (high request count)
+# Check for bot attacks (high API Gateway request count)
 aws cloudwatch get-metric-statistics \
   --namespace AWS/ApiGateway \
   --metric-name Count \
@@ -939,7 +927,8 @@ aws cloudwatch get-metric-statistics \
   --period 3600 \
   --statistics Sum
 
-# If under attack, enable stricter WAF rules
+# If under attack, ensure CloudFront flat-rate plan is enrolled (see BOTPROTECTION.md)
+# The kill switch fires automatically after 3 minutes at sustained throttle limit
 ```
 
 ---
@@ -998,7 +987,6 @@ aws s3 sync s3://passvault-files-prod-xyz123/ \
 
 Dev and beta stacks are designed to run at ~$0/month by default:
 
-- **WAF**: Disabled (saves $8/month per stack)
 - **Passkeys**: Disabled (no WebAuthn device needed during development)
 - **Lambda memory**: 256 MB (reduced from 512 MB)
 - **CloudWatch log retention**: 1 week (dev) / 2 weeks (beta)

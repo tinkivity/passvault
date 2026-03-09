@@ -163,32 +163,39 @@ export class MonitoringConstruct extends Construct {
     });
 
     // -------------------------------------------------------------------------
-    // Traffic spike alarm → SNS → kill switch Lambda + email
+    // Sustained steady-state traffic alarm → SNS → kill switch Lambda + email
     //
-    // Threshold: >100,000 requests in any 5-minute window (~$70/hour at API GW
-    // pricing of $3.50/million). Adjust to match your expected traffic baseline.
-    // ALARM triggers the kill switch Lambda (WAF: Count → Block, 503).
-    // OK sends an email when traffic returns to normal; Lambda ignores OK state.
+    // Fires when API Gateway request rate is at or near the steady-state throttle
+    // limit (10 req/s = 600 req/min) for 3 consecutive minutes. This pattern is
+    // characteristic of a sustained bot attack rather than a legitimate traffic
+    // burst (which is handled by the burst limit of 20 req/s and dissipates quickly).
+    //
+    // Threshold: 550 req/min ≈ 9.2 req/s (92% of the 10 req/s steady-state limit).
+    // EvaluationPeriods: 3 consecutive 1-minute windows (= 3 minutes sustained).
+    //
+    // ALARM → kill switch Lambda (sets all Lambda concurrency to 0 → API GW 429).
+    // OK    → email only (Lambda ignores OK state; auto-recovery via EventBridge).
     // -------------------------------------------------------------------------
 
-    const trafficSpikeAlarm = new cloudwatch.Alarm(this, 'TrafficSpikeAlarm', {
-      alarmName: `passvault-${env}-traffic-spike`,
+    const sustainedTrafficAlarm = new cloudwatch.Alarm(this, 'SustainedTrafficAlarm', {
+      alarmName: `passvault-${env}-sustained-traffic`,
       alarmDescription:
-        'High traffic volume detected — possible bot attack. Kill switch Lambda will activate WAF block.',
+        'API Gateway sustained at steady-state throttle limit for 3 consecutive minutes — ' +
+        'possible bot attack. Kill switch Lambda will set all Lambda concurrency to 0.',
       metric: api.metricCount({
-        period: cdk.Duration.minutes(5),
+        period: cdk.Duration.minutes(1),
         statistic: 'Sum',
       }),
-      threshold: 100_000,
-      evaluationPeriods: 1,
-      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      threshold: 550,
+      evaluationPeriods: 3,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
     });
 
     // ALARM → kill switch Lambda + email
-    trafficSpikeAlarm.addAlarmAction(new cloudwatch_actions.SnsAction(this.alertTopic));
+    sustainedTrafficAlarm.addAlarmAction(new cloudwatch_actions.SnsAction(this.alertTopic));
     // OK → email only (Lambda filters out non-ALARM states)
-    trafficSpikeAlarm.addOkAction(new cloudwatch_actions.SnsAction(this.alertTopic));
+    sustainedTrafficAlarm.addOkAction(new cloudwatch_actions.SnsAction(this.alertTopic));
 
     // -------------------------------------------------------------------------
     // AWS Budget — daily cost alert ($5/day threshold)

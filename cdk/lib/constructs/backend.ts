@@ -186,8 +186,8 @@ export class BackendConstruct extends Construct {
       restApiName: `passvault-api-${env}`,
       deployOptions: {
         stageName: env,
-        throttlingBurstLimit: 20,
-        throttlingRateLimit: 10,
+        throttlingBurstLimit: config.throttle.burstLimit,
+        throttlingRateLimit: config.throttle.rateLimit,
       },
       defaultCorsPreflightOptions: {
         allowOrigins: apigateway.Cors.ALL_ORIGINS,

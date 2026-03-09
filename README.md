@@ -19,7 +19,7 @@ PassVault is a privacy-focused, serverless password vault where:
 - **Zero-knowledge architecture** - even admins can't access user data
 - **Three environments** - dev, beta, and prod with feature flags
 
-**Monthly Cost:** ~$0 for dev/beta, ~$9-11 for prod (3-100 users)
+**Monthly Cost:** ~$0 for dev/beta, ~$1-2 for prod (3-100 users)
 
 ---
 
@@ -42,7 +42,7 @@ PassVault is a privacy-focused, serverless password vault where:
 ### Infrastructure
 - 🚀 **Serverless** - AWS Lambda + API Gateway + S3 + DynamoDB
 - 📊 **Cost-effective** - ~$9/month for up to 100 users
-- 🔒 **AWS WAF** - Bot Control with CAPTCHA challenges (prod only)
+- 🛡️ **CloudFront flat-rate plan** - AWS-managed WAF + DDoS + bot management at $0/month (Free tier)
 - 🌍 **CloudFront CDN** - Global content delivery
 - 📈 **Scalable** - Handles 1,000+ users with minimal cost increase
 
@@ -56,6 +56,7 @@ PassVault is a privacy-focused, serverless password vault where:
 - **[TESTING.md](TESTING.md)** - Unit tests, dev UI testing script, smoke tests, pre-deployment checklist
 - **[RECOVERY.md](RECOVERY.md)** - Offline file recovery manual
 - **[COSTS.md](COSTS.md)** - Detailed cost analysis and projections
+- **[BOTPROTECTION.md](BOTPROTECTION.md)** - Bot protection layers, CloudFront flat-rate plan, kill switch, worst-case costs
 - **[LICENSE](LICENSE)** - MIT License
 
 ---
@@ -65,11 +66,11 @@ PassVault is a privacy-focused, serverless password vault where:
 ```
 Browser (React)
     ↓ HTTPS
-CloudFront + WAF
+CloudFront (flat-rate plan: WAF + DDoS + bot mgmt)
     ↓
-API Gateway (Rate Limiting)
+API Gateway (throttle: 10 req/s, burst 20)
     ↓
-Lambda Functions (PoW Validation)
+Lambda Functions (PoW + honeypot validation)
     ↓
 ┌─────────────┬──────────────┐
 │  DynamoDB   │  S3 Buckets  │
@@ -78,10 +79,13 @@ Lambda Functions (PoW Validation)
 ```
 
 **Protection Layers:**
-1. Client-side PoW (deters mass requests)
-2. AWS WAF (blocks 90%+ of bots)
-3. API Gateway throttling
-4. Lambda validation
+1. CloudFront flat-rate plan (AWS-managed WAF, DDoS, bot management)
+2. API Gateway throttling (10 req/s steady-state)
+3. Client-side PoW (deters mass automation)
+4. Honeypot form fields (blocks naive bots)
+5. Concurrency kill switch (auto-fires after 3 min sustained traffic)
+
+See [BOTPROTECTION.md](BOTPROTECTION.md) for full defense details and worst-case cost analysis.
 
 ---
 
@@ -111,14 +115,14 @@ npm install
 # Bootstrap CDK (one-time setup)
 cdk bootstrap aws://ACCOUNT-ID/REGION
 
-# Deploy dev stack (no WAF, no passkey required, ~$0/month)
+# Deploy dev stack (no passkey required, ~$0/month)
 cd cdk
 cdk deploy PassVault-Dev --context env=dev
 
-# Deploy beta stack (no WAF, no passkey required, with CloudFront, ~$0/month)
+# Deploy beta stack (no passkey required, with CloudFront, ~$0/month)
 cdk deploy PassVault-Beta --context env=beta
 
-# Deploy prod stack (full security, ~$8-10/month)
+# Deploy prod stack (full security, ~$1-2/month)
 cdk deploy PassVault-Prod --context env=prod
 
 # Or deploy all stacks at once
@@ -133,24 +137,24 @@ For complete deployment instructions, see **[DEPLOYMENT.md](DEPLOYMENT.md)**.
 
 ## 💰 Cost Breakdown
 
-**Dev/Beta:** ~$0/month (WAF disabled, runs within AWS free tier)
+**Dev/Beta:** ~$0/month (runs within AWS free tier)
 
 **Prod (Year 2+):**
 
 | Users | Monthly Cost | Per User/Month | Annual Cost |
 |-------|--------------|----------------|-------------|
-| 3     | $9.17        | $3.06          | $110        |
-| 10    | $9.54        | $0.95          | $114        |
-| 50    | $9.90        | $0.20          | $119        |
-| 100   | $11.01       | $0.11          | $132        |
-| 500   | $18.40       | $0.037         | $221        |
+| 3     | $0.01        | $0.003         | $0.12       |
+| 10    | $0.38        | $0.038         | $4.56       |
+| 50    | $1.10        | $0.022         | $13.20      |
+| 100   | $1.83        | $0.018         | $21.96      |
+| 500   | $9.22        | $0.018         | $110.64     |
 
-**Primary cost driver (prod):** AWS WAF (~80-90% of total costs)
+**Primary cost drivers (prod):** Lambda + API Gateway requests (CloudFront flat-rate plan is $0)
 
 **Compared to alternatives:**
 - 1Password Business: $799/month for 100 users
 - Bitwarden Teams: $400/month for 100 users
-- **PassVault: $11/month for 100 users** (99% savings)
+- **PassVault: $1.83/month for 100 users** (99.8% savings)
 
 See **[COSTS.md](COSTS.md)** for detailed analysis.
 
@@ -165,11 +169,13 @@ See **[COSTS.md](COSTS.md)** for detailed analysis.
 - **Authenticated encryption:** GCM mode prevents tampering
 
 ### Bot Protection
-- **Proof of Work:** SHA-256 challenges (~100-500ms computation)
-- **AWS WAF:** Bot Control with managed rules
-- **Rate limiting:** 20 req/sec burst, 10 req/sec steady
-- **Honeypot traps:** Hidden form fields and timing validation
-- **Progressive challenges:** Escalating difficulty on failed attempts
+- **CloudFront flat-rate plan:** AWS-managed WAF, DDoS protection, bot management ($0/month Free tier)
+- **API Gateway throttling:** 10 req/s steady-state, burst 20 — hard ceiling on Lambda invocations
+- **Proof of Work:** SHA-256 challenges (~100-500ms computation) deters mass automation
+- **Honeypot traps:** Hidden form fields block naive form-filling bots
+- **Concurrency kill switch:** Fires after 3 consecutive minutes at throttle limit; auto-recovers in 4 hours
+
+See [BOTPROTECTION.md](BOTPROTECTION.md) for the full threat model and worst-case cost analysis.
 
 ### Recovery
 - Download complete encrypted backup with metadata
@@ -250,6 +256,7 @@ MIT License - see [LICENSE](LICENSE) for details.
 - **Testing:** [TESTING.md](TESTING.md)
 - **Recovery:** [RECOVERY.md](RECOVERY.md)
 - **Costs:** [COSTS.md](COSTS.md)
+- **Bot Protection:** [BOTPROTECTION.md](BOTPROTECTION.md)
 - **Issues:** GitHub Issues
 - **AWS CDK:** https://aws.amazon.com/cdk/
 

@@ -8,10 +8,10 @@ export const devConfig: EnvironmentConfig = {
   adminUsername: 'admin',
   features: {
     passkeyRequired: false,
-    wafEnabled: false,
     powEnabled: false,
     honeypotEnabled: true,
     cloudFrontEnabled: false,
+    killSwitchEnabled: false,
   },
   session: {
     viewModeTimeoutSeconds: 300,
@@ -20,7 +20,8 @@ export const devConfig: EnvironmentConfig = {
     userTokenExpiryMinutes: 30,
   },
   lambda: { memorySize: 256, timeout: 15 },
-  monitoring: { logRetentionDays: 7, costAlertThreshold: 20 },
+  monitoring: { logRetentionDays: 7, costAlertThreshold: 20, killSwitchReEnableMinutes: 0 },
+  throttle: { rateLimit: 10, burstLimit: 20 },
 };
 
 export const betaConfig: EnvironmentConfig = {
@@ -31,10 +32,10 @@ export const betaConfig: EnvironmentConfig = {
   adminUsername: 'admin',
   features: {
     passkeyRequired: false,
-    wafEnabled: false,
     powEnabled: true,
     honeypotEnabled: true,
     cloudFrontEnabled: true,
+    killSwitchEnabled: true,
   },
   session: {
     viewModeTimeoutSeconds: 300,
@@ -43,7 +44,8 @@ export const betaConfig: EnvironmentConfig = {
     userTokenExpiryMinutes: 30,
   },
   lambda: { memorySize: 256, timeout: 15 },
-  monitoring: { logRetentionDays: 14, costAlertThreshold: 20 },
+  monitoring: { logRetentionDays: 14, costAlertThreshold: 20, killSwitchReEnableMinutes: 3 },
+  throttle: { rateLimit: 10, burstLimit: 20 },
 };
 
 export const prodConfig: EnvironmentConfig = {
@@ -54,10 +56,10 @@ export const prodConfig: EnvironmentConfig = {
   adminUsername: 'admin',
   features: {
     passkeyRequired: true,
-    wafEnabled: true,
     powEnabled: true,
     honeypotEnabled: true,
     cloudFrontEnabled: true,
+    killSwitchEnabled: true,
   },
   session: {
     viewModeTimeoutSeconds: 60,
@@ -66,7 +68,8 @@ export const prodConfig: EnvironmentConfig = {
     userTokenExpiryMinutes: 5,
   },
   lambda: { memorySize: 512, timeout: 15 },
-  monitoring: { logRetentionDays: 30, costAlertThreshold: 20 },
+  monitoring: { logRetentionDays: 30, costAlertThreshold: 20, killSwitchReEnableMinutes: 240 },
+  throttle: { rateLimit: 10, burstLimit: 20 },
 };
 
 const configs: Record<EnvironmentName, EnvironmentConfig> = {

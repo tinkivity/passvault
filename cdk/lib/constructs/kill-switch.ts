@@ -5,86 +5,171 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import * as sns from 'aws-cdk-lib/aws-sns';
 import * as sns_subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
 import * as iam from 'aws-cdk-lib/aws-iam';
-import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
+import * as scheduler from 'aws-cdk-lib/aws-scheduler';
 import * as path from 'path';
 import { Construct } from 'constructs';
 
 interface KillSwitchConstructProps {
-  // The CLOUDFRONT-scoped WAF WebACL managed by SecurityConstruct.
-  webAcl: wafv2.CfnWebACL;
-  // SNS topic from MonitoringConstruct. The Lambda subscribes to this topic.
+  // The 5 application Lambda functions to throttle ([challenge, auth, admin, vault, health]).
+  lambdaFunctions: lambda.Function[];
+  // Original reserved concurrency values matching lambdaFunctions order (e.g. [5, 3, 2, 5, 2]).
+  // Use 0 for functions that had no reserved concurrency (restores to unreserved pool on re-enable).
+  originalConcurrency: number[];
+  // SNS topic the kill switch Lambda subscribes to. Publishing an ALARM message activates the switch.
   alertTopic: sns.Topic;
-  // Retention for the kill switch Lambda's log group.
+  // Retention for kill switch and re-enable Lambda log groups.
   logRetentionDays: logs.RetentionDays;
+  // Environment name, used in resource names.
+  environment: string;
+  // Minutes after kill switch fires before Lambda concurrency is auto-restored.
+  reEnableMinutes: number;
 }
 
 export class KillSwitchConstruct extends Construct {
   public readonly killSwitchFn: lambda.Function;
+  public readonly reEnableFn: lambda.Function;
 
   constructor(scope: Construct, id: string, props: KillSwitchConstructProps) {
     super(scope, id);
 
-    const { webAcl, alertTopic, logRetentionDays } = props;
+    const {
+      lambdaFunctions,
+      originalConcurrency,
+      alertTopic,
+      logRetentionDays,
+      environment,
+      reEnableMinutes,
+    } = props;
 
-    // WAF ACL name — the CfnWebACL.name property is the WAF resource name string
-    const webAclName = webAcl.name as string;
+    if (lambdaFunctions.length !== originalConcurrency.length) {
+      throw new Error('lambdaFunctions and originalConcurrency must have the same length');
+    }
+
+    const functionArns = lambdaFunctions.map((fn) => fn.functionArn).join(',');
+    const concurrencyLimits = originalConcurrency.join(',');
+    const schedulerGroupName = `passvault-kill-switch-${environment}`;
 
     // -------------------------------------------------------------------------
-    // Log group (explicit, with DESTROY removal policy)
+    // EventBridge Scheduler group (holds one-time re-enable schedules)
     // -------------------------------------------------------------------------
 
-    const logGroup = new logs.LogGroup(this, 'KillSwitchLogs', {
-      logGroupName: '/aws/lambda/passvault-kill-switch',
+    new scheduler.CfnScheduleGroup(this, 'SchedulerGroup', {
+      name: schedulerGroupName,
+    });
+
+    // -------------------------------------------------------------------------
+    // Re-enable Lambda
+    // -------------------------------------------------------------------------
+
+    const reEnableLogGroup = new logs.LogGroup(this, 'ReEnableLogs', {
+      logGroupName: `/aws/lambda/passvault-kill-switch-reenable-${environment}`,
       retention: logRetentionDays,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
-    // -------------------------------------------------------------------------
-    // Kill switch Lambda
-    //
-    // NodejsFunction auto-bundles the handler + @aws-sdk/client-wafv2 via esbuild.
-    // The handler targets us-east-1 for WAF API calls because CLOUDFRONT-scoped
-    // WebACLs always live in the global us-east-1 endpoint.
-    // -------------------------------------------------------------------------
-
-    this.killSwitchFn = new lambda_nodejs.NodejsFunction(this, 'KillSwitchFn', {
-      functionName: 'passvault-kill-switch',
-      entry: path.join(__dirname, '../kill-switch-handler.ts'),
+    this.reEnableFn = new lambda_nodejs.NodejsFunction(this, 'ReEnableFn', {
+      functionName: `passvault-kill-switch-reenable-${environment}`,
+      entry: path.join(__dirname, '../kill-switch-reenable-handler.ts'),
       handler: 'handler',
       runtime: lambda.Runtime.NODEJS_22_X,
       architecture: lambda.Architecture.ARM_64,
       timeout: cdk.Duration.seconds(30),
       memorySize: 128,
-      logGroup,
+      logGroup: reEnableLogGroup,
       environment: {
-        WAF_ACL_NAME: webAclName,
-        WAF_ACL_ID: webAcl.attrId,
-        KILL_SWITCH_RULE: 'KillSwitchBlock',
+        FUNCTION_ARNS: functionArns,
+        CONCURRENCY_LIMITS: concurrencyLimits,
       },
       bundling: {
-        // Bundle @aws-sdk/client-wafv2 — Node 22 Lambda runtime does not
-        // include AWS SDK v3 packages, so they must be bundled explicitly.
         externalModules: [],
         minify: true,
         sourceMap: false,
       },
     });
 
+    // Re-enable Lambda: restore original concurrency (or delete reservation) on all functions
+    for (const fn of lambdaFunctions) {
+      this.reEnableFn.addToRolePolicy(
+        new iam.PolicyStatement({
+          actions: ['lambda:PutFunctionConcurrency', 'lambda:DeleteFunctionConcurrency'],
+          resources: [fn.functionArn],
+        }),
+      );
+    }
+
     // -------------------------------------------------------------------------
-    // IAM — allow the Lambda to read and update the WAF WebACL
+    // IAM role for EventBridge Scheduler to invoke the re-enable Lambda
     // -------------------------------------------------------------------------
 
+    const schedulerRole = new iam.Role(this, 'SchedulerRole', {
+      roleName: `passvault-kill-switch-scheduler-${environment}`,
+      assumedBy: new iam.ServicePrincipal('scheduler.amazonaws.com'),
+    });
+    this.reEnableFn.grantInvoke(schedulerRole);
+
+    // -------------------------------------------------------------------------
+    // Kill switch Lambda
+    // -------------------------------------------------------------------------
+
+    const killSwitchLogGroup = new logs.LogGroup(this, 'KillSwitchLogs', {
+      logGroupName: `/aws/lambda/passvault-kill-switch-${environment}`,
+      retention: logRetentionDays,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    this.killSwitchFn = new lambda_nodejs.NodejsFunction(this, 'KillSwitchFn', {
+      functionName: `passvault-kill-switch-${environment}`,
+      entry: path.join(__dirname, '../kill-switch-handler.ts'),
+      handler: 'handler',
+      runtime: lambda.Runtime.NODEJS_22_X,
+      architecture: lambda.Architecture.ARM_64,
+      timeout: cdk.Duration.seconds(30),
+      memorySize: 128,
+      logGroup: killSwitchLogGroup,
+      environment: {
+        FUNCTION_ARNS: functionArns,
+        REENABLE_FUNCTION_ARN: this.reEnableFn.functionArn,
+        SCHEDULER_ROLE_ARN: schedulerRole.roleArn,
+        SCHEDULER_GROUP_NAME: schedulerGroupName,
+        REENABLE_AFTER_MINUTES: String(reEnableMinutes),
+      },
+      bundling: {
+        externalModules: [],
+        minify: true,
+        sourceMap: false,
+      },
+    });
+
+    // Kill switch Lambda: set concurrency to 0 on all functions
+    for (const fn of lambdaFunctions) {
+      this.killSwitchFn.addToRolePolicy(
+        new iam.PolicyStatement({
+          actions: ['lambda:PutFunctionConcurrency', 'lambda:GetFunctionConcurrency'],
+          resources: [fn.functionArn],
+        }),
+      );
+    }
+
+    // Kill switch Lambda: create one-time EventBridge Scheduler schedules
     this.killSwitchFn.addToRolePolicy(
       new iam.PolicyStatement({
-        sid: 'WafKillSwitch',
-        actions: ['wafv2:GetWebACL', 'wafv2:UpdateWebACL'],
-        // CLOUDFRONT-scoped WAF ARNs always reference us-east-1
-        resources: [webAcl.attrArn],
+        actions: ['scheduler:CreateSchedule'],
+        resources: [
+          `arn:aws:scheduler:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:schedule/${schedulerGroupName}/*`,
+        ],
+      }),
+    );
+
+    // Kill switch Lambda: pass the scheduler role to EventBridge
+    this.killSwitchFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['iam:PassRole'],
+        resources: [schedulerRole.roleArn],
       }),
     );
 
     // -------------------------------------------------------------------------
-    // Subscribe Lambda to the alert topic
+    // Subscribe kill switch Lambda to the alert topic
     // -------------------------------------------------------------------------
 
     alertTopic.addSubscription(new sns_subscriptions.LambdaSubscription(this.killSwitchFn));

@@ -19,7 +19,7 @@ describe('PassVaultStack (dev)', () => {
     template = makeDevTemplate();
   });
 
-  it('creates no WAF WebACL (wafEnabled=false in dev)', () => {
+  it('creates no WAF WebACL (not managed by CDK — CloudFront flat-rate plan used instead)', () => {
     template.resourceCountIs('AWS::WAFv2::WebACL', 0);
   });
 
@@ -27,7 +27,7 @@ describe('PassVaultStack (dev)', () => {
     template.resourceCountIs('AWS::CloudFront::Distribution', 0);
   });
 
-  it('creates no SNS alert topic (monitoring is prod-only)', () => {
+  it('creates no SNS topic (killSwitchEnabled=false and monitoring disabled in dev)', () => {
     template.resourceCountIs('AWS::SNS::Topic', 0);
   });
 

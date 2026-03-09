@@ -6,7 +6,6 @@ import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as targets from 'aws-cdk-lib/aws-route53-targets';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
-import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
 import { Construct } from 'constructs';
 import type { EnvironmentConfig } from '@passvault/shared';
 
@@ -14,7 +13,6 @@ interface FrontendConstructProps {
   config: EnvironmentConfig;
   frontendBucket: s3.Bucket;
   api: apigateway.RestApi;
-  webAcl?: wafv2.CfnWebACL;
   certificate?: acm.ICertificate;
   domain?: string;
 }
@@ -25,7 +23,7 @@ export class FrontendConstruct extends Construct {
   constructor(scope: Construct, id: string, props: FrontendConstructProps) {
     super(scope, id);
 
-    const { config, frontendBucket, api, webAcl, certificate, domain } = props;
+    const { config, frontendBucket, api, certificate, domain } = props;
     const env = config.environment;
     const fullDomain = domain ? `${config.subdomain}.${domain}` : undefined;
 
@@ -62,7 +60,6 @@ export class FrontendConstruct extends Construct {
       priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
       minimumProtocolVersion: cloudfront.SecurityPolicyProtocol.TLS_V1_2_2021,
       httpVersion: cloudfront.HttpVersion.HTTP2_AND_3,
-      webAclId: webAcl?.attrArn,
       ...(fullDomain && certificate ? { domainNames: [fullDomain], certificate } : {}),
 
       defaultBehavior: {
