@@ -1,10 +1,1 @@
-{
-  "hosted-zone:account=REDACTED_ACCOUNT_ID:domainName=example.com:region=us-east-1": {
-    "Id": "/hostedzone/REDACTED_ZONE_ID",
-    "Name": "example.com."
-  },
-  "hosted-zone:account=REDACTED_ACCOUNT_ID:domainName=example.com:region=eu-central-1": {
-    "Id": "/hostedzone/REDACTED_ZONE_ID",
-    "Name": "example.com."
-  }
-}
+{}

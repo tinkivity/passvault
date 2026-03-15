@@ -28,6 +28,7 @@ dist/
 
 # CDK
 cdk.out/
+cdk/cdk.context.json
 
 # Testing
 coverage/
