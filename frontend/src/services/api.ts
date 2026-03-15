@@ -233,6 +233,23 @@ export class ApiClient {
     );
   }
 
+  async refreshOtp(userId: string, token: string): Promise<{ username: string; oneTimePassword: string; userId: string }> {
+    return this.request(`${API_PATHS.ADMIN_USER_REFRESH_OTP}`, {
+      method: 'POST',
+      body: { userId },
+      token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+    });
+  }
+
+  async deleteUser(userId: string, token: string): Promise<void> {
+    return this.request(`${API_PATHS.ADMIN_USERS}?userId=${encodeURIComponent(userId)}`, {
+      method: 'DELETE',
+      token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+    });
+  }
+
   // ---- Vault -----------------------------------------------------------
 
   async getVault(token: string): Promise<VaultGetResponse> {
@@ -257,6 +274,32 @@ export class ApiClient {
       method: 'GET',
       token,
       powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+    });
+  }
+
+  async sendVaultEmail(token: string): Promise<void> {
+    return this.request(API_PATHS.VAULT_SEND_EMAIL, {
+      method: 'POST',
+      token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+    });
+  }
+
+  async requestEmailChange(newEmail: string, password: string, token: string): Promise<void> {
+    return this.request(API_PATHS.AUTH_EMAIL_CHANGE, {
+      method: 'POST',
+      body: { newEmail, password },
+      token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.MEDIUM,
+    });
+  }
+
+  async confirmEmailChange(code: string, token: string): Promise<void> {
+    return this.request(API_PATHS.AUTH_EMAIL_VERIFY, {
+      method: 'POST',
+      body: { code },
+      token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.MEDIUM,
     });
   }
 }

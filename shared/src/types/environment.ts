@@ -20,6 +20,7 @@ export interface SessionConfig {
   editModeTimeoutSeconds: number;
   adminTokenExpiryHours: number;
   userTokenExpiryMinutes: number;
+  otpExpiryMinutes: number;
 }
 
 export interface LambdaConfig {

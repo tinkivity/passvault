@@ -12,7 +12,7 @@ vi.mock('../config.js', () => ({
       wafEnabled: false,
       cloudFrontEnabled: false,
     },
-    session: { adminTokenExpiryHours: 24, userTokenExpiryMinutes: 30 },
+    session: { adminTokenExpiryHours: 24, userTokenExpiryMinutes: 30, otpExpiryMinutes: 60 },
   },
   getJwtSecret: vi.fn().mockResolvedValue('test-secret'),
   DYNAMODB_TABLE: 'test-table',
@@ -40,7 +40,11 @@ vi.mock('./passkey.js', () => ({
   verifyPasskeyToken: vi.fn(),
 }));
 
-import { login, changePassword } from './auth.js';
+vi.mock('../utils/ses.js', () => ({
+  sendEmail: vi.fn().mockResolvedValue(undefined),
+}));
+
+import { login, changePassword, requestEmailChange, confirmEmailChange } from './auth.js';
 import { getUserByUsername, getUserById, updateUser } from '../utils/dynamodb.js';
 import { verifyPassword, hashPassword } from '../utils/crypto.js';
 import { verifyPasskeyToken } from './passkey.js';
@@ -75,6 +79,11 @@ function makeUser(overrides: Partial<User> = {}): User {
     createdBy: 'admin-1',
     failedLoginAttempts: 0,
     lockedUntil: null,
+    email: null,
+    otpExpiresAt: null,
+    pendingEmail: null,
+    emailVerificationCode: null,
+    emailVerificationExpiresAt: null,
     ...overrides,
   };
 }
@@ -335,5 +344,159 @@ describe('changePassword — passkeyRequired: true (prod)', () => {
       'user-1',
       expect.objectContaining({ status: 'pending_passkey_setup' }),
     );
+  });
+});
+
+describe('changePassword — rejects OTP as new password', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    config.features.passkeyRequired = false;
+  });
+
+  it('returns 400 when new password matches the OTP', async () => {
+    mockGetUserById.mockResolvedValue(
+      makeUser({ status: 'pending_first_login', oneTimePasswordHash: '$2b$12$otphash' }),
+    );
+    mockVerifyPw.mockResolvedValue(true);
+    const result = await changePassword('user-1', 'alice', { newPassword: 'StrongPass123!' });
+    expect(result.error).toBe(ERRORS.PASSWORD_SAME_AS_OTP);
+    expect(result.statusCode).toBe(400);
+    expect(mockUpdateUser).not.toHaveBeenCalled();
+  });
+
+  it('succeeds when new password differs from the OTP', async () => {
+    mockGetUserById.mockResolvedValue(
+      makeUser({ status: 'pending_first_login', oneTimePasswordHash: '$2b$12$otphash' }),
+    );
+    mockVerifyPw.mockResolvedValue(false);
+    const result = await changePassword('user-1', 'alice', { newPassword: 'StrongPass123!' });
+    expect(result.error).toBeUndefined();
+    expect(result.response?.success).toBe(true);
+  });
+
+  it('skips OTP check for active users', async () => {
+    mockGetUserById.mockResolvedValue(makeUser({ status: 'active', oneTimePasswordHash: null }));
+    const result = await changePassword('user-1', 'alice', { newPassword: 'StrongPass123!' });
+    expect(result.error).toBeUndefined();
+    expect(mockVerifyPw).not.toHaveBeenCalled();
+  });
+});
+
+// ── login() — OTP expiry ───────────────────────────────────────────────────────
+
+describe('login — OTP expiry', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    config.features.passkeyRequired = false;
+  });
+
+  it('returns 401 OTP_EXPIRED when otpExpiresAt is in the past', async () => {
+    const past = new Date(Date.now() - 1000).toISOString();
+    mockGetUserByUsername.mockResolvedValue(
+      makeUser({ status: 'pending_first_login', otpExpiresAt: past }),
+    );
+    const result = await login({ username: 'alice', password: 'otp' });
+    expect(result.error).toBe(ERRORS.OTP_EXPIRED);
+    expect(result.statusCode).toBe(401);
+  });
+
+  it('allows login when otpExpiresAt is in the future', async () => {
+    const future = new Date(Date.now() + 60_000).toISOString();
+    mockGetUserByUsername.mockResolvedValue(
+      makeUser({ status: 'pending_first_login', otpExpiresAt: future }),
+    );
+    mockVerifyPw.mockResolvedValue(true);
+    const result = await login({ username: 'alice', password: 'otp' });
+    expect(result.error).toBeUndefined();
+  });
+});
+
+// ── requestEmailChange() ──────────────────────────────────────────────────────
+
+describe('requestEmailChange', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns 503 when SENDER_EMAIL is not set', async () => {
+    delete process.env.SENDER_EMAIL;
+    const result = await requestEmailChange('user-1', 'new@example.com', 'pass');
+    expect(result.statusCode).toBe(503);
+  });
+
+  it('returns 404 when user not found', async () => {
+    process.env.SENDER_EMAIL = 'noreply@example.com';
+    mockGetUserById.mockResolvedValue(null);
+    const result = await requestEmailChange('user-1', 'new@example.com', 'pass');
+    expect(result.statusCode).toBe(404);
+  });
+
+  it('returns 403 when user is not active', async () => {
+    process.env.SENDER_EMAIL = 'noreply@example.com';
+    mockGetUserById.mockResolvedValue(makeUser({ status: 'pending_first_login' }));
+    const result = await requestEmailChange('user-1', 'new@example.com', 'pass');
+    expect(result.statusCode).toBe(403);
+  });
+
+  it('returns 401 on wrong password', async () => {
+    process.env.SENDER_EMAIL = 'noreply@example.com';
+    mockGetUserById.mockResolvedValue(makeUser({ status: 'active' }));
+    mockVerifyPw.mockResolvedValue(false);
+    const result = await requestEmailChange('user-1', 'new@example.com', 'wrong');
+    expect(result.statusCode).toBe(401);
+  });
+
+  it('saves pendingEmail and sends email on success', async () => {
+    process.env.SENDER_EMAIL = 'noreply@example.com';
+    mockGetUserById.mockResolvedValue(makeUser({ status: 'active' }));
+    mockVerifyPw.mockResolvedValue(true);
+    const result = await requestEmailChange('user-1', 'new@example.com', 'correct');
+    expect(result.response?.success).toBe(true);
+    expect(mockUpdateUser).toHaveBeenCalledWith('user-1', expect.objectContaining({
+      pendingEmail: 'new@example.com',
+    }));
+  });
+});
+
+// ── confirmEmailChange() ──────────────────────────────────────────────────────
+
+describe('confirmEmailChange', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('returns 400 when no change is pending', async () => {
+    mockGetUserById.mockResolvedValue(makeUser({ status: 'active' }));
+    const result = await confirmEmailChange('user-1', '123456');
+    expect(result.statusCode).toBe(400);
+  });
+
+  it('returns 400 on wrong code', async () => {
+    const future = new Date(Date.now() + 60_000).toISOString();
+    mockGetUserById.mockResolvedValue(makeUser({
+      status: 'active',
+      pendingEmail: 'new@example.com',
+      emailVerificationCode: '123456',
+      emailVerificationExpiresAt: future,
+    }));
+    const result = await confirmEmailChange('user-1', '999999');
+    expect(result.statusCode).toBe(400);
+    expect(result.error).toBe(ERRORS.EMAIL_VERIFICATION_INVALID);
+  });
+
+  it('updates email on correct code', async () => {
+    const future = new Date(Date.now() + 60_000).toISOString();
+    mockGetUserById.mockResolvedValue(makeUser({
+      status: 'active',
+      pendingEmail: 'new@example.com',
+      emailVerificationCode: '123456',
+      emailVerificationExpiresAt: future,
+    }));
+    const result = await confirmEmailChange('user-1', '123456');
+    expect(result.response?.success).toBe(true);
+    expect(mockUpdateUser).toHaveBeenCalledWith('user-1', expect.objectContaining({
+      email: 'new@example.com',
+      pendingEmail: null,
+    }));
   });
 });

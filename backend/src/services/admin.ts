@@ -12,11 +12,12 @@ import {
   type User,
   type UserStatus,
 } from '@passvault/shared';
-import { getUserById, getUserByUsername, createUser, updateUser, listAllUsers } from '../utils/dynamodb.js';
+import { getUserById, getUserByUsername, createUser, updateUser, listAllUsers, deleteUser } from '../utils/dynamodb.js';
 import { hashPassword, verifyPassword, generateOtp, generateSalt } from '../utils/crypto.js';
 import { validatePassword } from '../utils/password.js';
 import { signToken } from '../utils/jwt.js';
-import { putVaultFile, getVaultFileSize } from '../utils/s3.js';
+import { putVaultFile, getVaultFileSize, deleteVaultFile } from '../utils/s3.js';
+import { sendEmail } from '../utils/ses.js';
 import { verifyPasskeyToken } from './passkey.js';
 import { config } from '../config.js';
 
@@ -112,6 +113,14 @@ export async function adminChangePassword(
     return { error: 'Password does not meet requirements', statusCode: 400, details: validation.errors };
   }
 
+  const user = await getUserById(userId);
+  if (user?.status === 'pending_first_login' && user.oneTimePasswordHash) {
+    const sameAsOtp = await verifyPassword(request.newPassword, user.oneTimePasswordHash);
+    if (sameAsOtp) {
+      return { error: ERRORS.PASSWORD_SAME_AS_OTP, statusCode: 400 };
+    }
+  }
+
   const newHash = await hashPassword(request.newPassword);
   const nextStatus: UserStatus = config.features.passkeyRequired ? 'pending_passkey_setup' : 'active';
 
@@ -136,6 +145,13 @@ export async function createUserInvitation(
     return { error: ERRORS.INVALID_USERNAME, statusCode: 400 };
   }
 
+  // Validate email if provided
+  if (request.email !== undefined && request.email !== '') {
+    if (request.email.length > LIMITS.EMAIL_MAX_LENGTH || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(request.email)) {
+      return { error: 'Invalid email address', statusCode: 400 };
+    }
+  }
+
   // Check if username already exists
   const existing = await getUserByUsername(request.username);
   if (existing) {
@@ -146,6 +162,8 @@ export async function createUserInvitation(
   const otp = generateOtp();
   const otpHash = await hashPassword(otp);
   const salt = generateSalt();
+  const otpExpiresAt = new Date(Date.now() + config.session.otpExpiryMinutes * 60_000).toISOString();
+  const email = request.email || null;
 
   const user: User = {
     userId,
@@ -163,12 +181,41 @@ export async function createUserInvitation(
     createdAt: new Date().toISOString(),
     lastLoginAt: null,
     createdBy: adminUserId,
+    failedLoginAttempts: 0,
+    lockedUntil: null,
+    email,
+    otpExpiresAt,
+    pendingEmail: null,
+    emailVerificationCode: null,
+    emailVerificationExpiresAt: null,
   };
 
   await createUser(user);
 
   // Create empty vault file for user
   await putVaultFile(userId, '');
+
+  // Send OTP email if configured and email was provided
+  if (process.env.SENDER_EMAIL && email) {
+    console.log(`Sending OTP email to ${email} for user ${request.username}`);
+    try {
+      await sendEmail(
+        email,
+        'Your PassVault account',
+        [
+          `Username: ${request.username}`,
+          `One-time password: ${otp}`,
+          `This password expires in ${config.session.otpExpiryMinutes} minutes.`,
+          'Please log in and change your password immediately.',
+        ].join('\n'),
+      );
+      console.log(`OTP email sent to ${email}`);
+    } catch (err) {
+      console.error(`Failed to send OTP email to ${email}:`, err);
+    }
+  } else {
+    console.log(`OTP email skipped: SENDER_EMAIL=${!!process.env.SENDER_EMAIL} email=${!!email}`);
+  }
 
   return {
     response: {
@@ -192,8 +239,70 @@ export async function listUsers(): Promise<ListUsersResponse> {
       createdAt: u.createdAt,
       lastLoginAt: u.lastLoginAt,
       vaultSizeBytes: sizes[i],
+      email: u.email ?? null,
     })),
   };
+}
+
+export async function refreshOtp(
+  userId: string,
+): Promise<{ response?: CreateUserResponse; error?: string; statusCode?: number }> {
+  const user = await getUserById(userId);
+  if (!user) return { error: ERRORS.NOT_FOUND, statusCode: 404 };
+  if (user.status !== 'pending_first_login') return { error: ERRORS.FORBIDDEN, statusCode: 403 };
+
+  const otp = generateOtp();
+  const otpHash = await hashPassword(otp);
+  const otpExpiresAt = new Date(Date.now() + config.session.otpExpiryMinutes * 60_000).toISOString();
+
+  await updateUser(userId, {
+    oneTimePasswordHash: otpHash,
+    passwordHash: otpHash,
+    otpExpiresAt,
+    failedLoginAttempts: 0,
+    lockedUntil: null,
+  });
+
+  if (process.env.SENDER_EMAIL && user.email) {
+    console.log(`Sending refreshed OTP email to ${user.email} for user ${user.username}`);
+    try {
+      await sendEmail(
+        user.email,
+        'Your PassVault account - new one-time password',
+        [
+          `Username: ${user.username}`,
+          `New one-time password: ${otp}`,
+          `This password expires in ${config.session.otpExpiryMinutes} minutes.`,
+          'Please log in and change your password immediately.',
+        ].join('\n'),
+      );
+      console.log(`Refreshed OTP email sent to ${user.email}`);
+    } catch (err) {
+      console.error(`Failed to send refreshed OTP email to ${user.email}:`, err);
+    }
+  }
+
+  return {
+    response: {
+      success: true,
+      username: user.username,
+      oneTimePassword: otp,
+      userId,
+    },
+  };
+}
+
+export async function deleteNewUser(
+  userId: string,
+): Promise<{ response?: { success: true }; error?: string; statusCode?: number }> {
+  const user = await getUserById(userId);
+  if (!user) return { error: ERRORS.NOT_FOUND, statusCode: 404 };
+  if (user.status !== 'pending_first_login') return { error: ERRORS.FORBIDDEN, statusCode: 403 };
+
+  await deleteVaultFile(userId);
+  await deleteUser(userId);
+
+  return { response: { success: true } };
 }
 
 async function recordFailedAttempt(userId: string, currentAttempts: number): Promise<void> {

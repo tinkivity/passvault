@@ -4,7 +4,7 @@ import { success, error } from '../utils/response.js';
 import { validatePow } from '../middleware/pow.js';
 import { validateHoneypot } from '../middleware/honeypot.js';
 import { requireAuth } from '../middleware/auth.js';
-import { adminLogin, adminChangePassword, createUserInvitation, listUsers } from '../services/admin.js';
+import { adminLogin, adminChangePassword, createUserInvitation, listUsers, refreshOtp, deleteNewUser } from '../services/admin.js';
 import { downloadVault } from '../services/vault.js';
 import {
   generateChallengeJwt,
@@ -65,6 +65,14 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // GET /admin/users
     if (path === API_PATHS.ADMIN_USERS && method === 'GET') {
       return await handleListUsers(event);
+    }
+    // POST /admin/users/refresh-otp
+    if (path === API_PATHS.ADMIN_USER_REFRESH_OTP && method === 'POST') {
+      return await handleRefreshOtp(event);
+    }
+    // DELETE /admin/users?userId=...
+    if (path === API_PATHS.ADMIN_USERS && method === 'DELETE') {
+      return await handleDeleteUser(event);
     }
     // GET /admin/vault?userId=...
     if (path === API_PATHS.ADMIN_USER_VAULT && method === 'GET') {
@@ -302,6 +310,60 @@ async function handleDownloadUserVault(event: APIGatewayProxyEvent): Promise<API
   const result = await downloadVault(userId);
   if (result.error) {
     return error(result.error, result.statusCode || 500);
+  }
+  return success(result.response);
+}
+
+async function handleRefreshOtp(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
+  if (pow.errorResponse) return pow.errorResponse;
+
+  const { user, errorResponse } = await requireAuth(event);
+  if (errorResponse) return errorResponse;
+
+  if (user!.role !== 'admin') {
+    return error(ERRORS.FORBIDDEN, 403);
+  }
+  if (user!.status !== 'active') {
+    return error(ERRORS.ADMIN_NOT_ACTIVE, 403);
+  }
+
+  const parsed = parseBody(event);
+  if ('parseError' in parsed) return parsed.parseError;
+  const { userId } = parsed.body as { userId: string };
+  if (!userId) {
+    return error('Missing userId', 400);
+  }
+
+  const result = await refreshOtp(userId);
+  if (result.error) {
+    return error(result.error, result.statusCode || 400);
+  }
+  return success(result.response);
+}
+
+async function handleDeleteUser(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
+  if (pow.errorResponse) return pow.errorResponse;
+
+  const { user, errorResponse } = await requireAuth(event);
+  if (errorResponse) return errorResponse;
+
+  if (user!.role !== 'admin') {
+    return error(ERRORS.FORBIDDEN, 403);
+  }
+  if (user!.status !== 'active') {
+    return error(ERRORS.ADMIN_NOT_ACTIVE, 403);
+  }
+
+  const userId = event.queryStringParameters?.userId;
+  if (!userId) {
+    return error('Missing userId query parameter', 400);
+  }
+
+  const result = await deleteNewUser(userId);
+  if (result.error) {
+    return error(result.error, result.statusCode || 400);
   }
   return success(result.response);
 }

@@ -3,7 +3,7 @@ import { API_PATHS, POW_CONFIG, ERRORS } from '@passvault/shared';
 import { success, error } from '../utils/response.js';
 import { validatePow } from '../middleware/pow.js';
 import { requireAuth } from '../middleware/auth.js';
-import { getVault, putVault, downloadVault } from '../services/vault.js';
+import { getVault, putVault, downloadVault, sendVaultEmail } from '../services/vault.js';
 
 function parseBody(event: APIGatewayProxyEvent): { body: Record<string, unknown> } | { parseError: APIGatewayProxyResult } {
   try {
@@ -33,6 +33,10 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // GET /vault/download
     if (path === API_PATHS.VAULT_DOWNLOAD && method === 'GET') {
       return await handleDownloadVault(event);
+    }
+    // POST /vault/email
+    if (path === API_PATHS.VAULT_SEND_EMAIL && method === 'POST') {
+      return await handleSendVaultEmail(event);
     }
 
     return error('Not found', 404);
@@ -92,6 +96,24 @@ async function handleDownloadVault(event: APIGatewayProxyEvent): Promise<APIGate
   }
 
   const result = await downloadVault(user!.userId);
+  if (result.error) {
+    return error(result.error, result.statusCode || 500);
+  }
+  return success(result.response);
+}
+
+async function handleSendVaultEmail(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
+  if (pow.errorResponse) return pow.errorResponse;
+
+  const { user, errorResponse } = await requireAuth(event);
+  if (errorResponse) return errorResponse;
+
+  if (user!.status !== 'active') {
+    return error(ERRORS.FORBIDDEN, 403);
+  }
+
+  const result = await sendVaultEmail(user!.userId);
   if (result.error) {
     return error(result.error, result.statusCode || 500);
   }

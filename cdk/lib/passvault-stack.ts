@@ -1,8 +1,8 @@
 import * as cdk from 'aws-cdk-lib';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as sns from 'aws-cdk-lib/aws-sns';
-import * as sns_subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
 import { Construct } from 'constructs';
 import type { EnvironmentConfig } from '@passvault/shared';
 import { StorageConstruct } from './constructs/storage.js';
@@ -10,6 +10,7 @@ import { BackendConstruct } from './constructs/backend.js';
 import { FrontendConstruct } from './constructs/frontend.js';
 import { MonitoringConstruct } from './constructs/monitoring.js';
 import { KillSwitchConstruct } from './constructs/kill-switch.js';
+import { SesNotifierConstruct } from './constructs/ses-notifier.js';
 
 interface PassVaultStackProps extends cdk.StackProps {
   certificate?: acm.ICertificate;
@@ -20,10 +21,8 @@ export class PassVaultStack extends cdk.Stack {
   constructor(scope: Construct, id: string, config: EnvironmentConfig, props?: PassVaultStackProps) {
     super(scope, id, props);
 
-    // Alert email for SNS subscription. Provide via:
+    // Alert email for SES notifications. Provide via:
     //   cdk deploy --context alertEmail=you@example.com
-    // Required for kill switch email notifications. A confirmation email will
-    // be sent to this address after deploy — click the link to activate it.
     const alertEmail = this.node.tryGetContext('alertEmail') as string | undefined;
 
     // 1. Storage: DynamoDB + S3 buckets
@@ -59,7 +58,7 @@ export class PassVaultStack extends cdk.Stack {
       fn.addEnvironment('FRONTEND_ORIGIN', frontendOrigin);
     }
 
-    // 4. Monitoring: CloudWatch dashboard + alarms + SNS alerts (prod only)
+    // 4. Monitoring: CloudWatch dashboard + alarms + SNS topic (prod only)
     let monitoring: MonitoringConstruct | undefined;
     if (config.environment === 'prod') {
       monitoring = new MonitoringConstruct(this, 'Monitoring', {
@@ -73,7 +72,6 @@ export class PassVaultStack extends cdk.Stack {
           backend.healthFn,
         ],
         usersTable: storage.usersTable,
-        alertEmail,
       });
     }
 
@@ -87,18 +85,15 @@ export class PassVaultStack extends cdk.Stack {
     //   message to the KillSwitchTopicArn stack output. Restores after 3 minutes
     //   (short window suitable for testing). Beta functions have no reserved
     //   concurrency (limit=0 means DeleteFunctionConcurrency on restore).
+    let killSwitchTopic: sns.Topic | undefined;
     if (config.features.killSwitchEnabled) {
       // Beta gets a standalone SNS topic (no alarm subscription).
       // Prod uses the monitoring alertTopic (alarm-connected).
-      let killSwitchTopic: sns.Topic;
       if (config.environment === 'beta') {
         killSwitchTopic = new sns.Topic(this, 'KillSwitchTopic', {
           topicName: `passvault-${config.environment}-kill-switch`,
           displayName: `PassVault ${config.environment} Kill Switch`,
         });
-        if (alertEmail) {
-          killSwitchTopic.addSubscription(new sns_subscriptions.EmailSubscription(alertEmail));
-        }
       } else {
         // prod — monitoring must exist
         killSwitchTopic = monitoring!.alertTopic;
@@ -121,6 +116,46 @@ export class PassVaultStack extends cdk.Stack {
         environment: config.environment,
         reEnableMinutes: config.monitoring.killSwitchReEnableMinutes,
       });
+    }
+
+    // 6. SES email notifier (beta + prod when domain + alertEmail are provided)
+    //
+    // Sends alerts from alerts@{subdomain}.{domain}:
+    //   prod: alerts@pv.example.com
+    //   beta: alerts@beta.pv.example.com
+    //
+    // Subscribes to whichever SNS topic the environment uses:
+    //   prod → monitoring.alertTopic (CloudWatch alarm + budget notifications)
+    //   beta → KillSwitchTopic (manual kill switch trigger)
+    //
+    // All Route53 DNS records (DKIM, SPF, MX, DMARC) are created on deploy
+    // and destroyed on cdk destroy.
+    if (killSwitchTopic && alertEmail && props?.domain) {
+      const senderDomain = `${config.subdomain}.${props.domain}`;
+      const sesNotifier = new SesNotifierConstruct(this, 'SesNotifier', {
+        topic: killSwitchTopic,
+        alertEmail,
+        senderDomain,
+        rootDomain: props.domain,
+        environment: config.environment,
+        logRetentionDays: config.monitoring.logRetentionDays as logs.RetentionDays,
+      });
+
+      // Grant SES transactional send to admin, auth, vault Lambdas.
+      // The ses-notifier Lambda keeps alerts@{senderDomain}; transactional uses noreply@.
+      //
+      // NOTE: When a recipient address is itself a verified SES identity in the
+      // account (e.g. a test address added to bypass sandbox restrictions), SES
+      // checks IAM on the recipient identity ARN in addition to the sender ARN.
+      // Using a wildcard resource avoids having to enumerate every recipient identity.
+      const transactionalSender = `noreply@${senderDomain}`;
+      for (const fn of [backend.adminFn, backend.authFn, backend.vaultFn]) {
+        fn.addToRolePolicy(new iam.PolicyStatement({
+          actions: ['ses:SendEmail', 'ses:SendRawEmail'],
+          resources: [`arn:aws:ses:${this.region}:${this.account}:identity/*`],
+        }));
+        fn.addEnvironment('SENDER_EMAIL', transactionalSender);
+      }
     }
 
     // Stack outputs

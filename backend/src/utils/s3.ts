@@ -1,4 +1,4 @@
-import { S3Client, GetObjectCommand, PutObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, GetObjectCommand, PutObjectCommand, HeadObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { FILES_BUCKET } from '../config.js';
 
 const s3 = new S3Client({});
@@ -31,6 +31,15 @@ export async function putVaultFile(userId: string, encryptedContent: string): Pr
     }),
   );
   return now;
+}
+
+export async function deleteVaultFile(userId: string): Promise<void> {
+  await s3.send(
+    new DeleteObjectCommand({
+      Bucket: FILES_BUCKET,
+      Key: `user-${userId}.enc`,
+    }),
+  );
 }
 
 export async function getVaultFileSize(userId: string): Promise<number | null> {

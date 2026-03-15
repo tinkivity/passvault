@@ -9,8 +9,10 @@ import {
   type VaultPutResponse,
   type VaultDownloadResponse,
 } from '@passvault/shared';
+
 import { getVaultFile, putVaultFile } from '../utils/s3.js';
 import { getUserById } from '../utils/dynamodb.js';
+import { sendEmailWithAttachment } from '../utils/ses.js';
 
 export async function getVault(userId: string): Promise<{ response?: VaultGetResponse; error?: string; statusCode?: number }> {
   const file = await getVaultFile(userId);
@@ -81,4 +83,43 @@ export async function downloadVault(
       username: user.username,
     },
   };
+}
+
+export async function sendVaultEmail(
+  userId: string,
+): Promise<{ response?: { success: true }; error?: string; statusCode?: number }> {
+  if (!process.env.SENDER_EMAIL) {
+    return { error: 'Email sending is not available in this environment', statusCode: 503 };
+  }
+
+  const user = await getUserById(userId);
+  if (!user) return { error: ERRORS.NOT_FOUND, statusCode: 404 };
+  if (!user.email) return { error: ERRORS.NO_EMAIL_ADDRESS, statusCode: 400 };
+
+  const vaultResult = await downloadVault(userId);
+  if (vaultResult.error || !vaultResult.response) {
+    return { error: vaultResult.error || 'Failed to retrieve vault', statusCode: vaultResult.statusCode || 500 };
+  }
+
+  const now = new Date().toISOString();
+  const date = now.slice(0, 10);
+  const filename = `passvault-${user.username}-${date}.vault`;
+
+  await sendEmailWithAttachment(
+    user.email,
+    'Your PassVault encrypted vault export',
+    [
+      `Your encrypted vault is attached as ${filename}.`,
+      ``,
+      `Exported:  ${now}`,
+      `Username:  ${user.username}`,
+    ].join('\n'),
+    {
+      filename,
+      content: JSON.stringify(vaultResult.response, null, 2),
+      contentType: 'application/octet-stream',
+    },
+  );
+
+  return { response: { success: true } };
 }

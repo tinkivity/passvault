@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ERRORS, LIMITS } from '@passvault/shared';
 
 vi.mock('../utils/s3.js', () => ({
@@ -11,14 +11,20 @@ vi.mock('../utils/dynamodb.js', () => ({
   getUserById: vi.fn(),
 }));
 
-import { getVault, putVault, downloadVault } from './vault.js';
+vi.mock('../utils/ses.js', () => ({
+  sendEmailWithAttachment: vi.fn().mockResolvedValue(undefined),
+}));
+
+import { getVault, putVault, downloadVault, sendVaultEmail } from './vault.js';
 import { getVaultFile, putVaultFile } from '../utils/s3.js';
 import { getUserById } from '../utils/dynamodb.js';
+import { sendEmailWithAttachment } from '../utils/ses.js';
 import type { User } from '@passvault/shared';
 
 const mockGetFile = vi.mocked(getVaultFile);
 const mockPutFile = vi.mocked(putVaultFile);
 const mockGetUser = vi.mocked(getUserById);
+const mockSendEmailWithAttachment = vi.mocked(sendEmailWithAttachment);
 
 function makeUser(overrides: Partial<User> = {}): User {
   return {
@@ -39,6 +45,11 @@ function makeUser(overrides: Partial<User> = {}): User {
     createdBy: 'admin-1',
     failedLoginAttempts: 0,
     lockedUntil: null,
+    email: null,
+    otpExpiresAt: null,
+    pendingEmail: null,
+    emailVerificationCode: null,
+    emailVerificationExpiresAt: null,
     ...overrides,
   };
 }
@@ -137,5 +148,56 @@ describe('downloadVault', () => {
     expect(params?.argon2.memory).toBe(65536);
     expect(params?.argon2.iterations).toBe(3);
     expect(params?.aes.keySize).toBe(256);
+  });
+});
+
+// ── sendVaultEmail() ──────────────────────────────────────────────────────────
+
+describe('sendVaultEmail', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.SENDER_EMAIL = 'noreply@example.com';
+  });
+
+  afterEach(() => {
+    delete process.env.SENDER_EMAIL;
+  });
+
+  it('returns 503 when SENDER_EMAIL is not set', async () => {
+    delete process.env.SENDER_EMAIL;
+    const result = await sendVaultEmail('user-1');
+    expect(result.statusCode).toBe(503);
+    expect(mockSendEmailWithAttachment).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 when user does not exist', async () => {
+    mockGetUser.mockResolvedValue(null);
+    const result = await sendVaultEmail('user-1');
+    expect(result.statusCode).toBe(404);
+    expect(mockSendEmailWithAttachment).not.toHaveBeenCalled();
+  });
+
+  it('returns 400 when user has no email address', async () => {
+    mockGetUser.mockResolvedValue(makeUser({ email: null }));
+    const result = await sendVaultEmail('user-1');
+    expect(result.statusCode).toBe(400);
+    expect(mockSendEmailWithAttachment).not.toHaveBeenCalled();
+  });
+
+  it('sends vault as an attachment and returns success', async () => {
+    mockGetUser.mockResolvedValue(makeUser({ email: 'alice@example.com' }));
+    mockGetFile.mockResolvedValue({ content: 'encrypted-data', lastModified: '2024-06-01T12:00:00.000Z' });
+    const result = await sendVaultEmail('user-1');
+    expect(result.response?.success).toBe(true);
+    expect(mockSendEmailWithAttachment).toHaveBeenCalledWith(
+      'alice@example.com',
+      expect.stringContaining('vault'),
+      expect.any(String),
+      expect.objectContaining({
+        filename: expect.stringMatching(/^passvault-alice-\d{4}-\d{2}-\d{2}\.vault$/),
+        contentType: 'application/octet-stream',
+        content: expect.any(String),
+      }),
+    );
   });
 });

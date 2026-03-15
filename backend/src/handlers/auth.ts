@@ -5,7 +5,7 @@ import { success, error } from '../utils/response.js';
 import { validatePow } from '../middleware/pow.js';
 import { validateHoneypot } from '../middleware/honeypot.js';
 import { requireAuth } from '../middleware/auth.js';
-import { login, changePassword } from '../services/auth.js';
+import { login, changePassword, requestEmailChange, confirmEmailChange } from '../services/auth.js';
 import {
   generateChallengeJwt,
   verifyChallengeJwt,
@@ -56,6 +56,14 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // POST /auth/passkey/register
     if (path === API_PATHS.AUTH_PASSKEY_REGISTER && method === 'POST') {
       return await handlePasskeyRegister(event);
+    }
+    // POST /auth/email/change
+    if (path === API_PATHS.AUTH_EMAIL_CHANGE && method === 'POST') {
+      return await handleRequestEmailChange(event);
+    }
+    // POST /auth/email/verify
+    if (path === API_PATHS.AUTH_EMAIL_VERIFY && method === 'POST') {
+      return await handleConfirmEmailChange(event);
     }
 
     return error('Not found', 404);
@@ -216,4 +224,48 @@ async function handlePasskeyRegister(event: APIGatewayProxyEvent): Promise<APIGa
   });
 
   return success({ success: true });
+}
+
+async function handleRequestEmailChange(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  const pow = validatePow(event, POW_CONFIG.DIFFICULTY.MEDIUM);
+  if (pow.errorResponse) return pow.errorResponse;
+
+  const { user, errorResponse } = await requireAuth(event);
+  if (errorResponse) return errorResponse;
+
+  if (user!.status !== 'active') {
+    return error(ERRORS.FORBIDDEN, 403);
+  }
+
+  const parsed = parseBody(event);
+  if ('parseError' in parsed) return parsed.parseError;
+  const { newEmail, password } = parsed.body as { newEmail: string; password: string };
+
+  const result = await requestEmailChange(user!.userId, newEmail, password);
+  if (result.error) {
+    return error(result.error, result.statusCode || 400);
+  }
+  return success(result.response);
+}
+
+async function handleConfirmEmailChange(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  const pow = validatePow(event, POW_CONFIG.DIFFICULTY.MEDIUM);
+  if (pow.errorResponse) return pow.errorResponse;
+
+  const { user, errorResponse } = await requireAuth(event);
+  if (errorResponse) return errorResponse;
+
+  if (user!.status !== 'active') {
+    return error(ERRORS.FORBIDDEN, 403);
+  }
+
+  const parsed = parseBody(event);
+  if ('parseError' in parsed) return parsed.parseError;
+  const { code } = parsed.body as { code: string };
+
+  const result = await confirmEmailChange(user!.userId, code);
+  if (result.error) {
+    return error(result.error, result.statusCode || 400);
+  }
+  return success(result.response);
 }

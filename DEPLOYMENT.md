@@ -29,7 +29,7 @@ See [SPECIFICATION.md Section 2.5](SPECIFICATION.md) for full environment compar
 4. [CDK Stack Architecture](#4-cdk-stack-architecture)
 5. [Infrastructure Components](#5-infrastructure-components)
 6. [Deployment Steps](#6-deployment-steps)
-7. [Post-Deployment Configuration](#7-post-deployment-configuration)
+7. [Post-Deployment Configuration](#7-post-deployment-configuration) *(includes SES / transactional email setup)*
 8. [Environment Management](#8-environment-management)
 9. [Monitoring & Alerts](#9-monitoring--alerts)
 10. [Troubleshooting](#10-troubleshooting)
@@ -108,16 +108,16 @@ passvault/
 ├── backend/                      # Lambda function code
 │   ├── src/
 │   │   ├── handlers/
-│   │   │   ├── auth.ts           # POST /auth/login, change-password, passkey/*
-│   │   │   ├── admin.ts          # POST /admin/login, change-password, passkey/*, users; GET /admin/users
-│   │   │   ├── vault.ts          # GET/PUT /vault, GET /vault/download
+│   │   │   ├── auth.ts           # POST /auth/login, change-password, passkey/*, email/change, email/verify
+│   │   │   ├── admin.ts          # POST /admin/login, change-password, passkey/*, users, users/refresh-otp; GET /admin/users; DELETE /admin/users
+│   │   │   ├── vault.ts          # GET/PUT /vault, GET /vault/download, POST /vault/email
 │   │   │   ├── challenge.ts      # GET /challenge
 │   │   │   └── health.ts         # GET /health
 │   │   ├── services/
-│   │   │   ├── auth.ts           # login(), changePassword()
-│   │   │   ├── admin.ts          # adminLogin(), createUserInvitation(), listUsers()
+│   │   │   ├── auth.ts           # login(), changePassword(), initiateEmailChange(), verifyEmailChange()
+│   │   │   ├── admin.ts          # adminLogin(), createUserInvitation(), listUsers(), refreshOtp(), deletePendingUser()
 │   │   │   ├── passkey.ts        # challenge JWTs, passkey tokens, WebAuthn verify/register
-│   │   │   ├── vault.ts          # getVault(), putVault(), downloadVault()
+│   │   │   ├── vault.ts          # getVault(), putVault(), downloadVault(), emailVault()
 │   │   │   └── challenge.ts      # generateChallenge(), validateSolution()
 │   │   ├── middleware/
 │   │   │   ├── auth.ts           # JWT extraction + validation
@@ -286,7 +286,8 @@ All Lambda functions use **ARM_64 (Graviton)** architecture for ~20% cost saving
 - Timeout: 10 seconds
 - Reserved concurrency: 3 (prod only)
 - Handler: `auth.handler`
-- Purpose: Login, password change, passkey challenge/verify/register
+- Purpose: Login, password change, passkey challenge/verify/register, email change/verify
+- Environment variables (beta/prod): `SENDER_EMAIL=noreply@{domain}`
 
 **Admin Function:** `passvault-admin-{env}`
 - Runtime: Node.js 22.x (ARM64)
@@ -294,7 +295,8 @@ All Lambda functions use **ARM_64 (Graviton)** architecture for ~20% cost saving
 - Timeout: 10 seconds
 - Reserved concurrency: 2 (prod only)
 - Handler: `admin.handler`
-- Purpose: User creation, admin management
+- Purpose: User creation, admin management, OTP refresh, pending-user deletion
+- Environment variables (beta/prod): `SENDER_EMAIL=noreply@{domain}`
 
 **Vault Function:** `passvault-vault-{env}`
 - Runtime: Node.js 22.x (ARM64)
@@ -302,7 +304,8 @@ All Lambda functions use **ARM_64 (Graviton)** architecture for ~20% cost saving
 - Timeout: 15 seconds
 - Reserved concurrency: 5 (prod only)
 - Handler: `vault.handler`
-- Purpose: File read/write operations
+- Purpose: File read/write operations, vault email delivery
+- Environment variables (beta/prod): `SENDER_EMAIL=noreply@{domain}`
 
 **Health Function:** `passvault-health-{env}`
 - Runtime: Node.js 22.x (ARM64)
@@ -359,12 +362,18 @@ GET  /api/admin/passkey/challenge          → Admin Lambda
 POST /api/admin/passkey/verify             → Admin Lambda
 GET  /api/admin/passkey/register/challenge → Admin Lambda
 POST /api/admin/passkey/register           → Admin Lambda
-POST /api/admin/users        → Admin Lambda
-GET  /api/admin/users        → Admin Lambda
+POST   /api/admin/users                  → Admin Lambda
+GET    /api/admin/users                  → Admin Lambda
+POST   /api/admin/users/refresh-otp     → Admin Lambda
+DELETE /api/admin/users                 → Admin Lambda
+
+POST /api/auth/email/change   → Auth Lambda
+POST /api/auth/email/verify   → Auth Lambda
 
 GET  /api/vault              → Vault Lambda
 PUT  /api/vault              → Vault Lambda
 GET  /api/vault/download     → Vault Lambda
+POST /api/vault/email        → Vault Lambda
 ```
 
 ### 5.5 CloudFront Flat-Rate Plan (Bot Protection) {#cloudfront-flat-rate-plan}
@@ -436,7 +445,7 @@ All `cdk` commands accept context variables via `--context key=value`:
 |---|---|---|---|
 | `env` | **Yes** | All commands | Deployment environment. Must be `dev`, `beta`, or `prod`. Selects the environment config from `shared/src/config/environments.ts` and names the CloudFormation stack (`PassVault-Dev`, `PassVault-Beta`, `PassVault-Prod`). |
 | `domain` | No | All commands | Root domain name of an existing Route 53 hosted zone (e.g. `example.com`). When provided and `cloudFrontEnabled` is true for the selected environment, CDK creates a `CertificateStack` in `us-east-1` and configures CloudFront with a custom subdomain (`pv.example.com` for prod, `beta.pv.example.com` for beta, `dev.pv.example.com` for dev). Omit to use the auto-generated CloudFront URL. |
-| `alertEmail` | No | `env=prod` only | Email address to subscribe to the SNS alert topic. Receives traffic spike alarms and daily cost alerts. After deploy, AWS sends a confirmation email — the subscription is inactive until the link is clicked. Has no effect in dev or beta (no SNS topic is created). |
+| `alertEmail` | No | `env=beta` or `env=prod` | Email address to subscribe to the SNS alert topic. In prod: receives traffic spike alarms and daily cost alerts. In beta: receives kill switch activation notifications (useful when testing the kill switch manually). After deploy, AWS sends a confirmation email — the subscription is inactive until the link is clicked. Has no effect in dev (no SNS topic is created). |
 | `passkeyRpId` | `env=prod` | `env=prod` | WebAuthn relying party ID — the domain users will authenticate from (e.g. `vault.example.com`). Required when `passkeyRequired=true`. Can also be set via the `PASSKEY_RP_ID` environment variable before running `cdk deploy`. |
 | `passkeyOrigin` | `env=prod` | `env=prod` | WebAuthn relying party origin — the full origin URL (e.g. `https://vault.example.com`). Required when `passkeyRequired=true`. Can also be set via `PASSKEY_ORIGIN` environment variable. |
 
@@ -452,6 +461,9 @@ When `domain` is provided and `cloudFrontEnabled` is `true` (beta and prod), CDK
 ```bash
 # Recommended — CDK resolves the dependency order automatically
 cdk deploy --all --context env=beta --context domain=example.com
+
+# With alert emails for kill switch notifications (optional)
+cdk deploy --all --context env=beta --context domain=example.com --context alertEmail=you@example.com
 
 # Equivalent explicit form
 cdk deploy PassVault-Beta-Cert PassVault-Beta --context env=beta --context domain=example.com
@@ -735,7 +747,85 @@ From admin dashboard:
 3. Copy one-time password (shown once)
 4. Share credentials with user securely (encrypted email, password manager, etc.)
 
-### 7.3 Monitoring & Kill Switch (Prod Only)
+### 7.3 Transactional Email (SES) — Beta/Prod
+
+PassVault uses Amazon SES to send OTP delivery emails and encrypted vault backups. This is optional — if `SENDER_EMAIL` is not set, email features are silently disabled (admin always sees the OTP in the UI; vault-email returns 503).
+
+**How it works:**
+- The CDK stack sets `SENDER_EMAIL=noreply@{domain}` on the auth, admin, and vault Lambdas in beta and prod environments.
+- The `SesNotifierConstruct` creates an SES email identity for the domain and calls `grantSendEmail()` to grant the three Lambdas `ses:SendEmail` permission against that identity.
+- `SENDER_EMAIL` is **not** set in dev; email features return `EMAIL_CHANGE_NOT_AVAILABLE` / `NO_EMAIL_ADDRESS` as appropriate.
+
+**One-time SES setup (before first send):**
+
+By default, new AWS accounts are in the **SES sandbox**. In sandbox mode, SES only delivers to addresses that have been manually verified in the SES console — all other sends are silently rejected (no error returned to the caller, nothing in CloudWatch). This is the most common reason email appears not to be working after a fresh deployment.
+
+To send to arbitrary recipients (required for real users) you must request production access:
+
+1. Open **AWS Console** → **Amazon SES** → **Account dashboard**
+2. If the banner reads "Your account is in the sandbox", click **Request production access**
+3. Fill in the use-case form — select "Transactional", describe PassVault as a private self-hosted password vault with low volume
+4. AWS typically approves within 24 hours
+
+While still in sandbox, you can test by verifying individual recipient addresses:
+**SES console** → **Verified identities** → **Create identity** → **Email address** → enter the recipient → click the link in the confirmation email AWS sends.
+
+**Domain verification** is handled automatically by the `SesNotifierConstruct` via DKIM CNAME records in Route 53 (when `--context domain=...` is provided). DKIM propagation can take a few minutes after first deploy — SES will not send until the identity shows **Verified** in the console. If you are not using a custom domain, verify the sender address manually in the SES console before deploying.
+
+**Alerts email vs transactional email:**
+- `alerts@{domain}` (via `--context alertEmail`) — SNS topic subscription. In prod: CloudWatch alarms and daily cost alerts. In beta: kill switch activation notifications. Requires `--context domain=...`.
+- `noreply@{domain}` — `SENDER_EMAIL`; used for OTP delivery, vault email, and email-change verification codes
+
+**Troubleshooting email not sending:**
+
+Work through these checks in order:
+
+1. **Check the Lambda logs first.**
+   The admin Lambda logs a line for every email attempt:
+   - `Sending OTP email to ...` — the code reached the send call; any SES error follows
+   - `OTP email sent to ...` — SES accepted the message (delivery is still not guaranteed)
+   - `Failed to send OTP email to ...: <error>` — SES rejected the call; the error message explains why
+   - `OTP email skipped: SENDER_EMAIL=false email=...` — `SENDER_EMAIL` is not set on the Lambda (CDK deploy issue)
+   - `OTP email skipped: SENDER_EMAIL=true email=false` — the email address was not saved on the user record (Lambda bundle is stale — see point 4)
+
+   ```bash
+   aws logs tail /aws/lambda/passvault-admin-beta --since 1h --region eu-central-1
+   ```
+
+2. **Check SES sending activity.**
+   Open **AWS Console** → **Amazon SES** → **Email activity** (or **Sending statistics**). If the send count is zero at the time of the user creation, the Lambda never called SES — skip to point 4. If there are rejects or bounces, the problem is sandbox or deliverability (see point 3).
+
+3. **Check sandbox status.**
+   Open **SES** → **Account dashboard**. If the account is in the sandbox, sends to unverified addresses are silently dropped. Either verify the recipient address (for testing) or request production access (for real users).
+
+4. **Check that the Lambda bundle is current.**
+   The Lambda is deployed from `backend/dist/`. If `cdk deploy` was run without rebuilding the backend first, the running code may predate the email feature — causing `SENDER_EMAIL` to be set in the env but the code to never read it.
+   Confirm by checking whether the user record has an `email` field in DynamoDB:
+   ```bash
+   aws dynamodb query \
+     --table-name passvault-users-beta \
+     --index-name username-index \
+     --key-condition-expression "username = :u" \
+     --expression-attribute-values '{":u":{"S":"<username>"}}' \
+     --region eu-central-1 \
+     --query "Items[0].email"
+   ```
+   If the attribute is absent, the Lambda code is stale. Rebuild and redeploy:
+   ```bash
+   cd backend && npm run build && cd ..
+   cdk deploy --all --context env=beta --context domain=example.com --context alertEmail=you@example.com
+   ```
+
+5. **Check that `SENDER_EMAIL` is set on the Lambda.**
+   ```bash
+   aws lambda get-function-configuration \
+     --function-name passvault-admin-beta \
+     --region eu-central-1 \
+     --query 'Environment.Variables.SENDER_EMAIL'
+   ```
+   If this returns `null`, the CDK deploy was run without `--context domain=...` (which is required to create the `SesNotifierConstruct` and set the env var).
+
+### 7.4 Monitoring & Kill Switch (Prod Only)
 
 All CloudWatch alarms, the SNS alert topic, and the kill switch are deployed automatically by CDK for the prod stack. No manual CLI setup is needed.
 
@@ -745,7 +835,7 @@ All CloudWatch alarms, the SNS alert topic, and the kill switch are deployed aut
 - **AWS Budget** — `$5/day` daily cost budget; sends alert to SNS topic at 100% threshold
 - **Kill switch Lambda** `passvault-kill-switch-prod` — subscribed to the SNS topic; on ALARM, sets all Lambda concurrency to 0 (API Gateway returns 429) and schedules auto-recovery via EventBridge Scheduler in 4 hours
 - **Re-enable Lambda** `passvault-kill-switch-reenable-prod` — invoked by EventBridge Scheduler 4 hours after kill switch fires; restores original Lambda reserved concurrency
-- **Email subscription** (optional) — pass `--context alertEmail=you@example.com` during `cdk deploy` to receive email alerts
+- **Email subscription** (optional) — pass `--context alertEmail=you@example.com` during `cdk deploy` to receive email alerts. Beta has an equivalent: the same context variable subscribes to the beta kill switch topic instead (see §7.3)
 
 **Kill switch automatic recovery:** EventBridge Scheduler automatically re-enables Lambda functions 4 hours after the kill switch fires.
 

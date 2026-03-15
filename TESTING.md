@@ -197,6 +197,53 @@ The dev stack has `passkeyRequired: false` and `powEnabled: false`, so the login
 
 ---
 
+## 3a. New Feature Test Scenarios
+
+These scenarios cover features introduced after the initial implementation. Run them manually against the dev or beta stack as appropriate. Email-dependent scenarios require a beta/prod stack with SES configured.
+
+### OTP Expiry
+
+| Scenario | Steps | Expected |
+|---|---|---|
+| OTP used before expiry | Create user; log in within expiry window | Login succeeds |
+| OTP used after expiry | Create user; wait until `otpExpiresAt` passes (or manually set it in DynamoDB); attempt login | 401 with `OTP_EXPIRED` |
+| Admin refresh OTP | After OTP expires, admin calls Refresh OTP; user logs in with new OTP | Login succeeds |
+| Refresh OTP on active user | Admin attempts refresh on a user whose status is not `pending_first_login` | 400 error |
+
+### Admin: Refresh OTP (`POST /api/admin/users/refresh-otp`)
+
+- Refresh on a `pending_first_login` user → new OTP returned; old OTP no longer works
+- On beta with email configured: confirm SES delivers new OTP email to user's inbox
+- On beta without user email: refresh succeeds; no email sent; OTP returned to admin only
+
+### Admin: Delete Pending User (`DELETE /api/admin/users?userId=`)
+
+- Delete a `pending_first_login` user → user disappears from list; S3 vault file is removed (`user-{userId}.enc` no longer exists)
+- Attempt to delete a user with status `active` or `pending_passkey_setup` → 400 error
+- After deletion, attempting to log in with the deleted user's credentials → 401
+
+### Registration Email (Beta/Prod)
+
+- Create user with `email` field provided and SES configured → email arrives with OTP and expiry notice
+- Create user without `email` field → no email; OTP shown in admin UI only
+- Create user with `email` in dev environment → `email` field ignored; no SES send
+
+### Vault Email (`POST /api/vault/email`)
+
+- User with email set clicks "Email Encrypted Backup" → email arrives containing JSON vault backup
+- User without email set clicks button → 400 `NO_EMAIL_ADDRESS`; UI shows appropriate error
+- Call from dev or with `SENDER_EMAIL` unset → 503 or `EMAIL_CHANGE_NOT_AVAILABLE`
+
+### Email Change Flow (`POST /api/auth/email/change` + `POST /api/auth/email/verify`)
+
+- Happy path (beta/prod): Submit new email + correct password → SES sends 6-digit code → submit code → user record updated; subsequent vault-email goes to new address
+- Wrong password on change request → 401
+- Wrong verification code → 400 `EMAIL_VERIFICATION_INVALID`
+- Expired verification code → 400 `EMAIL_VERIFICATION_INVALID`
+- Call either endpoint in dev → 400 `EMAIL_CHANGE_NOT_AVAILABLE`
+
+---
+
 ## 4. API Smoke Tests
 
 `scripts/smoke-test.ts` runs automated API tests against any deployed stack. It reads the API URL from CloudFormation outputs, solves PoW challenges automatically, and exits 0 on success / 1 on failure.
@@ -248,3 +295,9 @@ Before promoting from dev → beta → prod, verify:
 - [ ] Admin login and first-password-change flow works end-to-end
 - [ ] User creation, login, vault save/load, and backup download work
 - [ ] (Prod only) Passkey registration and login work correctly end-to-end
+- [ ] OTP expiry is enforced; expired OTPs return `OTP_EXPIRED`; Refresh OTP issues a working replacement
+- [ ] Delete pending user removes DynamoDB record and S3 vault file; deleted user cannot log in
+- [ ] (Beta/prod) Registration email delivered when email provided; admin UI always shows OTP
+- [ ] (Beta/prod) Vault email sends correct JSON backup to user's registered address
+- [ ] (Beta/prod) Email change flow: password confirmation → 6-digit code → address updated
+- [ ] (Beta/prod) SES `SENDER_EMAIL` env var is set on auth, admin, and vault Lambdas; SES domain identity is verified

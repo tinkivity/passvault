@@ -13,13 +13,30 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
 }
 
 export function generateOtp(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
-  const bytes = randomBytes(LIMITS.OTP_LENGTH);
-  let otp = '';
-  for (let i = 0; i < LIMITS.OTP_LENGTH; i++) {
-    otp += chars[bytes[i] % chars.length];
+  const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const lower = 'abcdefghijklmnopqrstuvwxyz';
+  const digits = '0123456789';
+  const special = '!@#$%^&*';
+  const all = upper + lower + digits + special;
+
+  // Guarantee at least one character from each category required by the password policy.
+  const pick = (set: string) => set[randomBytes(1)[0] % set.length];
+  const chars = [pick(upper), pick(lower), pick(digits), pick(special)];
+
+  // Fill the remainder randomly from the full set.
+  const remaining = randomBytes(LIMITS.OTP_LENGTH - 4);
+  for (let i = 0; i < remaining.length; i++) {
+    chars.push(all[remaining[i] % all.length]);
   }
-  return otp;
+
+  // Shuffle using Fisher-Yates so the guaranteed chars aren't always at the front.
+  const shuffle = randomBytes(chars.length);
+  for (let i = chars.length - 1; i > 0; i--) {
+    const j = shuffle[i] % (i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+
+  return chars.join('');
 }
 
 export function generateSalt(): string {

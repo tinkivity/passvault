@@ -5,7 +5,12 @@ import {
   ChevronUpDownIcon,
   ChevronDoubleUpIcon,
   ChevronDoubleDownIcon,
+  ArrowPathIcon,
+  TrashIcon,
 } from '@heroicons/react/24/outline';
+import { OtpDisplay } from './OtpDisplay.js';
+
+const isEmailEnv = import.meta.env.VITE_ENVIRONMENT !== 'dev';
 
 function formatBytes(bytes: number | null): string {
   if (bytes === null || bytes === 0) return 'empty';
@@ -18,6 +23,8 @@ interface UserListProps {
   users: UserSummary[];
   loading: boolean;
   onDownload: (userId: string, username: string) => void;
+  onRefreshOtp: (userId: string) => Promise<{ username: string; oneTimePassword: string }>;
+  onDeleteUser: (userId: string) => Promise<void>;
 }
 
 const statusLabel: Record<UserStatus, string> = {
@@ -27,9 +34,9 @@ const statusLabel: Record<UserStatus, string> = {
 };
 
 const statusClass: Record<UserStatus, string> = {
-  pending_first_login: 'badge badge-warning badge-sm',
-  pending_passkey_setup: 'badge badge-info badge-sm',
-  active: 'badge badge-success badge-sm',
+  pending_first_login: 'badge badge-warning badge-sm whitespace-nowrap',
+  pending_passkey_setup: 'badge badge-info badge-sm whitespace-nowrap',
+  active: 'badge badge-success badge-sm whitespace-nowrap',
 };
 
 type SortColumn = 'username' | 'status' | 'createdAt' | 'lastLoginAt';
@@ -61,9 +68,12 @@ function SortIcon({ active, dir }: { active: boolean; dir: SortDirection }) {
     : <ChevronDoubleDownIcon className="w-4 h-4 shrink-0" />;
 }
 
-export function UserList({ users, loading, onDownload }: UserListProps) {
+export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUser }: UserListProps) {
   const [sortCol, setSortCol] = useState<SortColumn>('username');
   const [sortDir, setSortDir] = useState<SortDirection>('asc');
+  const [refreshedOtp, setRefreshedOtp] = useState<{ username: string; oneTimePassword: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   function handleSort(col: SortColumn) {
     if (sortCol === col) {
@@ -88,6 +98,36 @@ export function UserList({ users, loading, onDownload }: UserListProps) {
     );
   }
 
+  async function handleRefreshOtp(userId: string) {
+    setActionLoading(userId + ':refresh');
+    try {
+      const result = await onRefreshOtp(userId);
+      setRefreshedOtp(result);
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function handleDeleteUser(userId: string) {
+    setActionLoading(userId + ':delete');
+    try {
+      await onDeleteUser(userId);
+      setConfirmDelete(null);
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  if (refreshedOtp) {
+    return (
+      <OtpDisplay
+        username={refreshedOtp.username}
+        oneTimePassword={refreshedOtp.oneTimePassword}
+        onDone={() => setRefreshedOtp(null)}
+      />
+    );
+  }
+
   if (loading) {
     return <p className="text-sm text-base-content/40">Loading users…</p>;
   }
@@ -105,6 +145,7 @@ export function UserList({ users, loading, onDownload }: UserListProps) {
           <tr>
             {thButton('username', 'Username')}
             {thButton('status', 'Status')}
+            {isEmailEnv && <th>Email</th>}
             {thButton('createdAt', 'Created')}
             {thButton('lastLoginAt', 'Last login')}
             <th></th>
@@ -119,13 +160,18 @@ export function UserList({ users, loading, onDownload }: UserListProps) {
                   {statusLabel[user.status]}
                 </span>
               </td>
+              {isEmailEnv && (
+                <td className="text-base-content/50 text-xs">
+                  {user.email ?? '—'}
+                </td>
+              )}
               <td className="text-base-content/50">
                 {new Date(user.createdAt).toISOString().slice(0, 10)}
               </td>
               <td className="text-base-content/50">
                 {user.lastLoginAt ? new Date(user.lastLoginAt).toISOString().slice(0, 10) : '—'}
               </td>
-              <td>
+              <td className="flex gap-1">
                 <button
                   onClick={() => onDownload(user.userId, user.username)}
                   className="btn btn-ghost btn-sm"
@@ -134,6 +180,45 @@ export function UserList({ users, loading, onDownload }: UserListProps) {
                 >
                   <ArrowDownTrayIcon className="w-4 h-4" />
                 </button>
+                {user.status === 'pending_first_login' && (
+                  <>
+                    <button
+                      onClick={() => handleRefreshOtp(user.userId)}
+                      disabled={actionLoading === user.userId + ':refresh'}
+                      className="btn btn-ghost btn-sm"
+                      title="Refresh OTP"
+                      aria-label={`Refresh OTP for ${user.username}`}
+                    >
+                      <ArrowPathIcon className="w-4 h-4" />
+                    </button>
+                    {confirmDelete === user.userId ? (
+                      <span className="flex items-center gap-1">
+                        <button
+                          onClick={() => handleDeleteUser(user.userId)}
+                          disabled={actionLoading === user.userId + ':delete'}
+                          className="btn btn-error btn-sm"
+                        >
+                          Confirm
+                        </button>
+                        <button
+                          onClick={() => setConfirmDelete(null)}
+                          className="btn btn-ghost btn-sm"
+                        >
+                          Cancel
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmDelete(user.userId)}
+                        className="btn btn-ghost btn-sm text-error"
+                        title="Delete user"
+                        aria-label={`Delete ${user.username}`}
+                      >
+                        <TrashIcon className="w-4 h-4" />
+                      </button>
+                    )}
+                  </>
+                )}
               </td>
             </tr>
           ))}

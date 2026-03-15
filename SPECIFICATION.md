@@ -28,12 +28,17 @@ PassVault is an invitation-only, personal secure text storage application where 
   - > **Environment Note**: In dev and beta environments where passkeys are disabled, the status transitions directly from "pending_first_login" to "active" after password change. The passkey setup step is skipped entirely. Login requires only username + password.
 - **Create User Invitation**: Admin creates new users by:
   - Specifying a username
-  - System generates a secure one-time password (OTP)
+  - Optionally providing an email address (beta/prod only)
+  - System generates a secure one-time password (OTP) with an expiry time
+  - If an email is provided, SES sends the OTP and expiry notice to the user's inbox
   - Empty S3 file is automatically created for the user
   - User account is marked as "pending_first_login"
   - Admin dashboard accessible only after admin has completed passkey setup
+  - Admin always sees the OTP in the UI regardless of email delivery
   - **Important**: Admin does NOT set user passwords - users set their own passwords
-- **View User Invitations**: Admin can view list of created users and their status (pending_first_login / pending_passkey_setup / active)
+- **View User Invitations**: Admin can view list of created users and their status (pending_first_login / pending_passkey_setup / active), including email address where provided
+- **Refresh OTP**: Admin can generate a new OTP for a user that is still in `pending_first_login` state (e.g. OTP expired or was lost); sends email if the user has one on record
+- **Delete Pending User**: Admin can delete a user that has not yet completed first login; removes the DynamoDB record and the S3 vault file
 - **Admin Limitations - Zero Access to User Data**:
   - **Admin CANNOT access user file content** unless they know the user's password
   - User files are encrypted with keys derived from user passwords (not admin password)
@@ -42,8 +47,10 @@ PassVault is an invitation-only, personal secure text storage application where 
   - This ensures complete user privacy and zero-knowledge architecture
 
 #### User Functions
-- **First-Time Login**: Users receive username and one-time password from admin
+- **First-Time Login**: Users receive username and one-time password from admin (via secure channel or email)
   - Authenticate with username and OTP
+  - OTPs have a per-environment expiry: dev=60 min, beta=10 min, prod=120 min
+  - Expired OTPs return 401 `OTP_EXPIRED`; admin must use Refresh OTP to issue a new one
   - System forces immediate password change
   - New password must meet secure password policy
   - Account status changes from "pending_first_login" to "pending_passkey_setup"
@@ -260,6 +267,7 @@ For a detailed bot attack cost analysis including worst-case calculations and de
   - "Edit" button to enter edit mode
   - "Copy to Clipboard" button (copies entire file content or selected text)
   - "Download Encrypted Backup" button (downloads encrypted file + recovery metadata as JSON)
+  - "Email Encrypted Backup" button — sends encrypted vault JSON to the user's registered email (beta/prod only; hidden if no email is set)
   - Manual "Logout" button
   - Loading indicator while fetching content
 
@@ -293,6 +301,8 @@ PassVault supports three deployment environments with different security profile
 | **Edit timeout** | 10 min | 10 min | 120 sec |
 | **Admin token expiry** | 24 hours | 24 hours | 8 hours |
 | **User token expiry** | 30 min | 30 min | 5 min |
+| **OTP expiry** | 60 min | 10 min | 120 min |
+| **Email features (SES)** | Disabled | Enabled | Enabled |
 | **Lambda memory** | 256 MB | 256 MB | 512 MB |
 | **Log retention** | 1 week | 2 weeks | 30 days |
 | **DynamoDB PITR** | Disabled | Disabled | Enabled |
@@ -481,18 +491,33 @@ Protection Layers:
 > **Passkey endpoints (dev/beta)**: When `passkeyRequired=false`, the passkey challenge/verify/register endpoints are still deployed but will not be exercised by the UI. POST /admin/login accepts `username` + `password` directly.
 
 - **POST /api/admin/users** (Requires admin auth, blocked if admin status is not "active")
-  - Request: `{ "username": "string" }`
+  - Request: `{ "username": "string", "email"?: "string" }` — `email` is optional; beta/prod only (ignored in dev)
   - Response: `{ "success": true, "username": "string", "oneTimePassword": "string", "userId": "string" }`
   - Creates new user invitation
-  - Generates secure random one-time password (min 16 characters)
+  - Generates secure random one-time password (min 16 characters) with per-environment expiry (dev=60min, beta=10min, prod=120min)
   - Generates unique encryption salt for user (256-bit random, base64)
   - Creates empty encrypted S3 file for user (encrypted with temporary key or empty blob)
   - User status set to "pending_first_login"
-  - Returns OTP to display to admin (only shown once)
+  - If `email` is provided and SES is configured, sends OTP + expiry notice to the user's inbox
+  - Returns OTP to display to admin in the UI (always, regardless of email delivery)
 
 - **GET /api/admin/users** (Requires admin auth, blocked if admin status is not "active")
-  - Response: `{ "users": [{ "userId": "string", "username": "string", "status": "string", "createdAt": "timestamp", "lastLoginAt": "timestamp", "vaultSizeBytes": number | null }] }`
-  - Returns list of all users with their status (pending_first_login / pending_passkey_setup / active) and current vault file size
+  - Response: `{ "users": [{ "userId": "string", "username": "string", "email": "string | null", "status": "string", "createdAt": "timestamp", "lastLoginAt": "timestamp", "vaultSizeBytes": number | null }] }`
+  - Returns list of all users with their status (pending_first_login / pending_passkey_setup / active), email, and current vault file size
+
+- **POST /api/admin/users/refresh-otp** (Requires admin auth, blocked if admin status is not "active")
+  - Request: `{ "userId": "string" }`
+  - Response: `{ "success": true, "oneTimePassword": "string" }`
+  - Generates a new OTP for a user whose status is `pending_first_login` (e.g. OTP expired or was lost)
+  - Returns 400 if user is not in `pending_first_login` state
+  - If the user has an email address and SES is configured, sends new OTP + expiry notice by email
+  - Returns new OTP to admin in the UI (always)
+
+- **DELETE /api/admin/users?userId=** (Requires admin auth, blocked if admin status is not "active")
+  - Deletes a user whose status is `pending_first_login`
+  - Returns 400 if user is not in `pending_first_login` state
+  - Removes the DynamoDB user record and the S3 vault file (`user-{userId}.enc`)
+  - Response: `{ "success": true }`
 
 ### 4.3 User Authentication Endpoints
 
@@ -529,6 +554,18 @@ Protection Layers:
 
 > **Passkey endpoints (dev/beta)**: When `passkeyRequired=false`, the passkey challenge/verify/register endpoints are still deployed but will not be exercised by the UI. POST /auth/login accepts `username` + `password` directly.
 
+- **POST /api/auth/email/change** (Requires user auth; beta/prod only)
+  - Request: `{ "newEmail": "string", "password": "string" }` — password confirmation is required to initiate the change
+  - Response: `{ "success": true }` — SES sends a 6-digit verification code to `newEmail`
+  - Returns 400 `EMAIL_CHANGE_NOT_AVAILABLE` in dev (feature disabled)
+  - Returns 503 if `SENDER_EMAIL` env var is not set
+
+- **POST /api/auth/email/verify** (Requires user auth; beta/prod only)
+  - Request: `{ "code": "string" }` — the 6-digit code sent to the new address
+  - Response: `{ "success": true }` — updates the `email` field on the user record
+  - Returns 400 `EMAIL_VERIFICATION_INVALID` if the code is wrong or expired
+  - Returns 400 `EMAIL_CHANGE_NOT_AVAILABLE` in dev
+
 ### 4.4 File Operations (Protected Endpoints)
 All endpoints require user authentication via Authorization header (Bearer token).
 
@@ -556,6 +593,14 @@ All endpoints require user authentication via Authorization header (Bearer token
   - User ID extracted from auth token
   - Blocked if user status is not "active"
 
+- **POST /api/vault/email** (Requires user auth; beta/prod only)
+  - Request: none (no body required)
+  - Response: `{ "success": true }` — sends the encrypted vault JSON (same payload as `/vault/download`) to the user's registered email address
+  - Returns 400 `NO_EMAIL_ADDRESS` if the user has no email on record
+  - Returns 503 if `SENDER_EMAIL` env var is not set
+  - Returns 400 `EMAIL_CHANGE_NOT_AVAILABLE` in dev (feature disabled)
+  - Blocked if user status is not "active"
+
 ## 5. Data Model
 
 ### 5.1 DynamoDB Users Table
@@ -579,6 +624,8 @@ Attributes:
 - createdAt: timestamp (String/Number)
 - lastLoginAt: timestamp (String/Number)
 - createdBy: userId of admin who created this user (String, nullable)
+- email: optional email address for the user (String, nullable) - provided by admin at user creation; used for OTP delivery and vault email
+- otpExpiresAt: ISO timestamp when the one-time password expires (String, nullable) - set at user creation; cleared after first password change
 - failedLoginAttempts: count of consecutive failed logins (Number) - reset to 0 on successful login
 - lockedUntil: ISO timestamp until which the account is locked (String, nullable) - set after 5 consecutive failures
 ```
@@ -703,6 +750,7 @@ s3://passvault-files/
 
 ### 6.2 Authentication
 - All passwords (user and OTP) must be hashed using bcrypt (minimum 12 rounds)
+- OTPs have a per-environment expiry stored in `otpExpiresAt`; login returns 401 `OTP_EXPIRED` if the OTP is presented after expiry
 - Use HTTPS for all communication (enforced at API Gateway)
 - Implement token expiration:
   - Admin tokens: 8 hours
@@ -897,6 +945,19 @@ For detailed bot attack cost calculations, see **[BOTPROTECTION.md](BOTPROTECTIO
 3. **Set up cost alerts** — notify if Lambda costs exceed $10/day
 4. **Test rate limits** — verify legitimate users aren't blocked during normal usage
 5. **Document escalation** — plan for sustained attacks
+
+### 6.9 Error Codes
+
+All error responses follow the shape `{ "success": false, "error": "<CODE>", "message": "..." }`. The following application-level error codes are defined:
+
+| Code | HTTP | Meaning |
+|---|---|---|
+| `OTP_EXPIRED` | 401 | The one-time password was presented after its expiry time (`otpExpiresAt`). Admin must use Refresh OTP. |
+| `NO_EMAIL_ADDRESS` | 400 | The requested email operation (vault email) requires an email address, but none is stored for this user. |
+| `EMAIL_VERIFICATION_INVALID` | 400 | The 6-digit code submitted to `POST /auth/email/verify` is incorrect or has expired. |
+| `EMAIL_CHANGE_NOT_AVAILABLE` | 400 | Email change/verification endpoints are only available in beta and prod; called from dev. |
+
+---
 
 ## 7. Deployment
 

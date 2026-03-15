@@ -6,6 +6,9 @@ import { useAutoLogout } from '../../hooks/useAutoLogout.js';
 import { Layout } from '../layout/Layout.js';
 import { VaultViewer } from './VaultViewer.js';
 import { VaultEditor } from './VaultEditor.js';
+import { EmailChangeForm } from './EmailChangeForm.js';
+
+const isEmailEnv = import.meta.env.VITE_ENVIRONMENT !== 'dev';
 
 // Session timeouts from shared config — read from environment variable set at build time
 const VIEW_TIMEOUT = Number(import.meta.env.VITE_VIEW_TIMEOUT_SECONDS ?? 300);
@@ -15,8 +18,8 @@ type Mode = 'view' | 'edit';
 
 export function VaultPage() {
   const navigate = useNavigate();
-  const { token, logout } = useAuth();
-  const { loading, error, lastModified, fetchAndDecrypt, encryptAndSave, download } = useVault(token);
+  const { token, logout, requestEmailChange, confirmEmailChange } = useAuth();
+  const { loading, error, lastModified, fetchAndDecrypt, encryptAndSave, download, sendEmail } = useVault(token);
 
   const [content, setContent] = useState('');
   const [mode, setMode] = useState<Mode>('view');
@@ -65,13 +68,15 @@ export function VaultPage() {
 
   return (
     <Layout>
-      <div className="w-full max-w-2xl bg-base-100 rounded-xl shadow-md p-6 flex flex-col min-h-[32rem]">
+      <div className="w-full max-w-2xl flex flex-col gap-4">
+      <div className="bg-base-100 rounded-xl shadow-md p-6 flex flex-col min-h-[32rem]">
         {mode === 'view' ? (
           <VaultViewer
             content={content}
             lastModified={lastModified}
             onEdit={() => setMode('edit')}
             onDownload={download}
+            onSendEmail={sendEmail}
             onLogout={handleLogout}
             secondsLeft={secondsLeft}
           />
@@ -85,6 +90,17 @@ export function VaultPage() {
             secondsLeft={secondsLeft}
           />
         )}
+      </div>
+      {isEmailEnv && (
+        <div className="bg-base-100 rounded-xl shadow-md p-6">
+          <h2 className="text-sm font-semibold mb-3">Email address</h2>
+          <EmailChangeForm
+            currentEmail={null}
+            onRequestChange={requestEmailChange}
+            onConfirmChange={confirmEmailChange}
+          />
+        </div>
+      )}
       </div>
     </Layout>
   );

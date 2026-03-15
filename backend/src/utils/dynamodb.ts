@@ -6,6 +6,7 @@ import {
   UpdateCommand,
   QueryCommand,
   ScanCommand,
+  DeleteCommand,
 } from '@aws-sdk/lib-dynamodb';
 import type { User } from '@passvault/shared';
 import { DYNAMODB_TABLE } from '../config.js';
@@ -85,6 +86,15 @@ export async function getUserByCredentialId(credentialId: string): Promise<User 
     }),
   );
   return (result.Items?.[0] as User) || null;
+}
+
+export async function deleteUser(userId: string): Promise<void> {
+  await docClient.send(
+    new DeleteCommand({
+      TableName: DYNAMODB_TABLE,
+      Key: { userId },
+    }),
+  );
 }
 
 export async function listAllUsers(): Promise<User[]> {

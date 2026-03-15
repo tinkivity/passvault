@@ -11,7 +11,7 @@ vi.mock('../config.js', () => ({
       wafEnabled: false,
       cloudFrontEnabled: false,
     },
-    session: { adminTokenExpiryHours: 24, userTokenExpiryMinutes: 30 },
+    session: { adminTokenExpiryHours: 24, userTokenExpiryMinutes: 30, otpExpiryMinutes: 60 },
   },
   getJwtSecret: vi.fn().mockResolvedValue('test-secret'),
   DYNAMODB_TABLE: 'test-table',
@@ -24,6 +24,7 @@ vi.mock('../utils/dynamodb.js', () => ({
   createUser: vi.fn().mockResolvedValue(undefined),
   updateUser: vi.fn().mockResolvedValue(undefined),
   listAllUsers: vi.fn(),
+  deleteUser: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../utils/crypto.js', () => ({
@@ -41,14 +42,19 @@ vi.mock('../utils/s3.js', () => ({
   putVaultFile: vi.fn().mockResolvedValue('2024-01-01T00:00:00.000Z'),
   getVaultFile: vi.fn(),
   getVaultFileSize: vi.fn().mockResolvedValue(1024),
+  deleteVaultFile: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../utils/ses.js', () => ({
+  sendEmail: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('./passkey.js', () => ({
   verifyPasskeyToken: vi.fn(),
 }));
 
-import { adminLogin, adminChangePassword, createUserInvitation, listUsers } from './admin.js';
-import { getUserByUsername, getUserById, updateUser, createUser, listAllUsers } from '../utils/dynamodb.js';
+import { adminLogin, adminChangePassword, createUserInvitation, listUsers, refreshOtp, deleteNewUser } from './admin.js';
+import { getUserByUsername, getUserById, updateUser, createUser, listAllUsers, deleteUser } from '../utils/dynamodb.js';
 import { verifyPassword } from '../utils/crypto.js';
 import { verifyPasskeyToken } from './passkey.js';
 import { config } from '../config.js';
@@ -80,6 +86,11 @@ function makeAdmin(overrides: Partial<User> = {}): User {
     createdBy: null,
     failedLoginAttempts: 0,
     lockedUntil: null,
+    email: null,
+    otpExpiresAt: null,
+    pendingEmail: null,
+    emailVerificationCode: null,
+    emailVerificationExpiresAt: null,
     ...overrides,
   };
 }
@@ -289,6 +300,41 @@ describe('adminChangePassword — passkeyRequired: true (prod)', () => {
   });
 });
 
+describe('adminChangePassword — rejects OTP as new password', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    config.features.passkeyRequired = false;
+  });
+
+  it('returns 400 when new password matches the OTP', async () => {
+    mockGetUserById.mockResolvedValue(
+      makeAdmin({ status: 'pending_first_login', oneTimePasswordHash: '$2b$12$otphash' }),
+    );
+    mockVerifyPw.mockResolvedValue(true);
+    const result = await adminChangePassword('admin-1', 'admin', { newPassword: 'StrongPass123!' });
+    expect(result.error).toBe(ERRORS.PASSWORD_SAME_AS_OTP);
+    expect(result.statusCode).toBe(400);
+    expect(mockUpdateUser).not.toHaveBeenCalled();
+  });
+
+  it('succeeds when new password differs from the OTP', async () => {
+    mockGetUserById.mockResolvedValue(
+      makeAdmin({ status: 'pending_first_login', oneTimePasswordHash: '$2b$12$otphash' }),
+    );
+    mockVerifyPw.mockResolvedValue(false);
+    const result = await adminChangePassword('admin-1', 'admin', { newPassword: 'StrongPass123!' });
+    expect(result.error).toBeUndefined();
+    expect(result.response?.success).toBe(true);
+  });
+
+  it('skips OTP check for active users', async () => {
+    mockGetUserById.mockResolvedValue(makeAdmin({ status: 'active', oneTimePasswordHash: null }));
+    const result = await adminChangePassword('admin-1', 'admin', { newPassword: 'StrongPass123!' });
+    expect(result.error).toBeUndefined();
+    expect(mockVerifyPw).not.toHaveBeenCalled();
+  });
+});
+
 // ── createUserInvitation() ────────────────────────────────────────────────────
 
 describe('createUserInvitation', () => {
@@ -327,6 +373,18 @@ describe('createUserInvitation', () => {
     expect(result.response?.oneTimePassword).toBe('ABCDEFGH12345678');
     expect(vi.mocked(createUser)).toHaveBeenCalled();
   });
+
+  it('stores email when provided', async () => {
+    await createUserInvitation({ username: 'bob', email: 'bob@example.com' }, 'admin-1');
+    expect(vi.mocked(createUser)).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'bob@example.com' }),
+    );
+  });
+
+  it('returns 400 for invalid email format', async () => {
+    const result = await createUserInvitation({ username: 'bob', email: 'not-an-email' }, 'admin-1');
+    expect(result.statusCode).toBe(400);
+  });
 });
 
 // ── listUsers() ───────────────────────────────────────────────────────────────
@@ -350,5 +408,66 @@ describe('listUsers', () => {
     ]);
     const result = await listUsers();
     expect(result.users[0].vaultSizeBytes).toBe(1024);
+  });
+
+  it('includes email for each user', async () => {
+    mockListAllUsers.mockResolvedValue([
+      makeAdmin({ userId: 'user-1', username: 'alice', role: 'user', email: 'alice@example.com' }),
+    ]);
+    const result = await listUsers();
+    expect(result.users[0].email).toBe('alice@example.com');
+  });
+});
+
+// ── refreshOtp() ──────────────────────────────────────────────────────────────
+
+describe('refreshOtp', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('returns 404 when user not found', async () => {
+    mockGetUserById.mockResolvedValue(null);
+    const result = await refreshOtp('user-1');
+    expect(result.statusCode).toBe(404);
+  });
+
+  it('returns 403 when user is not pending_first_login', async () => {
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', status: 'active' }));
+    const result = await refreshOtp('user-1');
+    expect(result.statusCode).toBe(403);
+  });
+
+  it('returns new OTP for pending user', async () => {
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', status: 'pending_first_login' }));
+    const result = await refreshOtp('user-1');
+    expect(result.response?.oneTimePassword).toBe('ABCDEFGH12345678');
+    expect(mockUpdateUser).toHaveBeenCalledWith('user-1', expect.objectContaining({
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+    }));
+  });
+});
+
+// ── deleteNewUser() ───────────────────────────────────────────────────────────
+
+describe('deleteNewUser', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('returns 404 when user not found', async () => {
+    mockGetUserById.mockResolvedValue(null);
+    const result = await deleteNewUser('user-1');
+    expect(result.statusCode).toBe(404);
+  });
+
+  it('returns 403 when user is not pending_first_login', async () => {
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', status: 'active' }));
+    const result = await deleteNewUser('user-1');
+    expect(result.statusCode).toBe(403);
+  });
+
+  it('deletes vault file and user record', async () => {
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', status: 'pending_first_login', userId: 'user-1' }));
+    const result = await deleteNewUser('user-1');
+    expect(result.response?.success).toBe(true);
+    expect(vi.mocked(deleteUser)).toHaveBeenCalledWith('user-1');
   });
 });

@@ -33,7 +33,7 @@ describe('CreateUserForm', () => {
     render(<CreateUserForm onCreateUser={onCreateUser} loading={false} />);
     await userEvent.type(screen.getByLabelText('Username'), 'alice');
     await userEvent.click(screen.getByText('Create user'));
-    expect(onCreateUser).toHaveBeenCalledWith('alice');
+    expect(onCreateUser).toHaveBeenCalledWith('alice', undefined);
   });
 
   it('shows OtpDisplay after a successful creation', async () => {

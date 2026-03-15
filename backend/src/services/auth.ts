@@ -8,10 +8,12 @@ import {
   type UserStatus,
 } from '@passvault/shared';
 import { getUserById, getUserByUsername, updateUser } from '../utils/dynamodb.js';
+import { randomInt } from 'crypto';
 import { hashPassword, verifyPassword } from '../utils/crypto.js';
 import { validatePassword } from '../utils/password.js';
 import { signToken } from '../utils/jwt.js';
 import { verifyPasskeyToken } from './passkey.js';
+import { sendEmail } from '../utils/ses.js';
 import { config } from '../config.js';
 
 export async function login(request: LoginRequest): Promise<{ response?: LoginResponse; error?: string; statusCode?: number }> {
@@ -57,6 +59,9 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
   if (user.status === 'pending_first_login') {
     if (!user.oneTimePasswordHash) {
       return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
+    }
+    if (user.otpExpiresAt && new Date(user.otpExpiresAt) < now) {
+      return { error: ERRORS.OTP_EXPIRED, statusCode: 401 };
     }
     const otpValid = await verifyPassword(request.password, user.oneTimePasswordHash);
     if (!otpValid) {
@@ -112,6 +117,14 @@ export async function changePassword(
     return { error: 'Password does not meet requirements', statusCode: 400, details: validation.errors };
   }
 
+  const user = await getUserById(userId);
+  if (user?.status === 'pending_first_login' && user.oneTimePasswordHash) {
+    const sameAsOtp = await verifyPassword(request.newPassword, user.oneTimePasswordHash);
+    if (sameAsOtp) {
+      return { error: ERRORS.PASSWORD_SAME_AS_OTP, statusCode: 400 };
+    }
+  }
+
   const newHash = await hashPassword(request.newPassword);
   const nextStatus: UserStatus = config.features.passkeyRequired ? 'pending_passkey_setup' : 'active';
 
@@ -119,6 +132,82 @@ export async function changePassword(
     passwordHash: newHash,
     status: nextStatus,
     oneTimePasswordHash: null,
+    otpExpiresAt: null,
+    pendingEmail: null,
+    emailVerificationCode: null,
+    emailVerificationExpiresAt: null,
+  });
+
+  return { response: { success: true } };
+}
+
+export async function requestEmailChange(
+  userId: string,
+  newEmail: string,
+  password: string,
+): Promise<{ response?: { success: true }; error?: string; statusCode?: number }> {
+  if (!process.env.SENDER_EMAIL) {
+    return { error: 'Email change is not available in this environment', statusCode: 503 };
+  }
+
+  if (!newEmail || newEmail.length > LIMITS.EMAIL_MAX_LENGTH || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
+    return { error: 'Invalid email address', statusCode: 400 };
+  }
+
+  const user = await getUserById(userId);
+  if (!user) return { error: ERRORS.NOT_FOUND, statusCode: 404 };
+  if (user.status !== 'active') return { error: ERRORS.FORBIDDEN, statusCode: 403 };
+
+  const passwordValid = await verifyPassword(password, user.passwordHash);
+  if (!passwordValid) return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
+
+  const code = randomInt(0, 1_000_000).toString().padStart(6, '0');
+  const expiresAt = new Date(Date.now() + config.session.otpExpiryMinutes * 60_000).toISOString();
+
+  await updateUser(userId, {
+    pendingEmail: newEmail,
+    emailVerificationCode: code,
+    emailVerificationExpiresAt: expiresAt,
+  });
+
+  await sendEmail(
+    newEmail,
+    'Confirm your new PassVault email address',
+    [
+      `Your verification code: ${code}`,
+      `This code expires in ${config.session.otpExpiryMinutes} minutes.`,
+      'If you did not request this change, you can ignore this email.',
+    ].join('\n'),
+  );
+
+  return { response: { success: true } };
+}
+
+export async function confirmEmailChange(
+  userId: string,
+  code: string,
+): Promise<{ response?: { success: true }; error?: string; statusCode?: number }> {
+  const user = await getUserById(userId);
+  if (!user) return { error: ERRORS.NOT_FOUND, statusCode: 404 };
+  if (user.status !== 'active') return { error: ERRORS.FORBIDDEN, statusCode: 403 };
+
+  if (!user.pendingEmail || !user.emailVerificationCode) {
+    return { error: ERRORS.EMAIL_VERIFICATION_INVALID, statusCode: 400 };
+  }
+
+  if (!user.emailVerificationExpiresAt || new Date(user.emailVerificationExpiresAt) < new Date()) {
+    return { error: ERRORS.EMAIL_VERIFICATION_INVALID, statusCode: 400 };
+  }
+
+  if (code !== user.emailVerificationCode) {
+    return { error: ERRORS.EMAIL_VERIFICATION_INVALID, statusCode: 400 };
+  }
+
+  await updateUser(userId, {
+    email: user.pendingEmail,
+    pendingEmail: null,
+    emailVerificationCode: null,
+    emailVerificationExpiresAt: null,
   });
 
   return { response: { success: true } };

@@ -3,13 +3,16 @@ import { LIMITS } from '@passvault/shared';
 import { Button, Input, ErrorMessage } from '../layout/Layout.js';
 import { OtpDisplay } from './OtpDisplay.js';
 
+const isEmailEnv = import.meta.env.VITE_ENVIRONMENT !== 'dev';
+
 interface CreateUserFormProps {
-  onCreateUser: (username: string) => Promise<{ username: string; oneTimePassword: string }>;
+  onCreateUser: (username: string, email?: string) => Promise<{ username: string; oneTimePassword: string }>;
   loading: boolean;
 }
 
 export function CreateUserForm({ onCreateUser, loading }: CreateUserFormProps) {
   const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<{ username: string; oneTimePassword: string } | null>(null);
 
@@ -23,9 +26,10 @@ export function CreateUserForm({ onCreateUser, loading }: CreateUserFormProps) {
     }
 
     try {
-      const result = await onCreateUser(username);
+      const result = await onCreateUser(username, email.trim() || undefined);
       setCreated(result);
       setUsername('');
+      setEmail('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create user');
     }
@@ -51,9 +55,18 @@ export function CreateUserForm({ onCreateUser, loading }: CreateUserFormProps) {
         onChange={e => setUsername(e.target.value)}
         minLength={LIMITS.USERNAME_MIN_LENGTH}
         maxLength={LIMITS.USERNAME_MAX_LENGTH}
-        pattern="[a-zA-Z0-9_-]+"
         required
       />
+      {isEmailEnv && (
+        <Input
+          label="Email address (optional)"
+          id="new-email"
+          type="email"
+          value={email}
+          onChange={e => setEmail(e.target.value)}
+          maxLength={LIMITS.EMAIL_MAX_LENGTH}
+        />
+      )}
       <ErrorMessage message={error} />
       <Button type="submit" loading={loading}>
         Create user

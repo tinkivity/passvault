@@ -65,5 +65,20 @@ export function useVault(token: string | null) {
     }
   }, [token]);
 
-  return { loading, error, lastModified, fetchAndDecrypt, encryptAndSave, download };
+  const sendEmail = useCallback(async (): Promise<void> => {
+    if (!token) throw new Error('Not authenticated');
+    setLoading(true);
+    setError(null);
+    try {
+      await api.sendVaultEmail(token);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to send vault email';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  return { loading, error, lastModified, fetchAndDecrypt, encryptAndSave, download, sendEmail };
 }

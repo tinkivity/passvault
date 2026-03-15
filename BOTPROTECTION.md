@@ -106,6 +106,7 @@ Beta has no CloudWatch alarm. To activate the kill switch manually (e.g. for tes
 #   PassVault-Beta.KillSwitchTopicArn = arn:aws:sns:eu-central-1:ACCOUNT:passvault-beta-kill-switch
 
 aws sns publish \
+  --region eu-central-1 \
   --topic-arn arn:aws:sns:eu-central-1:ACCOUNT:passvault-beta-kill-switch \
   --message '{"NewStateValue":"ALARM","AlarmName":"manual-test"}'
 ```

@@ -2,6 +2,7 @@ import type { UserStatus } from './user.js';
 
 export interface CreateUserRequest {
   username: string;
+  email?: string;
 }
 
 export interface CreateUserResponse {
@@ -18,6 +19,7 @@ export interface UserSummary {
   createdAt: string;
   lastLoginAt: string | null;
   vaultSizeBytes: number | null;
+  email: string | null;
 }
 
 export interface ListUsersResponse {

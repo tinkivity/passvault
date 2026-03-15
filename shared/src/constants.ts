@@ -16,8 +16,12 @@ export const API_PATHS = {
   ADMIN_PASSKEY_REGISTER: '/api/admin/passkey/register',
   ADMIN_USERS: '/api/admin/users',
   ADMIN_USER_VAULT: '/api/admin/vault',
+  ADMIN_USER_REFRESH_OTP: '/api/admin/users/refresh-otp',
   VAULT: '/api/vault',
   VAULT_DOWNLOAD: '/api/vault/download',
+  VAULT_SEND_EMAIL: '/api/vault/email',
+  AUTH_EMAIL_CHANGE: '/api/auth/email/change',
+  AUTH_EMAIL_VERIFY: '/api/auth/email/verify',
 } as const;
 
 // PoW header names
@@ -64,6 +68,11 @@ export const ERRORS = {
   POW_EXPIRED: 'Proof of work challenge expired',
   FILE_TOO_LARGE: 'File exceeds maximum size of 1MB',
   ACCOUNT_LOCKED: 'Account temporarily locked due to too many failed attempts',
+  OTP_EXPIRED: 'One-time password has expired',
+  NO_EMAIL_ADDRESS: 'No email address on file for this account',
+  EMAIL_VERIFICATION_INVALID: 'Invalid or expired verification code',
+  EMAIL_CHANGE_NOT_AVAILABLE: 'Email change is not available in this environment',
+  PASSWORD_SAME_AS_OTP: 'New password must be different from the one-time password',
 } as const;
 
 // Limits
@@ -76,4 +85,5 @@ export const LIMITS = {
   RATE_LIMIT_FAILED_ATTEMPTS: 5,
   RATE_LIMIT_WINDOW_MINUTES: 15,
   MAX_PASSWORD_LENGTH: 1024,
+  EMAIL_MAX_LENGTH: 254,
 } as const;

@@ -6,12 +6,12 @@ export function useAdmin(token: string | null) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const createUser = useCallback(async (username: string): Promise<{ username: string; oneTimePassword: string }> => {
+  const createUser = useCallback(async (username: string, email?: string): Promise<{ username: string; oneTimePassword: string }> => {
     if (!token) throw new Error('Not authenticated');
     setLoading(true);
     setError(null);
     try {
-      const res = await api.createUser({ username }, token);
+      const res = await api.createUser({ username, email }, token);
       return { username: res.username, oneTimePassword: res.oneTimePassword };
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to create user';
@@ -60,5 +60,36 @@ export function useAdmin(token: string | null) {
     }
   }, [token]);
 
-  return { loading, error, createUser, listUsers, downloadUserVault };
+  const refreshOtp = useCallback(async (userId: string): Promise<{ username: string; oneTimePassword: string }> => {
+    if (!token) throw new Error('Not authenticated');
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.refreshOtp(userId, token);
+      return { username: res.username, oneTimePassword: res.oneTimePassword };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to refresh OTP';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  const deleteUser = useCallback(async (userId: string): Promise<void> => {
+    if (!token) throw new Error('Not authenticated');
+    setLoading(true);
+    setError(null);
+    try {
+      await api.deleteUser(userId, token);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to delete user';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  return { loading, error, createUser, listUsers, downloadUserVault, refreshOtp, deleteUser };
 }

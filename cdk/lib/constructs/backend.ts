@@ -216,6 +216,18 @@ export class BackendConstruct extends Construct {
       type: apigateway.ResponseType.DEFAULT_5XX,
       responseHeaders: corsHeaders,
     });
+    // Lambda reserved concurrency = 0 (kill switch) causes Lambda-level throttling.
+    // API GW receives a TooManyRequestsException from the Lambda invocation API and
+    // treats it as an integration failure (not its own throttle), so ResponseType.THROTTLED
+    // does not fire. INTEGRATION_FAILURE is the correct type to catch this and remap to 429.
+    // In normal operation (kill switch off), Lambda handles all errors via proxy responses,
+    // so INTEGRATION_FAILURE only triggers during genuine Lambda infrastructure failures —
+    // mapping those to 429 instead of 502 is an acceptable trade-off.
+    this.api.addGatewayResponse('GatewayResponseThrottled', {
+      type: apigateway.ResponseType.INTEGRATION_FAILURE,
+      statusCode: '429',
+      responseHeaders: corsHeaders,
+    });
 
     // Routes — all nested under /api so CloudFront can route /api/* to API GW
     // without conflicting with SPA paths (/admin/login, /vault, etc.)
@@ -259,13 +271,24 @@ export class BackendConstruct extends Construct {
     const adminUsers = admin.addResource('users');
     adminUsers.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
     adminUsers.addMethod('GET', new apigateway.LambdaIntegration(this.adminFn));
+    adminUsers.addMethod('DELETE', new apigateway.LambdaIntegration(this.adminFn));
+    const adminUsersRefreshOtp = adminUsers.addResource('refresh-otp');
+    adminUsersRefreshOtp.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
     const adminVault = admin.addResource('vault');
     adminVault.addMethod('GET', new apigateway.LambdaIntegration(this.adminFn));
+
+    const authEmail = auth.addResource('email');
+    const authEmailChange = authEmail.addResource('change');
+    authEmailChange.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
+    const authEmailVerify = authEmail.addResource('verify');
+    authEmailVerify.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
 
     const vault = apiRoot.addResource('vault');
     vault.addMethod('GET', new apigateway.LambdaIntegration(this.vaultFn));
     vault.addMethod('PUT', new apigateway.LambdaIntegration(this.vaultFn));
     const vaultDownload = vault.addResource('download');
     vaultDownload.addMethod('GET', new apigateway.LambdaIntegration(this.vaultFn));
+    const vaultEmail = vault.addResource('email');
+    vaultEmail.addMethod('POST', new apigateway.LambdaIntegration(this.vaultFn));
   }
 }

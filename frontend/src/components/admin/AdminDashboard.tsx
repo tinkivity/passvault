@@ -13,7 +13,7 @@ const ADMIN_TIMEOUT = Number(import.meta.env.VITE_ADMIN_TIMEOUT_SECONDS ?? 86400
 export function AdminDashboard() {
   const navigate = useNavigate();
   const { token, username, logout } = useAuth();
-  const { loading, createUser, listUsers, downloadUserVault } = useAdmin(token);
+  const { loading, createUser, listUsers, downloadUserVault, refreshOtp, deleteUser } = useAdmin(token);
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [usersLoaded, setUsersLoaded] = useState(false);
 
@@ -39,10 +39,20 @@ export function AdminDashboard() {
     refreshUsers();
   }, [token, usersLoaded, refreshUsers]);
 
-  const handleCreateUser = async (un: string) => {
-    const result = await createUser(un);
+  const handleCreateUser = async (un: string, email?: string) => {
+    const result = await createUser(un, email);
     await refreshUsers();
     return result;
+  };
+
+  const handleRefreshOtp = async (userId: string) => {
+    const result = await refreshOtp(userId);
+    return result;
+  };
+
+  const handleDeleteUser = async (userId: string) => {
+    await deleteUser(userId);
+    await refreshUsers();
   };
 
   const hours = Math.floor(secondsLeft / 3600);
@@ -74,7 +84,13 @@ export function AdminDashboard() {
               Refresh
             </Button>
           </div>
-          <UserList users={users} loading={loading && !usersLoaded} onDownload={downloadUserVault} />
+          <UserList
+            users={users}
+            loading={loading && !usersLoaded}
+            onDownload={downloadUserVault}
+            onRefreshOtp={handleRefreshOtp}
+            onDeleteUser={handleDeleteUser}
+          />
         </div>
       </div>
     </Layout>

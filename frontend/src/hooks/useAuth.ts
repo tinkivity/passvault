@@ -209,6 +209,36 @@ export function useAuth() {
     }
   }, [token]);
 
+  const requestEmailChange = useCallback(async (newEmail: string, password: string) => {
+    if (!token) throw new Error('Not authenticated');
+    setLoading(true);
+    setError(null);
+    try {
+      await api.requestEmailChange(newEmail, password, token);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to request email change';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  const confirmEmailChange = useCallback(async (code: string) => {
+    if (!token) throw new Error('Not authenticated');
+    setLoading(true);
+    setError(null);
+    try {
+      await api.confirmEmailChange(code, token);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to confirm email change';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
   const logout = useCallback(() => {
     clearKey();
     clearAuth();
@@ -232,6 +262,8 @@ export function useAuth() {
     // shared
     changePassword,
     adminChangePassword,
+    requestEmailChange,
+    confirmEmailChange,
     logout,
   };
 }

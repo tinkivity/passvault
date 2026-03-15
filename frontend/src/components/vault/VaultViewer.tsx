@@ -1,11 +1,15 @@
-import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+import { useState } from 'react';
+import { ArrowDownTrayIcon, EnvelopeIcon } from '@heroicons/react/24/outline';
 import { Button } from '../layout/Layout.js';
+
+const isEmailEnv = import.meta.env.VITE_ENVIRONMENT !== 'dev';
 
 interface VaultViewerProps {
   content: string;
   lastModified: string | null;
   onEdit: () => void;
   onDownload: () => void;
+  onSendEmail?: () => Promise<void>;
   onLogout: () => void;
   secondsLeft: number;
 }
@@ -15,13 +19,34 @@ export function VaultViewer({
   lastModified,
   onEdit,
   onDownload,
+  onSendEmail,
   onLogout,
   secondsLeft,
 }: VaultViewerProps) {
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailStatus, setEmailStatus] = useState<'idle' | 'sent' | 'error'>('idle');
+  const [emailError, setEmailError] = useState<string | null>(null);
+
   const minutes = Math.floor(secondsLeft / 60);
   const seconds = secondsLeft % 60;
   const formatted = `${minutes}:${seconds.toString().padStart(2, '0')}`;
   const isUrgent = secondsLeft <= 30;
+
+  async function handleSendEmail() {
+    if (!onSendEmail) return;
+    setEmailSending(true);
+    setEmailStatus('idle');
+    setEmailError(null);
+    try {
+      await onSendEmail();
+      setEmailStatus('sent');
+    } catch (err) {
+      setEmailStatus('error');
+      setEmailError(err instanceof Error ? err.message : 'Failed to send email');
+    } finally {
+      setEmailSending(false);
+    }
+  }
 
   return (
     <div className="flex flex-col h-full">
@@ -57,6 +82,23 @@ export function VaultViewer({
         >
           <ArrowDownTrayIcon className="w-5 h-5" />
         </button>
+        {isEmailEnv && onSendEmail && (
+          <button
+            onClick={handleSendEmail}
+            disabled={emailSending}
+            className="btn btn-ghost btn-sm"
+            title="Send vault to email"
+            aria-label="Send vault to email"
+          >
+            <EnvelopeIcon className="w-5 h-5" />
+          </button>
+        )}
+        {emailStatus === 'sent' && (
+          <span className="text-xs text-success">Sent to your email</span>
+        )}
+        {emailStatus === 'error' && (
+          <span className="text-xs text-error">{emailError}</span>
+        )}
         <Button variant="danger" onClick={onLogout} className="ml-auto">
           Logout
         </Button>

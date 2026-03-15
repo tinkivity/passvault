@@ -20,4 +20,9 @@ export interface User {
   createdBy: string | null;
   failedLoginAttempts: number;
   lockedUntil: string | null;
+  email: string | null;
+  otpExpiresAt: string | null;
+  pendingEmail: string | null;
+  emailVerificationCode: string | null;
+  emailVerificationExpiresAt: string | null;
 }

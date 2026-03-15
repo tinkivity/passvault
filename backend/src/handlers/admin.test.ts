@@ -11,7 +11,7 @@ vi.mock('../config.js', () => ({
       wafEnabled: false,
       cloudFrontEnabled: false,
     },
-    session: { adminTokenExpiryHours: 24, userTokenExpiryMinutes: 30 },
+    session: { adminTokenExpiryHours: 24, userTokenExpiryMinutes: 30, otpExpiryMinutes: 60 },
   },
   getJwtSecret: vi.fn().mockResolvedValue('test-secret'),
   DYNAMODB_TABLE: 'test-table',
@@ -36,6 +36,8 @@ vi.mock('../services/admin.js', () => ({
   createUserInvitation: vi.fn(),
   listUsers: vi.fn(),
   downloadVault: vi.fn(),
+  refreshOtp: vi.fn(),
+  deleteNewUser: vi.fn(),
 }));
 
 vi.mock('../services/vault.js', () => ({
@@ -61,6 +63,8 @@ import {
   adminChangePassword,
   createUserInvitation,
   listUsers,
+  refreshOtp,
+  deleteNewUser,
 } from '../services/admin.js';
 import { downloadVault } from '../services/vault.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -75,6 +79,8 @@ const mockChangePassword = vi.mocked(adminChangePassword);
 const mockCreateUser = vi.mocked(createUserInvitation);
 const mockListUsers = vi.mocked(listUsers);
 const mockDownload = vi.mocked(downloadVault);
+const mockRefreshOtp = vi.mocked(refreshOtp);
+const mockDeleteNewUser = vi.mocked(deleteNewUser);
 const mockRequireAuth = vi.mocked(requireAuth);
 const mockValidatePow = vi.mocked(validatePow);
 const mockValidateHoneypot = vi.mocked(validateHoneypot);
@@ -258,11 +264,58 @@ describe('GET /admin/users', () => {
   it('returns 200 with user list', async () => {
     authOk();
     mockListUsers.mockResolvedValue({
-      users: [{ userId: 'u1', username: 'alice', status: 'active', createdAt: '2024-01-01', lastLoginAt: null, vaultSizeBytes: 0 }],
+      users: [{ userId: 'u1', username: 'alice', status: 'active', createdAt: '2024-01-01', lastLoginAt: null, vaultSizeBytes: 0, email: null }],
     });
     const res = await handler(makeEvent(API_PATHS.ADMIN_USERS, 'GET'));
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.body).data.users).toHaveLength(1);
+  });
+});
+
+// ── POST /admin/users/refresh-otp ─────────────────────────────────────────────
+
+describe('POST /admin/users/refresh-otp', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockValidatePow.mockReturnValue({ valid: true, errorResponse: null });
+  });
+
+  it('returns 401 when unauthenticated', async () => {
+    authFail();
+    const res = await handler(makeEvent(API_PATHS.ADMIN_USER_REFRESH_OTP, 'POST', { userId: 'u1' }));
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('returns 200 on success', async () => {
+    authOk();
+    mockRefreshOtp.mockResolvedValue({
+      response: { success: true, username: 'bob', oneTimePassword: 'NEWPASS', userId: 'u1' },
+    });
+    const res = await handler(makeEvent(API_PATHS.ADMIN_USER_REFRESH_OTP, 'POST', { userId: 'u1' }));
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body).data.oneTimePassword).toBe('NEWPASS');
+  });
+});
+
+// ── DELETE /admin/users ────────────────────────────────────────────────────────
+
+describe('DELETE /admin/users', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockValidatePow.mockReturnValue({ valid: true, errorResponse: null });
+  });
+
+  it('returns 400 when userId query param is missing', async () => {
+    authOk();
+    const res = await handler(makeEvent(API_PATHS.ADMIN_USERS, 'DELETE'));
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 200 on success', async () => {
+    authOk();
+    mockDeleteNewUser.mockResolvedValue({ response: { success: true } });
+    const res = await handler(makeEvent(API_PATHS.ADMIN_USERS, 'DELETE', undefined, { userId: 'u1' }));
+    expect(res.statusCode).toBe(200);
   });
 });
 

@@ -5,7 +5,6 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as sns from 'aws-cdk-lib/aws-sns';
-import * as sns_subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as budgets from 'aws-cdk-lib/aws-budgets';
 import { Construct } from 'constructs';
@@ -16,8 +15,6 @@ interface MonitoringConstructProps {
   api: apigateway.RestApi;
   lambdaFunctions: lambda.Function[];
   usersTable: dynamodb.Table;
-  // Email address to notify on alerts. Requires manual confirmation click after deploy.
-  alertEmail?: string;
 }
 
 export class MonitoringConstruct extends Construct {
@@ -29,7 +26,7 @@ export class MonitoringConstruct extends Construct {
   constructor(scope: Construct, id: string, props: MonitoringConstructProps) {
     super(scope, id);
 
-    const { config, api, lambdaFunctions, usersTable, alertEmail } = props;
+    const { config, api, lambdaFunctions, usersTable } = props;
     const env = config.environment;
 
     // -------------------------------------------------------------------------
@@ -50,12 +47,6 @@ export class MonitoringConstruct extends Construct {
         resources: [this.alertTopic.topicArn],
       }),
     );
-
-    // Email subscription — requires manual confirmation click after deploy.
-    // Provide via: cdk deploy --context alertEmail=you@example.com
-    if (alertEmail) {
-      this.alertTopic.addSubscription(new sns_subscriptions.EmailSubscription(alertEmail));
-    }
 
     // -------------------------------------------------------------------------
     // Dashboard

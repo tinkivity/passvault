@@ -1,7 +1,7 @@
 import { build } from 'esbuild';
 import { rmSync, mkdirSync } from 'fs';
 
-const handlers = ['auth', 'admin', 'vault', 'challenge', 'health'];
+const handlers = ['auth', 'admin', 'vault', 'challenge', 'health', 'ses-notifier'];
 
 // Clean dist
 rmSync('dist', { recursive: true, force: true });

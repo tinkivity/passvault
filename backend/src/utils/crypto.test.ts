@@ -49,6 +49,16 @@ describe('generateOtp', () => {
     const values = new Set(Array.from({ length: 20 }, () => generateOtp()));
     expect(values.size).toBe(20);
   });
+
+  it('always contains at least one uppercase, lowercase, digit, and special character', () => {
+    for (let i = 0; i < 50; i++) {
+      const otp = generateOtp();
+      expect(/[A-Z]/.test(otp), 'missing uppercase').toBe(true);
+      expect(/[a-z]/.test(otp), 'missing lowercase').toBe(true);
+      expect(/[0-9]/.test(otp), 'missing digit').toBe(true);
+      expect(/[!@#$%^&*]/.test(otp), 'missing special character').toBe(true);
+    }
+  });
 });
 
 describe('generateSalt', () => {
