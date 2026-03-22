@@ -48,7 +48,7 @@ export function PasskeySetupPage({ isAdmin = false }: PasskeySetupPageProps) {
   };
 
   return (
-    <Layout>
+    <Layout theme="pv-dark">
       <Card>
         <h1 className="text-xl font-bold mb-2 text-center">Register Your Passkey</h1>
         <p className="text-sm text-base-content/70 mb-6 text-center">

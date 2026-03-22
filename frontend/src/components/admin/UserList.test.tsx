@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi } from 'vitest';
 import type { UserSummary } from '@passvault/shared';
@@ -56,14 +56,15 @@ function renderList(overrides?: {
 describe('UserList', () => {
   it('renders a row for each user', () => {
     renderList();
-    expect(screen.getByText('alice')).toBeInTheDocument();
-    expect(screen.getByText('bob')).toBeInTheDocument();
-    expect(screen.getByText('charlie')).toBeInTheDocument();
+    const tbody = screen.getAllByRole('rowgroup')[1];
+    expect(within(tbody).getByText('alice')).toBeInTheDocument();
+    expect(within(tbody).getByText('bob')).toBeInTheDocument();
+    expect(within(tbody).getByText('charlie')).toBeInTheDocument();
   });
 
-  it('shows a loading message while loading', () => {
+  it('shows a loading skeleton while loading', () => {
     renderList({ users: [], loading: true });
-    expect(screen.getByText(/Loading users/)).toBeInTheDocument();
+    expect(screen.getByText(/Loading users/)).toBeInTheDocument(); // sr-only
   });
 
   it('shows an empty-state message when there are no users', () => {
@@ -109,9 +110,10 @@ describe('UserList', () => {
 
   it('shows status badges for all status values', () => {
     renderList();
-    expect(screen.getByText('Active')).toBeInTheDocument();
-    expect(screen.getByText('Awaiting first login')).toBeInTheDocument();
-    expect(screen.getByText('Awaiting passkey setup')).toBeInTheDocument();
+    const tbody = screen.getAllByRole('rowgroup')[1];
+    expect(within(tbody).getByText('Active')).toBeInTheDocument();
+    expect(within(tbody).getByText('Awaiting first login')).toBeInTheDocument();
+    expect(within(tbody).getByText('Awaiting passkey setup')).toBeInTheDocument();
   });
 
   it('calls onDownload with userId and username when the download button is clicked', async () => {
@@ -165,7 +167,8 @@ describe('UserList', () => {
     await userEvent.click(screen.getByLabelText('Refresh OTP for alice'));
     await screen.findByText('NEWOTP99');
     await userEvent.click(screen.getByText('Done'));
-    expect(screen.getByText('alice')).toBeInTheDocument();
+    const tbody = screen.getAllByRole('rowgroup')[1];
+    expect(within(tbody).getByText('alice')).toBeInTheDocument();
   });
 
   it('shows confirm/cancel buttons before calling onDeleteUser', async () => {
@@ -191,14 +194,14 @@ describe('UserList', () => {
     await userEvent.click(screen.getByLabelText('Delete alice'));
     await userEvent.click(screen.getByText('Cancel'));
     expect(onDeleteUser).not.toHaveBeenCalled();
-    // Delete button should be visible again
     expect(screen.getByLabelText('Delete alice')).toBeInTheDocument();
   });
 
   it('calls onRowClick with the user when a row is clicked', async () => {
     const onRowClick = vi.fn();
     renderList({ onRowClick });
-    await userEvent.click(screen.getByText('charlie'));
+    const tbody = screen.getAllByRole('rowgroup')[1];
+    await userEvent.click(within(tbody).getByText('charlie'));
     expect(onRowClick).toHaveBeenCalledWith(mockUsers.find(u => u.username === 'charlie'));
   });
 
@@ -224,5 +227,62 @@ describe('UserList', () => {
     for (const row of rows) {
       expect(row).not.toHaveClass('cursor-pointer');
     }
+  });
+
+  it('shows filter bar with status and username controls', () => {
+    renderList();
+    expect(screen.getByLabelText(/filter by status/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/filter by username/i)).toBeInTheDocument();
+  });
+
+  it('status filter hides non-matching users', async () => {
+    renderList();
+    await userEvent.selectOptions(screen.getByLabelText(/filter by status/i), 'active');
+    const tbody = screen.getAllByRole('rowgroup')[1];
+    expect(within(tbody).getByText('charlie')).toBeInTheDocument();
+    expect(within(tbody).queryByText('alice')).not.toBeInTheDocument();
+    expect(within(tbody).queryByText('bob')).not.toBeInTheDocument();
+  });
+
+  it('username filter shows only matching users', async () => {
+    renderList();
+    await userEvent.type(screen.getByLabelText(/filter by username/i), 'ali');
+    const tbody = screen.getAllByRole('rowgroup')[1];
+    expect(within(tbody).getByText('alice')).toBeInTheDocument();
+    expect(within(tbody).queryByText('bob')).not.toBeInTheDocument();
+    expect(within(tbody).queryByText('charlie')).not.toBeInTheDocument();
+  });
+
+  it('shows filtered-empty state when no users match filters', async () => {
+    renderList();
+    await userEvent.type(screen.getByLabelText(/filter by username/i), 'zzz');
+    expect(screen.getByText(/no users match the current filters/i)).toBeInTheDocument();
+  });
+
+  it('shows clear filters button when filters are active', async () => {
+    renderList();
+    await userEvent.selectOptions(screen.getByLabelText(/filter by status/i), 'active');
+    expect(screen.getByRole('button', { name: /clear filters/i })).toBeInTheDocument();
+  });
+
+  it('clear filters button resets all filters', async () => {
+    renderList();
+    await userEvent.selectOptions(screen.getByLabelText(/filter by status/i), 'active');
+    await userEvent.click(screen.getByRole('button', { name: /clear filters/i }));
+    const tbody = screen.getAllByRole('rowgroup')[1];
+    expect(within(tbody).getByText('alice')).toBeInTheDocument();
+    expect(within(tbody).getByText('bob')).toBeInTheDocument();
+    expect(within(tbody).getByText('charlie')).toBeInTheDocument();
+  });
+
+  it('shows record count footer', () => {
+    renderList();
+    expect(screen.getByText(/3 records/i)).toBeInTheDocument();
+  });
+
+  it('shows filtered record count when filters are active', async () => {
+    renderList();
+    await userEvent.selectOptions(screen.getByLabelText(/filter by status/i), 'active');
+    expect(screen.getByText(/showing 1 of 3 records/i)).toBeInTheDocument();
   });
 });

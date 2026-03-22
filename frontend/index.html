@@ -4,6 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PassVault</title>
+    <script>
+      (function () {
+        var t = localStorage.getItem('pv-theme') || 'pv-light';
+        document.documentElement.setAttribute('data-theme', t);
+      })();
+    </script>
     <link rel="icon" href="/logo.png" type="image/png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   </head>

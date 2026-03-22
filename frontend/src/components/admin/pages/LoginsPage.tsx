@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { LoginEventSummary } from '@passvault/shared';
+import { ArrowPathIcon, InboxIcon, FunnelIcon } from '@heroicons/react/24/outline';
 import { useAuth } from '../../../hooks/useAuth.js';
 import { useAdmin } from '../../../hooks/useAdmin.js';
+import { SortButton } from '../SortButton.js';
 
 // ---- Helpers ----------------------------------------------------------------
 
@@ -108,31 +110,24 @@ function applySort(
 
 // ---- Sub-components ---------------------------------------------------------
 
-function SuccessIcon({ success }: { success: boolean }) {
+function SuccessBadge({ success }: { success: boolean }) {
   if (success) {
     return (
-      <span
-        className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-success/15 text-success font-bold"
-        title="Success"
-      >
-        ✓
+      <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full bg-success/15 text-success" title="Success">
+        <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-success" />
+        Success
       </span>
     );
   }
   return (
-    <span
-      className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-error/15 text-error font-bold"
-      title="Failed"
-    >
-      ✗
+    <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full bg-error/15 text-error" title="Failed">
+      <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-error" />
+      Failed
     </span>
   );
 }
 
-function SortIndicator({ col, active, dir }: { col: SortColumn; active: SortColumn; dir: SortDir }) {
-  if (col !== active) return <span className="ml-1 text-base-content/20">↕</span>;
-  return <span className="ml-1">{dir === 'asc' ? '↑' : '↓'}</span>;
-}
+const SKELETON_ROWS = 5;
 
 // ---- Main component ---------------------------------------------------------
 
@@ -186,17 +181,6 @@ export function LoginsPage() {
     filters.dateTo !== '' ||
     filters.duration !== 'all';
 
-  const thBtn = (col: SortColumn, label: string) => (
-    <button
-      className="flex items-center gap-0.5 font-semibold hover:text-base-content transition-colors"
-      onClick={() => handleSort(col)}
-      aria-label={label}
-    >
-      {label}
-      <SortIndicator col={col} active={sortCol} dir={sortDir} />
-    </button>
-  );
-
   return (
     <div>
       <div className="flex items-center justify-between mb-4">
@@ -206,8 +190,9 @@ export function LoginsPage() {
           onClick={() => setLoaded(false)}
           disabled={admin.loading}
           title="Refresh"
+          aria-label="Refresh"
         >
-          ↺
+          <ArrowPathIcon className="w-4 h-4" />
         </button>
       </div>
 
@@ -216,6 +201,8 @@ export function LoginsPage() {
       {/* Filter bar — only shown once data is loaded */}
       {loaded && events.length > 0 && (
         <div className="flex flex-wrap items-end gap-3 mb-4 p-3 bg-base-100 rounded-xl border border-base-300">
+          <FunnelIcon className="w-4 h-4 text-base-content/40 self-end mb-1.5 shrink-0" />
+
           {/* Status */}
           <label className="flex flex-col gap-1 text-xs text-base-content/50">
             Status
@@ -226,8 +213,8 @@ export function LoginsPage() {
               aria-label="Filter by status"
             >
               <option value="all">All</option>
-              <option value="true">✓ Success</option>
-              <option value="false">✗ Failed</option>
+              <option value="true">Success</option>
+              <option value="false">Failed</option>
             </select>
           </label>
 
@@ -304,32 +291,71 @@ export function LoginsPage() {
 
       <div className="bg-base-100 rounded-xl border border-base-300 overflow-hidden">
         {admin.loading && !loaded ? (
-          <p className="text-center text-base-content/50 py-8 text-sm">Loading login events…</p>
+          <>
+            <span className="sr-only">Loading login events…</span>
+            <table className="table table-fixed w-full">
+              <thead className="sticky top-0 z-10 bg-base-100 border-b border-base-300">
+                <tr className="text-xs font-semibold uppercase tracking-wider text-base-content/40">
+                  <th className="py-3 px-4 w-28">Success</th>
+                  <th className="py-3 px-4 w-36">Username</th>
+                  <th className="py-3 px-4">Login Time (UTC)</th>
+                  <th className="py-3 px-4 w-28">Duration</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-base-300">
+                {Array.from({ length: SKELETON_ROWS }).map((_, i) => (
+                  <tr key={i} className="animate-pulse">
+                    {[0, 1, 2, 3].map((j) => (
+                      <td key={j} className="py-3 px-4">
+                        <div className="h-4 bg-base-300 rounded w-3/4" />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
         ) : events.length === 0 ? (
-          <p className="text-center text-base-content/50 py-8 text-sm">No login events yet.</p>
+          <div className="flex flex-col items-center justify-center py-16 text-base-content/40">
+            <InboxIcon className="w-10 h-10 mb-3" />
+            <p className="font-medium">No login events yet</p>
+            <p className="text-sm mt-1">Events will appear here after users log in.</p>
+          </div>
         ) : displayedEvents.length === 0 ? (
-          <p className="text-center text-base-content/50 py-8 text-sm">No events match the current filters.</p>
+          <div className="flex flex-col items-center justify-center py-16 text-base-content/40">
+            <FunnelIcon className="w-10 h-10 mb-3" />
+            <p className="font-medium">No events match the current filters</p>
+            <p className="text-sm mt-1">Try adjusting or clearing the filters above.</p>
+          </div>
         ) : (
-          <table className="table table-sm w-full">
-            <thead>
-              <tr className="text-xs text-base-content/50 uppercase tracking-wide">
-                <th className="w-10 text-center">{thBtn('success', 'Success')}</th>
-                <th>{thBtn('username', 'Username')}</th>
-                <th>{thBtn('timestamp', 'Login Time (UTC)')}</th>
-                <th>{thBtn('duration', 'Duration')}</th>
+          <table className="table table-fixed w-full">
+            <thead className="sticky top-0 z-10 bg-base-100 border-b border-base-300">
+              <tr className="text-xs font-semibold uppercase tracking-wider text-base-content/40">
+                <th className="py-3 px-4 w-28">
+                  <SortButton label="Success" active={sortCol === 'success'} direction={sortDir} onClick={() => handleSort('success')} />
+                </th>
+                <th className="py-3 px-4 w-36">
+                  <SortButton label="Username" active={sortCol === 'username'} direction={sortDir} onClick={() => handleSort('username')} />
+                </th>
+                <th className="py-3 px-4">
+                  <SortButton label="Login Time (UTC)" active={sortCol === 'timestamp'} direction={sortDir} onClick={() => handleSort('timestamp')} />
+                </th>
+                <th className="py-3 px-4 w-28">
+                  <SortButton label="Duration" active={sortCol === 'duration'} direction={sortDir} onClick={() => handleSort('duration')} />
+                </th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-base-300">
               {displayedEvents.map((ev) => (
                 <tr key={ev.eventId} className="hover:bg-base-200/50">
-                  <td className="text-center">
-                    <SuccessIcon success={ev.success} />
+                  <td className="py-3 px-4">
+                    <SuccessBadge success={ev.success} />
                   </td>
-                  <td className="font-mono text-sm">{ev.username}</td>
-                  <td className="text-sm text-base-content/70 tabular-nums">
+                  <td className="py-3 px-4 font-mono text-sm">{ev.username}</td>
+                  <td className="py-3 px-4 text-sm text-base-content/70 tabular-nums">
                     {formatTimestamp(ev.timestamp)}
                   </td>
-                  <td className="text-sm tabular-nums">
+                  <td className="py-3 px-4 text-sm tabular-nums">
                     {formatDuration(getDurationSeconds(ev))}
                   </td>
                 </tr>
@@ -339,10 +365,12 @@ export function LoginsPage() {
         )}
       </div>
 
-      {loaded && hasActiveFilters && (
-        <p className="text-xs text-base-content/40 mt-2 text-right">
-          Showing {displayedEvents.length} of {events.length} events
-        </p>
+      {loaded && events.length > 0 && (
+        <div className="mt-2 text-xs text-base-content/40 text-right">
+          {hasActiveFilters
+            ? `Showing ${displayedEvents.length} of ${events.length} events`
+            : `${events.length} ${events.length === 1 ? 'event' : 'events'}`}
+        </div>
       )}
     </div>
   );

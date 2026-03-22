@@ -4,7 +4,7 @@ import {
   HomeIcon,
   UsersIcon,
   Cog6ToothIcon,
-  ArrowRightOnRectangleIcon,
+  ClockIcon,
   ChevronDownIcon,
   ChevronRightIcon,
 } from '@heroicons/react/24/outline';
@@ -20,7 +20,7 @@ const sections = [
   {
     label: 'Logs',
     items: [
-      { to: '/admin/logs/logins', label: 'Logins', icon: ArrowRightOnRectangleIcon },
+      { to: '/admin/logs/logins', label: 'Logins', icon: ClockIcon },
     ],
   },
 ];

@@ -2,7 +2,72 @@
 @import "tailwindcss";
 
 @plugin "daisyui" {
-  themes: corporate --default;
+  themes: pv-light --default, pv-dark;
+}
+
+/* ── PassVault Light Theme (shadcn Neutral light) ────────────────────── */
+@plugin "daisyui/theme" {
+  name: "pv-light";
+  default: true;
+  color-scheme: light;
+
+  --color-base-100: oklch(1 0 0);          /* #ffffff */
+  --color-base-200: oklch(0.97 0 0);       /* #f5f5f5 */
+  --color-base-300: oklch(0.92 0 0);       /* #e5e5e5 */
+  --color-base-content: oklch(0.15 0 0);  /* #0a0a0a */
+
+  --color-primary: oklch(0.22 0 0);        /* #171717 */
+  --color-primary-content: oklch(0.985 0 0);
+
+  --color-secondary: oklch(0.97 0 0);
+  --color-secondary-content: oklch(0.22 0 0);
+
+  --color-accent: oklch(0.97 0 0);
+  --color-accent-content: oklch(0.22 0 0);
+
+  --color-neutral: oklch(0.22 0 0);
+  --color-neutral-content: oklch(0.985 0 0);
+
+  --color-info: oklch(0.62 0.13 222);
+  --color-info-content: oklch(0.98 0 0);
+  --color-success: oklch(0.59 0.14 143);
+  --color-success-content: oklch(0.98 0 0);
+  --color-warning: oklch(0.75 0.16 70);
+  --color-warning-content: oklch(0.15 0 0);
+  --color-error: oklch(0.55 0.2 27);
+  --color-error-content: oklch(0.98 0 0);
+}
+
+/* ── PassVault Dark Theme (shadcn Neutral dark) ──────────────────────── */
+@plugin "daisyui/theme" {
+  name: "pv-dark";
+  color-scheme: dark;
+
+  --color-base-100: oklch(0.15 0 0);       /* #0a0a0a */
+  --color-base-200: oklch(0.22 0 0);       /* #171717 */
+  --color-base-300: oklch(0.27 0 0);       /* #262626 */
+  --color-base-content: oklch(0.985 0 0); /* #fafafa */
+
+  --color-primary: oklch(0.985 0 0);       /* #fafafa */
+  --color-primary-content: oklch(0.22 0 0);
+
+  --color-secondary: oklch(0.27 0 0);
+  --color-secondary-content: oklch(0.985 0 0);
+
+  --color-accent: oklch(0.27 0 0);
+  --color-accent-content: oklch(0.985 0 0);
+
+  --color-neutral: oklch(0.36 0 0);
+  --color-neutral-content: oklch(0.985 0 0);
+
+  --color-info: oklch(0.62 0.13 222);
+  --color-info-content: oklch(0.98 0 0);
+  --color-success: oklch(0.59 0.14 143);
+  --color-success-content: oklch(0.98 0 0);
+  --color-warning: oklch(0.75 0.16 70);
+  --color-warning-content: oklch(0.15 0 0);
+  --color-error: oklch(0.55 0.2 27);
+  --color-error-content: oklch(0.98 0 0);
 }
 
 @layer base {

@@ -59,7 +59,7 @@ export function PasswordChangePage({ isAdmin = false }: PasswordChangePageProps)
 
   if (success) {
     return (
-      <Layout>
+      <Layout theme="pv-dark">
         <Card>
           <h1 className="text-xl font-bold mb-4 text-center">Password Changed</h1>
           <p className="text-center text-sm text-base-content/70 mb-6">

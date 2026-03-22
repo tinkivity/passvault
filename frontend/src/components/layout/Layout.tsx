@@ -3,11 +3,15 @@ import { EnvironmentBanner } from './EnvironmentBanner.js';
 
 interface LayoutProps {
   children: React.ReactNode;
+  theme?: string;
 }
 
-export function Layout({ children }: LayoutProps) {
+export function Layout({ children, theme }: LayoutProps) {
   return (
-    <div className="min-h-screen flex flex-col bg-base-200 text-base-content">
+    <div
+      className="min-h-screen flex flex-col bg-base-200 text-base-content"
+      {...(theme ? { 'data-theme': theme } : {})}
+    >
       <EnvironmentBanner />
       <main className="flex-1 flex flex-col items-center justify-center p-4">
         {children}

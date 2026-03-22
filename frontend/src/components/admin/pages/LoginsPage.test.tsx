@@ -92,14 +92,14 @@ describe('LoginsPage', () => {
     vi.clearAllMocks();
   });
 
-  it('shows loading message while loading', () => {
+  it('shows loading skeleton while loading', () => {
     mockUseAdmin.mockReturnValue({
       getLoginEvents: vi.fn().mockReturnValue(new Promise(() => {})),
       loading: true,
       error: null,
     } as unknown as ReturnType<typeof useAdmin>);
     renderPage();
-    expect(screen.getByText(/loading login events/i)).toBeInTheDocument();
+    expect(screen.getByText(/loading login events/i)).toBeInTheDocument(); // sr-only
   });
 
   it('shows empty state when no events', async () => {
@@ -319,7 +319,7 @@ describe('LoginsPage', () => {
     await waitFor(() => screen.getByLabelText(/filter by status/i));
     await userEvent.selectOptions(screen.getByLabelText(/filter by status/i), 'false');
     await userEvent.selectOptions(screen.getByLabelText(/filter by duration/i), 'lt1');
-    expect(screen.getByText(/no events match the current filters/i)).toBeInTheDocument();
+    expect(screen.getByText(/no events match the current filters/i)).toBeInTheDocument(); // heading text
   });
 
   it('clear filters button resets all filters', async () => {
@@ -343,7 +343,14 @@ describe('LoginsPage', () => {
     expect(screen.queryByRole('button', { name: /clear filters/i })).not.toBeInTheDocument();
   });
 
-  it('shows event count summary when filters are active', async () => {
+  it('shows total event count when no filters are active', async () => {
+    setupMock();
+    renderPage();
+    await waitFor(() => screen.getByLabelText(/filter by status/i));
+    expect(screen.getByText(/^4 events$/i)).toBeInTheDocument();
+  });
+
+  it('shows filtered vs total count when filters are active', async () => {
     setupMock();
     renderPage();
     await waitFor(() => screen.getByLabelText(/filter by status/i));

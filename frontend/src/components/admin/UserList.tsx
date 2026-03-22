@@ -2,12 +2,12 @@ import { useState } from 'react';
 import type { UserSummary, UserStatus } from '@passvault/shared';
 import {
   ArrowDownTrayIcon,
-  ChevronUpDownIcon,
-  ChevronDoubleUpIcon,
-  ChevronDoubleDownIcon,
   ArrowPathIcon,
   TrashIcon,
+  InboxIcon,
+  FunnelIcon,
 } from '@heroicons/react/24/outline';
+import { SortButton } from './SortButton.js';
 import { OtpDisplay } from './OtpDisplay.js';
 
 const isEmailEnv = import.meta.env.VITE_ENVIRONMENT !== 'dev';
@@ -34,14 +34,36 @@ const statusLabel: Record<UserStatus, string> = {
   active: 'Active',
 };
 
-const statusClass: Record<UserStatus, string> = {
-  pending_first_login: 'badge badge-warning badge-sm whitespace-nowrap',
-  pending_passkey_setup: 'badge badge-info badge-sm whitespace-nowrap',
-  active: 'badge badge-success badge-sm whitespace-nowrap',
+const statusDot: Record<UserStatus, string> = {
+  pending_first_login: 'bg-warning',
+  pending_passkey_setup: 'bg-info',
+  active: 'bg-success',
+};
+
+const statusPill: Record<UserStatus, string> = {
+  pending_first_login: 'bg-warning/15 text-warning',
+  pending_passkey_setup: 'bg-info/15 text-info',
+  active: 'bg-success/15 text-success',
 };
 
 type SortColumn = 'username' | 'status' | 'createdAt' | 'lastLoginAt';
 type SortDirection = 'asc' | 'desc';
+type StatusFilter = 'all' | UserStatus;
+
+interface FilterState {
+  status: StatusFilter;
+  username: string;
+}
+
+const DEFAULT_FILTERS: FilterState = { status: 'all', username: '' };
+
+function applyFilters(users: UserSummary[], f: FilterState): UserSummary[] {
+  return users.filter((u) => {
+    if (f.status !== 'all' && u.status !== f.status) return false;
+    if (f.username && !u.username.toLowerCase().includes(f.username.toLowerCase())) return false;
+    return true;
+  });
+}
 
 function applySorting(users: UserSummary[], col: SortColumn, dir: SortDirection): UserSummary[] {
   return [...users].sort((a, b) => {
@@ -54,7 +76,7 @@ function applySorting(users: UserSummary[], col: SortColumn, dir: SortDirection)
       cmp = a.createdAt.localeCompare(b.createdAt);
     } else if (col === 'lastLoginAt') {
       if (!a.lastLoginAt && !b.lastLoginAt) cmp = 0;
-      else if (!a.lastLoginAt) cmp = 1;   // nulls last
+      else if (!a.lastLoginAt) cmp = 1;
       else if (!b.lastLoginAt) cmp = -1;
       else cmp = a.lastLoginAt.localeCompare(b.lastLoginAt);
     }
@@ -62,16 +84,12 @@ function applySorting(users: UserSummary[], col: SortColumn, dir: SortDirection)
   });
 }
 
-function SortIcon({ active, dir }: { active: boolean; dir: SortDirection }) {
-  if (!active) return <ChevronUpDownIcon className="w-4 h-4 shrink-0" />;
-  return dir === 'asc'
-    ? <ChevronDoubleUpIcon className="w-4 h-4 shrink-0" />
-    : <ChevronDoubleDownIcon className="w-4 h-4 shrink-0" />;
-}
+const SKELETON_ROWS = 5;
 
 export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUser, onRowClick }: UserListProps) {
   const [sortCol, setSortCol] = useState<SortColumn>('username');
   const [sortDir, setSortDir] = useState<SortDirection>('asc');
+  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
   const [refreshedOtp, setRefreshedOtp] = useState<{ username: string; oneTimePassword: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -85,19 +103,9 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUse
     }
   }
 
-  function thButton(col: SortColumn, label: string) {
-    return (
-      <th key={col}>
-        <button
-          onClick={() => handleSort(col)}
-          className="flex items-center gap-1 cursor-pointer select-none"
-        >
-          <SortIcon active={sortCol === col} dir={sortDir} />
-          {label}
-        </button>
-      </th>
-    );
-  }
+  const setFilter = <K extends keyof FilterState>(key: K, value: FilterState[K]) => {
+    setFilters((prev) => ({ ...prev, [key]: value }));
+  };
 
   async function handleRefreshOtp(userId: string) {
     setActionLoading(userId + ':refresh');
@@ -129,106 +137,214 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUse
     );
   }
 
+  const colCount = isEmailEnv ? 6 : 5;
+
   if (loading) {
-    return <p className="text-sm text-base-content/40">Loading users…</p>;
+    return (
+      <div className="overflow-x-auto">
+        <span className="sr-only">Loading users…</span>
+        <table className="table table-fixed w-full">
+          <thead className="sticky top-0 z-10 bg-base-100 border-b border-base-300">
+            <tr className="text-xs font-semibold uppercase tracking-wider text-base-content/40">
+              <th className="py-3 px-4 w-36">Username</th>
+              <th className="py-3 px-4 w-44">Status</th>
+              {isEmailEnv && <th className="py-3 px-4">Email</th>}
+              <th className="py-3 px-4 w-28">Created</th>
+              <th className="py-3 px-4 w-28">Last login</th>
+              <th className="py-3 px-4 w-24"></th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-base-300">
+            {Array.from({ length: SKELETON_ROWS }).map((_, i) => (
+              <tr key={i} className="animate-pulse">
+                {Array.from({ length: colCount }).map((__, j) => (
+                  <td key={j} className="py-3 px-4">
+                    <div className="h-4 bg-base-300 rounded w-3/4" />
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
   }
 
   if (users.length === 0) {
-    return <p className="text-sm text-base-content/50 italic">No users yet.</p>;
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-base-content/40">
+        <InboxIcon className="w-10 h-10 mb-3" />
+        <p className="font-medium">No users yet</p>
+        <p className="text-sm mt-1">Create the first user to get started.</p>
+      </div>
+    );
   }
 
-  const sorted = applySorting(users, sortCol, sortDir);
+  const hasActiveFilters = filters.status !== 'all' || filters.username !== '';
+  const filtered = applyFilters(users, filters);
+  const sorted = applySorting(filtered, sortCol, sortDir);
 
   return (
-    <div className="overflow-x-auto">
-      <table className="table table-sm w-full">
-        <thead>
-          <tr>
-            {thButton('username', 'Username')}
-            {thButton('status', 'Status')}
-            {isEmailEnv && <th>Email</th>}
-            {thButton('createdAt', 'Created')}
-            {thButton('lastLoginAt', 'Last login')}
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {sorted.map(user => (
-            <tr
-              key={user.userId}
-              onClick={() => onRowClick?.(user)}
-              className={onRowClick ? 'cursor-pointer hover:bg-base-200' : undefined}
-            >
-              <td className="font-mono">{user.username}</td>
-              <td>
-                <span className={statusClass[user.status]}>
-                  {statusLabel[user.status]}
-                </span>
-              </td>
-              {isEmailEnv && (
-                <td className="text-base-content/50 text-xs">
-                  {user.email ?? '—'}
-                </td>
-              )}
-              <td className="text-base-content/50">
-                {new Date(user.createdAt).toISOString().slice(0, 10)}
-              </td>
-              <td className="text-base-content/50">
-                {user.lastLoginAt ? new Date(user.lastLoginAt).toISOString().slice(0, 10) : '—'}
-              </td>
-              <td className="flex gap-1" onClick={e => e.stopPropagation()}>
-                <button
-                  onClick={() => onDownload(user.userId, user.username)}
-                  className="btn btn-ghost btn-sm"
-                  title={`Download ${user.username}'s vault (${formatBytes(user.vaultSizeBytes)})`}
-                  aria-label={`Download ${user.username}'s vault`}
+    <div>
+      {/* Filter bar */}
+      <div className="flex flex-wrap items-end gap-3 p-3 bg-base-100 border-b border-base-300">
+        <FunnelIcon className="w-4 h-4 text-base-content/40 self-end mb-1.5 shrink-0" />
+
+        {/* Status */}
+        <label className="flex flex-col gap-1 text-xs text-base-content/50">
+          Status
+          <select
+            className="select select-sm select-bordered w-48"
+            value={filters.status}
+            onChange={(e) => setFilter('status', e.target.value as StatusFilter)}
+            aria-label="Filter by status"
+          >
+            <option value="all">All statuses</option>
+            <option value="active">Active</option>
+            <option value="pending_first_login">Awaiting first login</option>
+            <option value="pending_passkey_setup">Awaiting passkey setup</option>
+          </select>
+        </label>
+
+        {/* Username */}
+        <label className="flex flex-col gap-1 text-xs text-base-content/50">
+          Username
+          <input
+            type="text"
+            className="input input-sm input-bordered w-40"
+            placeholder="Search…"
+            value={filters.username}
+            onChange={(e) => setFilter('username', e.target.value)}
+            aria-label="Filter by username"
+          />
+        </label>
+
+        {hasActiveFilters && (
+          <button
+            className="btn btn-ghost btn-sm self-end"
+            onClick={() => setFilters(DEFAULT_FILTERS)}
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
+
+      <div className="overflow-x-auto">
+        {sorted.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-base-content/40">
+            <FunnelIcon className="w-10 h-10 mb-3" />
+            <p className="font-medium">No users match the current filters</p>
+            <p className="text-sm mt-1">Try adjusting or clearing the filters above.</p>
+          </div>
+        ) : (
+          <table className="table table-fixed w-full">
+            <thead className="sticky top-0 z-10 bg-base-100 border-b border-base-300">
+              <tr className="text-xs font-semibold uppercase tracking-wider text-base-content/40">
+                <th className="py-3 px-4 w-36">
+                  <SortButton label="Username" active={sortCol === 'username'} direction={sortDir} onClick={() => handleSort('username')} />
+                </th>
+                <th className="py-3 px-4 w-44">
+                  <SortButton label="Status" active={sortCol === 'status'} direction={sortDir} onClick={() => handleSort('status')} />
+                </th>
+                {isEmailEnv && <th className="py-3 px-4">Email</th>}
+                <th className="py-3 px-4 w-28">
+                  <SortButton label="Created" active={sortCol === 'createdAt'} direction={sortDir} onClick={() => handleSort('createdAt')} />
+                </th>
+                <th className="py-3 px-4 w-28">
+                  <SortButton label="Last login" active={sortCol === 'lastLoginAt'} direction={sortDir} onClick={() => handleSort('lastLoginAt')} />
+                </th>
+                <th className="py-3 px-4 w-24"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-base-300">
+              {sorted.map(user => (
+                <tr
+                  key={user.userId}
+                  onClick={() => onRowClick?.(user)}
+                  className={`group${onRowClick ? ' cursor-pointer hover:bg-base-200/50' : ''}`}
                 >
-                  <ArrowDownTrayIcon className="w-4 h-4" />
-                </button>
-                {user.status === 'pending_first_login' && (
-                  <>
+                  <td className="py-3 px-4 font-mono text-sm">{user.username}</td>
+                  <td className="py-3 px-4">
+                    <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${statusPill[user.status]}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusDot[user.status]}`} />
+                      {statusLabel[user.status]}
+                    </span>
+                  </td>
+                  {isEmailEnv && (
+                    <td className="py-3 px-4 text-sm text-base-content/50">
+                      {user.email ?? '—'}
+                    </td>
+                  )}
+                  <td className="py-3 px-4 text-sm text-base-content/50">
+                    {new Date(user.createdAt).toISOString().slice(0, 10)}
+                  </td>
+                  <td className="py-3 px-4 text-sm text-base-content/50">
+                    {user.lastLoginAt ? new Date(user.lastLoginAt).toISOString().slice(0, 10) : '—'}
+                  </td>
+                  <td
+                    className={`py-3 px-4 flex gap-1 transition-opacity ${confirmDelete === user.userId ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'}`}
+                    onClick={e => e.stopPropagation()}
+                  >
                     <button
-                      onClick={() => handleRefreshOtp(user.userId)}
-                      disabled={actionLoading === user.userId + ':refresh'}
+                      onClick={() => onDownload(user.userId, user.username)}
                       className="btn btn-ghost btn-sm"
-                      title="Refresh OTP"
-                      aria-label={`Refresh OTP for ${user.username}`}
+                      title={`Download ${user.username}'s vault (${formatBytes(user.vaultSizeBytes)})`}
+                      aria-label={`Download ${user.username}'s vault`}
                     >
-                      <ArrowPathIcon className="w-4 h-4" />
+                      <ArrowDownTrayIcon className="w-4 h-4" />
                     </button>
-                    {confirmDelete === user.userId ? (
-                      <span className="flex items-center gap-1">
+                    {user.status === 'pending_first_login' && (
+                      <>
                         <button
-                          onClick={() => handleDeleteUser(user.userId)}
-                          disabled={actionLoading === user.userId + ':delete'}
-                          className="btn btn-error btn-sm"
-                        >
-                          Confirm
-                        </button>
-                        <button
-                          onClick={() => setConfirmDelete(null)}
+                          onClick={() => handleRefreshOtp(user.userId)}
+                          disabled={actionLoading === user.userId + ':refresh'}
                           className="btn btn-ghost btn-sm"
+                          title="Refresh OTP"
+                          aria-label={`Refresh OTP for ${user.username}`}
                         >
-                          Cancel
+                          <ArrowPathIcon className="w-4 h-4" />
                         </button>
-                      </span>
-                    ) : (
-                      <button
-                        onClick={() => setConfirmDelete(user.userId)}
-                        className="btn btn-ghost btn-sm text-error"
-                        title="Delete user"
-                        aria-label={`Delete ${user.username}`}
-                      >
-                        <TrashIcon className="w-4 h-4" />
-                      </button>
+                        {confirmDelete === user.userId ? (
+                          <span className="flex items-center gap-1">
+                            <button
+                              onClick={() => handleDeleteUser(user.userId)}
+                              disabled={actionLoading === user.userId + ':delete'}
+                              className="btn btn-error btn-sm"
+                            >
+                              Confirm
+                            </button>
+                            <button
+                              onClick={() => setConfirmDelete(null)}
+                              className="btn btn-ghost btn-sm"
+                            >
+                              Cancel
+                            </button>
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => setConfirmDelete(user.userId)}
+                            className="btn btn-ghost btn-sm text-error"
+                            title="Delete user"
+                            aria-label={`Delete ${user.username}`}
+                          >
+                            <TrashIcon className="w-4 h-4" />
+                          </button>
+                        )}
+                      </>
                     )}
-                  </>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <div className="px-4 py-2 border-t border-base-300 text-xs text-base-content/40 text-right">
+        {hasActiveFilters
+          ? `Showing ${sorted.length} of ${users.length} ${users.length === 1 ? 'record' : 'records'}`
+          : `${users.length} ${users.length === 1 ? 'record' : 'records'}`}
+      </div>
     </div>
   );
 }

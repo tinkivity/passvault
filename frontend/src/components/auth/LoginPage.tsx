@@ -62,7 +62,7 @@ export function LoginPage() {
   };
 
   return (
-    <Layout>
+    <Layout theme="pv-dark">
       <div className="bg-base-100 rounded-xl border border-base-300 w-full max-w-2xl flex overflow-hidden">
         {/* Logo panel */}
         <div className="flex-1 flex items-center justify-center p-8 border-r border-base-300">

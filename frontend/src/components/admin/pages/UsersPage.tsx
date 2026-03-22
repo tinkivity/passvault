@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { UserSummary } from '@passvault/shared';
+import { ArrowPathIcon } from '@heroicons/react/24/outline';
 import { useAuth } from '../../../hooks/useAuth.js';
 import { useAdmin } from '../../../hooks/useAdmin.js';
 import { UserList } from '../UserList.js';
@@ -50,8 +51,9 @@ export function UsersPage() {
             onClick={refreshUsers}
             disabled={admin.loading}
             title="Refresh"
+            aria-label="Refresh"
           >
-            ↺
+            <ArrowPathIcon className="w-4 h-4" />
           </button>
           <button
             className="btn btn-primary btn-sm"

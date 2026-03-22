@@ -1,8 +1,13 @@
 import { useCallback } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
-import { ArrowRightStartOnRectangleIcon } from '@heroicons/react/24/outline';
+import {
+  ArrowRightStartOnRectangleIcon,
+  SunIcon,
+  MoonIcon,
+} from '@heroicons/react/24/outline';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useAutoLogout } from '../../hooks/useAutoLogout.js';
+import { useTheme } from '../../hooks/useTheme.js';
 import { EnvironmentBanner } from '../layout/EnvironmentBanner.js';
 import { AdminSidebar } from './AdminSidebar.js';
 import { AdminBreadcrumbs } from './AdminBreadcrumbs.js';
@@ -12,6 +17,7 @@ const ADMIN_TIMEOUT = Number(import.meta.env.VITE_ADMIN_TIMEOUT_SECONDS ?? 86400
 export function AdminShell() {
   const navigate = useNavigate();
   const { username, logout } = useAuth();
+  const { isDark, toggleTheme } = useTheme();
 
   const handleLogout = useCallback(() => {
     logout();
@@ -39,10 +45,20 @@ export function AdminShell() {
         <div className="flex-1 min-w-0">
           <AdminBreadcrumbs />
         </div>
-        <div className="flex items-center gap-3 shrink-0">
-          <span className="text-sm text-base-content/60 hidden sm:inline">
+        <div className="flex items-center gap-1 shrink-0">
+          <span className="text-sm text-base-content/60 hidden sm:inline mr-2">
             {username} · {timeDisplay}
           </span>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={toggleTheme}
+            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+            aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {isDark
+              ? <SunIcon className="w-4 h-4" />
+              : <MoonIcon className="w-4 h-4" />}
+          </button>
           <button
             className="btn btn-sm btn-ghost text-error flex items-center gap-1.5"
             onClick={handleLogout}
