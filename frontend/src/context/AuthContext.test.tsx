@@ -9,6 +9,7 @@ const sampleAuth = {
   username: 'alice',
   status: 'active' as const,
   encryptionSalt: 'salt-abc',
+  loginEventId: null,
 };
 
 function Consumer() {

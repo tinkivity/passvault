@@ -38,6 +38,7 @@ vi.mock('../services/admin.js', () => ({
   downloadVault: vi.fn(),
   refreshOtp: vi.fn(),
   deleteNewUser: vi.fn(),
+  getStats: vi.fn(),
 }));
 
 vi.mock('../services/vault.js', () => ({
@@ -65,6 +66,7 @@ import {
   listUsers,
   refreshOtp,
   deleteNewUser,
+  getStats,
 } from '../services/admin.js';
 import { downloadVault } from '../services/vault.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -81,6 +83,7 @@ const mockListUsers = vi.mocked(listUsers);
 const mockDownload = vi.mocked(downloadVault);
 const mockRefreshOtp = vi.mocked(refreshOtp);
 const mockDeleteNewUser = vi.mocked(deleteNewUser);
+const mockGetStats = vi.mocked(getStats);
 const mockRequireAuth = vi.mocked(requireAuth);
 const mockValidatePow = vi.mocked(validatePow);
 const mockValidateHoneypot = vi.mocked(validateHoneypot);
@@ -316,6 +319,57 @@ describe('DELETE /admin/users', () => {
     mockDeleteNewUser.mockResolvedValue({ response: { success: true } });
     const res = await handler(makeEvent(API_PATHS.ADMIN_USERS, 'DELETE', undefined, { userId: 'u1' }));
     expect(res.statusCode).toBe(200);
+  });
+});
+
+// ── GET /admin/stats ──────────────────────────────────────────────────────────
+
+describe('GET /admin/stats', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockValidatePow.mockReturnValue({ valid: true, errorResponse: null });
+  });
+
+  it('returns 401 when unauthenticated', async () => {
+    authFail();
+    const res = await handler(makeEvent(API_PATHS.ADMIN_STATS, 'GET'));
+    expect(res.statusCode).toBe(401);
+    expect(mockGetStats).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 when role is not admin', async () => {
+    mockRequireAuth.mockResolvedValue({ user: { ...adminUser, role: 'user' }, errorResponse: null });
+    const res = await handler(makeEvent(API_PATHS.ADMIN_STATS, 'GET'));
+    expect(res.statusCode).toBe(403);
+    expect(mockGetStats).not.toHaveBeenCalled();
+  });
+
+  it('returns 403 when admin account is not active', async () => {
+    authOk(pendingAdmin);
+    const res = await handler(makeEvent(API_PATHS.ADMIN_STATS, 'GET'));
+    expect(res.statusCode).toBe(403);
+    expect(mockGetStats).not.toHaveBeenCalled();
+  });
+
+  it('returns 200 with stats on success', async () => {
+    authOk();
+    mockGetStats.mockResolvedValue({ totalUsers: 3, totalVaultSizeBytes: 4096, loginsLast7Days: 12 });
+    const res = await handler(makeEvent(API_PATHS.ADMIN_STATS, 'GET'));
+    expect(res.statusCode).toBe(200);
+    const data = JSON.parse(res.body).data;
+    expect(data.totalUsers).toBe(3);
+    expect(data.totalVaultSizeBytes).toBe(4096);
+    expect(data.loginsLast7Days).toBe(12);
+  });
+
+  it('returns 403 when PoW fails', async () => {
+    mockValidatePow.mockReturnValue({
+      valid: false,
+      errorResponse: { statusCode: 403, body: '{"error":"PoW"}', headers: {} },
+    });
+    const res = await handler(makeEvent(API_PATHS.ADMIN_STATS, 'GET'));
+    expect(res.statusCode).toBe(403);
+    expect(mockGetStats).not.toHaveBeenCalled();
   });
 });
 

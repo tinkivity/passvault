@@ -12,6 +12,7 @@ export interface LoginResponse {
   encryptionSalt: string;
   requirePasswordChange?: boolean;
   requirePasskeySetup?: boolean;
+  loginEventId?: string;
 }
 
 export interface ChangePasswordRequest {

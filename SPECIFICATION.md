@@ -231,15 +231,29 @@ For a detailed bot attack cost analysis including worst-case calculations and de
   - Step 1: "Sign in with passkey" button — triggers browser WebAuthn dialog, pre-fills username
   - Step 2: Password field (username pre-filled and read-only)
   - Login button
-- **Admin Dashboard** (accessible after passkey is set up):
-  - Create new user form (enter username, click to generate OTP)
-  - Display generated username and OTP to copy/share with user
-  - List of all users showing:
-    - Username
-    - Status (pending first login / active)
-    - Created date
-    - Last login date
-  - Logout button
+- **Admin Console** (accessible after passkey is set up) — full-viewport AWS Console-style layout:
+  - **Top bar**: PassVault branding + "Admin Console" label (left); breadcrumb trail (centre); session countdown timer + Logout button (right)
+  - **Sidebar**: fixed left navigation with flat sections
+    - *Main*: Dashboard
+    - *Users*: Users
+    - *Logs*: Logins
+  - **Dashboard page** (`/admin/dashboard`): three metric cards
+    - **Users** — total active+pending user count; clicking the number navigates to the Users screen
+    - **Vault Storage** — sum of all user vault file sizes, formatted (B / KB / MB / GB)
+    - **Logins (last 7 days)** — login event count for the past 7 days; clicking the number navigates to the Logins screen
+  - **Users page** (`/admin/users`):
+    - "Create User" button opens a modal dialog with the invitation form
+    - After creation the OTP is shown; clicking "Done" closes the modal
+    - Users table: Username, Status, Email, Created date, Last login date, Vault size
+    - Clicking a row navigates to the User Detail page
+  - **User Detail page** (`/admin/users/:userId`): full user record + action buttons (Download Vault, Refresh OTP, Delete User)
+  - **Logins page** (`/admin/logs/logins`):
+    - Table with columns: Status (icon), Username, Login Time (UTC), Duration (mm:ss)
+    - Sortable by all four columns (click column header to toggle asc/desc)
+    - Filter bar (visible once data is loaded): Status (All/Success/Failed), Username (dropdown of unique names), From date, To date, Duration bucket (All / No duration / < 1 min / 1–5 min / 5–15 min / 15–60 min / > 60 min)
+    - "Clear filters" button appears only when at least one filter is active
+    - "Showing X of Y events" count displayed when filters are active
+    - Refresh button reloads events from the server
 
 #### User Interface
 - **Login Page (first time)**: Form to authenticate with OTP (username, password/OTP)
@@ -468,11 +482,12 @@ Protection Layers:
   - Request (prod): `{ "passkeyToken": "string", "password": "string" }` — passkeyToken identifies the admin
   - Request (dev/beta): `{ "username": "string", "password": "string" }` — direct username+password
   - Response:
-    - First-time login: `{ "token": "string", "role": "admin", "requirePasswordChange": true, "encryptionSalt": "string (base64)" }`
-    - After password change (prod): `{ "token": "string", "role": "admin", "requirePasskeySetup": true, "encryptionSalt": "string (base64)" }`
-    - Active login: `{ "token": "string", "role": "admin", "encryptionSalt": "string (base64)" }`
+    - First-time login: `{ "token": "string", "role": "admin", "requirePasswordChange": true, "encryptionSalt": "string (base64)", "loginEventId": "string (UUID)" }`
+    - After password change (prod): `{ "token": "string", "role": "admin", "requirePasskeySetup": true, "encryptionSalt": "string (base64)", "loginEventId": "string (UUID)" }`
+    - Active login: `{ "token": "string", "role": "admin", "encryptionSalt": "string (base64)", "loginEventId": "string (UUID)" }`
   - Returns JWT token with admin role and encryption salt for key derivation
   - Flags if password change or passkey setup is required
+  - `loginEventId` uniquely identifies this login event; sent with `POST /api/auth/logout` to record session duration
 
 - **POST /api/admin/change-password** (Requires admin auth)
   - Request: `{ "newPassword": "string" }`
@@ -519,6 +534,18 @@ Protection Layers:
   - Removes the DynamoDB user record and the S3 vault file (`user-{userId}.enc`)
   - Response: `{ "success": true }`
 
+- **GET /api/admin/stats** (Requires admin auth, PoW HIGH)
+  - Response: `{ "totalUsers": number, "totalVaultSizeBytes": number, "loginsLast7Days": number }`
+  - `totalUsers`: count of all non-admin user records in DynamoDB
+  - `totalVaultSizeBytes`: sum of S3 object sizes for all user vault files
+  - `loginsLast7Days`: count of login events in the past 7 days (from the login events table)
+
+- **GET /api/admin/login-events** (Requires admin auth, PoW HIGH)
+  - Response: `{ "events": [{ "eventId": "string", "userId": "string", "username": "string", "timestamp": "string (ISO 8601)", "success": boolean, "logoutAt": "string (ISO 8601) | undefined" }] }`
+  - Returns up to 500 most-recent login events sorted by timestamp descending
+  - Each event records whether login succeeded (`success: true`) or failed (`success: false`)
+  - `logoutAt` is present only if the user has since called `POST /api/auth/logout` for this session; used to calculate session duration on the client
+
 ### 4.3 User Authentication Endpoints
 
 - **GET /api/auth/passkey/challenge**
@@ -533,10 +560,11 @@ Protection Layers:
   - Request (prod): `{ "passkeyToken": "string", "password": "string" }` — passkeyToken from verify step
   - Request (dev/beta): `{ "username": "string", "password": "string" }` — direct
   - Response:
-    - First-time login (with OTP): `{ "token": "string", "requirePasswordChange": true, "username": "string", "encryptionSalt": "string (base64)" }`
-    - After password change (prod): `{ "token": "string", "requirePasskeySetup": true, "username": "string", "encryptionSalt": "string (base64)" }`
-    - Active login: `{ "token": "string", "username": "string", "encryptionSalt": "string (base64)" }`
+    - First-time login (with OTP): `{ "token": "string", "requirePasswordChange": true, "username": "string", "encryptionSalt": "string (base64)", "loginEventId": "string (UUID)" }`
+    - After password change (prod): `{ "token": "string", "requirePasskeySetup": true, "username": "string", "encryptionSalt": "string (base64)", "loginEventId": "string (UUID)" }`
+    - Active login: `{ "token": "string", "username": "string", "encryptionSalt": "string (base64)", "loginEventId": "string (UUID)" }`
   - Returns JWT token with user ID and role, plus encryption salt for key derivation
+  - `loginEventId` uniquely identifies this login event; sent with `POST /api/auth/logout` to record session duration
 
 - **POST /api/auth/change-password** (Requires user auth)
   - Request: `{ "newPassword": "string" }`
@@ -553,6 +581,13 @@ Protection Layers:
   - Verifies and stores the passkey credential; changes user status to "active"
 
 > **Passkey endpoints (dev/beta)**: When `passkeyRequired=false`, the passkey challenge/verify/register endpoints are still deployed but will not be exercised by the UI. POST /auth/login accepts `username` + `password` directly.
+
+- **POST /api/auth/logout** (Requires user or admin auth)
+  - Request: `{ "eventId": "string" }` — the `loginEventId` returned by the login response
+  - Response: `{ "success": true }`
+  - Records `logoutAt` timestamp on the matching login event in DynamoDB (fire-and-forget UpdateItem)
+  - Used to calculate session duration on the Logins admin screen
+  - If `eventId` is unknown or already has a `logoutAt`, the call is silently ignored
 
 - **POST /api/auth/email/change** (Requires user auth; beta/prod only)
   - Request: `{ "newEmail": "string", "password": "string" }` — password confirmation is required to initiate the change
@@ -653,7 +688,28 @@ Global Secondary Index (GSI):
   - The OTP is never stored at rest — save it from the console output during initialization
   - This establishes the root of trust: AWS account access (to run the init script) → admin access
 
-### 5.2 S3 Storage Structure
+### 5.2 DynamoDB Login Events Table
+```
+Table: passvault-login-events-{env}
+Primary Key: eventId (String) — UUID generated server-side before fire-and-forget write
+
+Attributes:
+- eventId:   UUID (String) — PK
+- userId:    user who logged in (String)
+- username:  username at time of event (String)
+- timestamp: ISO 8601 login time (String)
+- success:   whether login succeeded (Boolean)
+- logoutAt:  ISO 8601 logout time (String, nullable) — written by POST /api/auth/logout
+- expiresAt: TTL epoch seconds — auto-set to 90 days after event; DynamoDB TTL attribute
+```
+
+- No GSI required — admin reads up to 500 rows via Scan, sorted in-memory
+- TTL auto-deletes events older than 90 days at no extra cost
+- removalPolicy: DESTROY (same as users table)
+- Auth Lambda: `dynamodb:PutItem` + `dynamodb:UpdateItem` on this table
+- Admin Lambda: `dynamodb:Scan` on this table
+
+### 5.3 S3 Storage Structure
 ```
 s3://passvault-files/
   ├── user-{userId-1}.enc
@@ -669,7 +725,7 @@ s3://passvault-files/
 - Filename is never exposed to users
 - Extension `.enc` indicates encrypted content
 
-### 5.3 Password Policy
+### 5.4 Password Policy
 
 **Secure Password Requirements:**
 - Minimum length: 12 characters

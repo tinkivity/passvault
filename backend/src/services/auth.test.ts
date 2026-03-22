@@ -23,6 +23,7 @@ vi.mock('../utils/dynamodb.js', () => ({
   getUserByUsername: vi.fn(),
   getUserById: vi.fn(),
   updateUser: vi.fn().mockResolvedValue(undefined),
+  recordLoginEvent: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../utils/crypto.js', () => ({

@@ -25,6 +25,7 @@ interface UserListProps {
   onDownload: (userId: string, username: string) => void;
   onRefreshOtp: (userId: string) => Promise<{ username: string; oneTimePassword: string }>;
   onDeleteUser: (userId: string) => Promise<void>;
+  onRowClick?: (user: UserSummary) => void;
 }
 
 const statusLabel: Record<UserStatus, string> = {
@@ -68,7 +69,7 @@ function SortIcon({ active, dir }: { active: boolean; dir: SortDirection }) {
     : <ChevronDoubleDownIcon className="w-4 h-4 shrink-0" />;
 }
 
-export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUser }: UserListProps) {
+export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUser, onRowClick }: UserListProps) {
   const [sortCol, setSortCol] = useState<SortColumn>('username');
   const [sortDir, setSortDir] = useState<SortDirection>('asc');
   const [refreshedOtp, setRefreshedOtp] = useState<{ username: string; oneTimePassword: string } | null>(null);
@@ -153,7 +154,11 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUse
         </thead>
         <tbody>
           {sorted.map(user => (
-            <tr key={user.userId}>
+            <tr
+              key={user.userId}
+              onClick={() => onRowClick?.(user)}
+              className={onRowClick ? 'cursor-pointer hover:bg-base-200' : undefined}
+            >
               <td className="font-mono">{user.username}</td>
               <td>
                 <span className={statusClass[user.status]}>
@@ -171,7 +176,7 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUse
               <td className="text-base-content/50">
                 {user.lastLoginAt ? new Date(user.lastLoginAt).toISOString().slice(0, 10) : '—'}
               </td>
-              <td className="flex gap-1">
+              <td className="flex gap-1" onClick={e => e.stopPropagation()}>
                 <button
                   onClick={() => onDownload(user.userId, user.username)}
                   className="btn btn-ghost btn-sm"

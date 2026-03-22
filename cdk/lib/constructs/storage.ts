@@ -6,6 +6,7 @@ import type { EnvironmentConfig } from '@passvault/shared';
 
 export class StorageConstruct extends Construct {
   public readonly usersTable: dynamodb.Table;
+  public readonly loginEventsTable: dynamodb.Table;
   public readonly filesBucket: s3.Bucket;
   public readonly frontendBucket: s3.Bucket;
 
@@ -26,6 +27,16 @@ export class StorageConstruct extends Construct {
     this.usersTable.addGlobalSecondaryIndex({
       indexName: 'username-index',
       partitionKey: { name: 'username', type: dynamodb.AttributeType.STRING },
+    });
+
+    // DynamoDB login events table (for admin dashboard metrics)
+    // TTL auto-expires records after 90 days to keep costs minimal.
+    this.loginEventsTable = new dynamodb.Table(this, 'LoginEventsTable', {
+      tableName: `passvault-login-events-${env}`,
+      partitionKey: { name: 'eventId', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      timeToLiveAttribute: 'expiresAt',
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
     // S3: encrypted user vault files

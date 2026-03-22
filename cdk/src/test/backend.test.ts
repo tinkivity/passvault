@@ -102,6 +102,28 @@ describe('BackendConstruct (dev)', () => {
     });
   });
 
+  it('sets LOGIN_EVENTS_TABLE_NAME on auth Lambda', () => {
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'passvault-auth-dev',
+      Environment: {
+        Variables: Match.objectLike({
+          LOGIN_EVENTS_TABLE_NAME: Match.anyValue(),
+        }),
+      },
+    });
+  });
+
+  it('sets LOGIN_EVENTS_TABLE_NAME on admin Lambda', () => {
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'passvault-admin-dev',
+      Environment: {
+        Variables: Match.objectLike({
+          LOGIN_EVENTS_TABLE_NAME: Match.anyValue(),
+        }),
+      },
+    });
+  });
+
   it('does not set JWT_SECRET_PARAM on challenge Lambda', () => {
     const fns = template.findResources('AWS::Lambda::Function', {
       Properties: { FunctionName: 'passvault-challenge-dev' },

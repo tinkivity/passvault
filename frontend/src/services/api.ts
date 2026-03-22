@@ -17,6 +17,8 @@ import type {
   CreateUserRequest,
   CreateUserResponse,
   ListUsersResponse,
+  ListLoginEventsResponse,
+  AdminStats,
 } from '@passvault/shared';
 import { API_PATHS, POW_CONFIG } from '@passvault/shared';
 import { solveChallenge } from './pow-solver.js';
@@ -247,6 +249,30 @@ export class ApiClient {
       method: 'DELETE',
       token,
       powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+    });
+  }
+
+  async getAdminStats(token: string): Promise<AdminStats> {
+    return this.request<AdminStats>(API_PATHS.ADMIN_STATS, {
+      method: 'GET',
+      token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+    });
+  }
+
+  async getLoginEvents(token: string): Promise<ListLoginEventsResponse> {
+    return this.request<ListLoginEventsResponse>(API_PATHS.ADMIN_LOGIN_EVENTS, {
+      method: 'GET',
+      token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+    });
+  }
+
+  async logout(eventId: string, token: string): Promise<void> {
+    return this.request(API_PATHS.AUTH_LOGOUT, {
+      method: 'POST',
+      body: { eventId },
+      token,
     });
   }
 

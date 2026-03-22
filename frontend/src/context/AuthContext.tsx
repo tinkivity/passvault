@@ -7,6 +7,7 @@ export interface AuthState {
   username: string | null;
   status: UserStatus | null;
   encryptionSalt: string | null;
+  loginEventId: string | null;
 }
 
 interface AuthContextValue extends AuthState {
@@ -20,6 +21,7 @@ const initialState: AuthState = {
   username: null,
   status: null,
   encryptionSalt: null,
+  loginEventId: null,
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);

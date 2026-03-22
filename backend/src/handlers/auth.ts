@@ -6,6 +6,7 @@ import { validatePow } from '../middleware/pow.js';
 import { validateHoneypot } from '../middleware/honeypot.js';
 import { requireAuth } from '../middleware/auth.js';
 import { login, changePassword, requestEmailChange, confirmEmailChange } from '../services/auth.js';
+import { updateLoginEventLogout } from '../utils/dynamodb.js';
 import {
   generateChallengeJwt,
   verifyChallengeJwt,
@@ -64,6 +65,10 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // POST /auth/email/verify
     if (path === API_PATHS.AUTH_EMAIL_VERIFY && method === 'POST') {
       return await handleConfirmEmailChange(event);
+    }
+    // POST /auth/logout
+    if (path === API_PATHS.AUTH_LOGOUT && method === 'POST') {
+      return await handleLogout(event);
     }
 
     return error('Not found', 404);
@@ -246,6 +251,25 @@ async function handleRequestEmailChange(event: APIGatewayProxyEvent): Promise<AP
     return error(result.error, result.statusCode || 400);
   }
   return success(result.response);
+}
+
+async function handleLogout(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  const { user, errorResponse } = await requireAuth(event);
+  if (errorResponse) return errorResponse;
+
+  const parsed = parseBody(event);
+  if ('parseError' in parsed) return parsed.parseError;
+  const { eventId } = parsed.body as { eventId?: string };
+  if (!eventId || typeof eventId !== 'string') {
+    return error('Missing eventId', 400);
+  }
+
+  // Fire-and-forget: record logout time — don't block the response
+  updateLoginEventLogout(eventId, new Date().toISOString()).catch(err => {
+    console.error('Failed to record logout event:', err, 'userId:', user!.userId);
+  });
+
+  return success({ success: true });
 }
 
 async function handleConfirmEmailChange(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {

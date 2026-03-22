@@ -37,6 +37,7 @@ const mockUsers: UserSummary[] = [
 function renderList(overrides?: {
   onRefreshOtp?: ReturnType<typeof vi.fn>;
   onDeleteUser?: ReturnType<typeof vi.fn>;
+  onRowClick?: ReturnType<typeof vi.fn>;
   users?: UserSummary[];
   loading?: boolean;
 }) {
@@ -47,6 +48,7 @@ function renderList(overrides?: {
       onDownload={vi.fn()}
       onRefreshOtp={overrides?.onRefreshOtp ?? vi.fn()}
       onDeleteUser={overrides?.onDeleteUser ?? vi.fn()}
+      onRowClick={overrides?.onRowClick}
     />,
   );
 }
@@ -191,5 +193,36 @@ describe('UserList', () => {
     expect(onDeleteUser).not.toHaveBeenCalled();
     // Delete button should be visible again
     expect(screen.getByLabelText('Delete alice')).toBeInTheDocument();
+  });
+
+  it('calls onRowClick with the user when a row is clicked', async () => {
+    const onRowClick = vi.fn();
+    renderList({ onRowClick });
+    await userEvent.click(screen.getByText('charlie'));
+    expect(onRowClick).toHaveBeenCalledWith(mockUsers.find(u => u.username === 'charlie'));
+  });
+
+  it('does not call onRowClick when an action button is clicked', async () => {
+    const onRowClick = vi.fn();
+    renderList({ onRowClick });
+    await userEvent.click(screen.getByLabelText("Download alice's vault"));
+    expect(onRowClick).not.toHaveBeenCalled();
+  });
+
+  it('adds cursor-pointer class to rows when onRowClick is provided', () => {
+    const onRowClick = vi.fn();
+    renderList({ onRowClick });
+    const rows = screen.getAllByRole('row').slice(1);
+    for (const row of rows) {
+      expect(row).toHaveClass('cursor-pointer');
+    }
+  });
+
+  it('does not add cursor-pointer class when onRowClick is omitted', () => {
+    renderList(); // no onRowClick
+    const rows = screen.getAllByRole('row').slice(1);
+    for (const row of rows) {
+      expect(row).not.toHaveClass('cursor-pointer');
+    }
   });
 });

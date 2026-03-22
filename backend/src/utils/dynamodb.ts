@@ -8,8 +8,9 @@ import {
   ScanCommand,
   DeleteCommand,
 } from '@aws-sdk/lib-dynamodb';
+import { randomUUID } from 'crypto';
 import type { User } from '@passvault/shared';
-import { DYNAMODB_TABLE } from '../config.js';
+import { DYNAMODB_TABLE, LOGIN_EVENTS_TABLE } from '../config.js';
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
@@ -104,4 +105,76 @@ export async function listAllUsers(): Promise<User[]> {
     }),
   );
   return (result.Items as User[]) || [];
+}
+
+export async function recordLoginEvent(eventId: string, userId: string, username: string, success: boolean): Promise<void> {
+  const now = new Date();
+  const expiresAt = Math.floor(now.getTime() / 1000) + 90 * 24 * 60 * 60; // 90 days TTL
+  await docClient.send(
+    new PutCommand({
+      TableName: LOGIN_EVENTS_TABLE,
+      Item: {
+        eventId,
+        userId,
+        username,
+        timestamp: now.toISOString(),
+        success,
+        expiresAt,
+      },
+    }),
+  );
+}
+
+export async function updateLoginEventLogout(eventId: string, logoutAt: string): Promise<void> {
+  await docClient.send(
+    new UpdateCommand({
+      TableName: LOGIN_EVENTS_TABLE,
+      Key: { eventId },
+      UpdateExpression: 'SET logoutAt = :l',
+      ExpressionAttributeValues: { ':l': logoutAt },
+    }),
+  );
+}
+
+export async function getLoginEvents(limit: number): Promise<Array<{
+  eventId: string; userId: string; username: string;
+  timestamp: string; success: boolean; logoutAt?: string;
+}>> {
+  const items: Array<Record<string, unknown>> = [];
+  let lastKey: Record<string, unknown> | undefined;
+  do {
+    const result = await docClient.send(
+      new ScanCommand({
+        TableName: LOGIN_EVENTS_TABLE,
+        ...(lastKey && { ExclusiveStartKey: lastKey }),
+      }),
+    );
+    items.push(...((result.Items ?? []) as Array<Record<string, unknown>>));
+    lastKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (lastKey);
+  items.sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp)));
+  return items.slice(0, limit) as Array<{
+    eventId: string; userId: string; username: string;
+    timestamp: string; success: boolean; logoutAt?: string;
+  }>;
+}
+
+export async function getLoginCountSince(isoTimestamp: string): Promise<number> {
+  let count = 0;
+  let lastKey: Record<string, unknown> | undefined;
+  do {
+    const result = await docClient.send(
+      new ScanCommand({
+        TableName: LOGIN_EVENTS_TABLE,
+        FilterExpression: '#ts >= :since',
+        ExpressionAttributeNames: { '#ts': 'timestamp' },
+        ExpressionAttributeValues: { ':since': isoTimestamp },
+        Select: 'COUNT',
+        ...(lastKey && { ExclusiveStartKey: lastKey }),
+      }),
+    );
+    count += result.Count ?? 0;
+    lastKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+  } while (lastKey);
+  return count;
 }

@@ -7,8 +7,8 @@ import {
   type ChangePasswordResponse,
   type UserStatus,
 } from '@passvault/shared';
-import { getUserById, getUserByUsername, updateUser } from '../utils/dynamodb.js';
-import { randomInt } from 'crypto';
+import { getUserById, getUserByUsername, updateUser, recordLoginEvent } from '../utils/dynamodb.js';
+import { randomInt, randomUUID } from 'crypto';
 import { hashPassword, verifyPassword } from '../utils/crypto.js';
 import { validatePassword } from '../utils/password.js';
 import { signToken } from '../utils/jwt.js';
@@ -65,14 +65,14 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
     }
     const otpValid = await verifyPassword(request.password, user.oneTimePasswordHash);
     if (!otpValid) {
-      await recordFailedAttempt(user.userId, user.failedLoginAttempts ?? 0);
+      await recordFailedAttempt(user.userId, user.username, user.failedLoginAttempts ?? 0);
       return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
     }
   } else {
     // Normal login: verify against password hash
     const passwordValid = await verifyPassword(request.password, user.passwordHash);
     if (!passwordValid) {
-      await recordFailedAttempt(user.userId, user.failedLoginAttempts ?? 0);
+      await recordFailedAttempt(user.userId, user.username, user.failedLoginAttempts ?? 0);
       return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
     }
   }
@@ -82,6 +82,12 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
     lastLoginAt: new Date().toISOString(),
     failedLoginAttempts: 0,
     lockedUntil: null,
+  });
+
+  // Fire-and-forget: record login event for admin dashboard metrics
+  const loginEventId = randomUUID();
+  recordLoginEvent(loginEventId, user.userId, user.username, true).catch(err => {
+    console.error('Failed to record login event:', err);
   });
 
   const token = await signToken({
@@ -96,6 +102,7 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
     role: user.role,
     username: user.username,
     encryptionSalt: user.encryptionSalt,
+    loginEventId,
   };
 
   if (user.status === 'pending_first_login') {
@@ -213,11 +220,14 @@ export async function confirmEmailChange(
   return { response: { success: true } };
 }
 
-async function recordFailedAttempt(userId: string, currentAttempts: number): Promise<void> {
+async function recordFailedAttempt(userId: string, username: string, currentAttempts: number): Promise<void> {
   const newCount = currentAttempts + 1;
   const lockedUntil =
     newCount >= LIMITS.RATE_LIMIT_FAILED_ATTEMPTS
       ? new Date(Date.now() + LIMITS.RATE_LIMIT_WINDOW_MINUTES * 60 * 1000).toISOString()
       : null;
   await updateUser(userId, { failedLoginAttempts: newCount, lockedUntil });
+  recordLoginEvent(randomUUID(), userId, username, false).catch(err => {
+    console.error('Failed to record failed login event:', err);
+  });
 }

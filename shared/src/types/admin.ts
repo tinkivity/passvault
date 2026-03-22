@@ -25,3 +25,22 @@ export interface UserSummary {
 export interface ListUsersResponse {
   users: UserSummary[];
 }
+
+export interface AdminStats {
+  totalUsers: number;
+  totalVaultSizeBytes: number;
+  loginsLast7Days: number;
+}
+
+export interface LoginEventSummary {
+  eventId: string;
+  userId: string;
+  username: string;
+  timestamp: string;
+  success: boolean;
+  logoutAt?: string;
+}
+
+export interface ListLoginEventsResponse {
+  events: LoginEventSummary[];
+}

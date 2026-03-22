@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import type { UserSummary } from '@passvault/shared';
+import type { AdminStats, ListLoginEventsResponse, UserSummary } from '@passvault/shared';
 import { api } from '../services/api.js';
 
 export function useAdmin(token: string | null) {
@@ -91,5 +91,35 @@ export function useAdmin(token: string | null) {
     }
   }, [token]);
 
-  return { loading, error, createUser, listUsers, downloadUserVault, refreshOtp, deleteUser };
+  const getStats = useCallback(async (): Promise<AdminStats> => {
+    if (!token) throw new Error('Not authenticated');
+    setLoading(true);
+    setError(null);
+    try {
+      return await api.getAdminStats(token);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to load stats';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  const getLoginEvents = useCallback(async (): Promise<ListLoginEventsResponse> => {
+    if (!token) throw new Error('Not authenticated');
+    setLoading(true);
+    setError(null);
+    try {
+      return await api.getLoginEvents(token);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to load login events';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  return { loading, error, createUser, listUsers, downloadUserVault, refreshOtp, deleteUser, getStats, getLoginEvents };
 }

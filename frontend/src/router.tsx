@@ -5,7 +5,12 @@ import { AdminLoginPage } from './components/auth/AdminLoginPage.js';
 import { PasswordChangePage } from './components/auth/PasswordChangePage.js';
 import { PasskeySetupPage } from './components/auth/PasskeySetupPage.js';
 import { VaultPage } from './components/vault/VaultPage.js';
-import { AdminDashboard } from './components/admin/AdminDashboard.js';
+import { AdminShell } from './components/admin/AdminShell.js';
+import { DashboardPage } from './components/admin/pages/DashboardPage.js';
+import { UsersPage } from './components/admin/pages/UsersPage.js';
+import { UserDetailPage } from './components/admin/pages/UserDetailPage.js';
+import { LoginsPage } from './components/admin/pages/LoginsPage.js';
+import { AdminPage } from './components/admin/pages/AdminPage.js';
 
 // ---- Guards ---------------------------------------------------------------
 
@@ -82,11 +87,23 @@ export const router = createBrowserRouter([
     children: [{ index: true, element: <PasskeySetupPage isAdmin /> }],
   },
 
-  // Admin dashboard (authenticated admin)
+  // Admin shell + pages (authenticated admin)
   {
-    path: '/admin/dashboard',
+    path: '/admin',
     element: <RequireAuth requiredRole="admin" />,
-    children: [{ index: true, element: <AdminDashboard /> }],
+    children: [
+      { index: true, element: <Navigate to="/admin/dashboard" replace /> },
+      {
+        element: <AdminShell />,
+        children: [
+          { path: 'dashboard', element: <DashboardPage /> },
+          { path: 'users', element: <UsersPage /> },
+          { path: 'users/:userId', element: <UserDetailPage /> },
+          { path: 'logs/logins', element: <LoginsPage /> },
+          { path: 'management/admin', element: <AdminPage /> },
+        ],
+      },
+    ],
   },
 
   // Fallback

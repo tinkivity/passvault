@@ -8,9 +8,10 @@ const isEmailEnv = import.meta.env.VITE_ENVIRONMENT !== 'dev';
 interface CreateUserFormProps {
   onCreateUser: (username: string, email?: string) => Promise<{ username: string; oneTimePassword: string }>;
   loading: boolean;
+  onDone?: () => void;
 }
 
-export function CreateUserForm({ onCreateUser, loading }: CreateUserFormProps) {
+export function CreateUserForm({ onCreateUser, loading, onDone }: CreateUserFormProps) {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +41,7 @@ export function CreateUserForm({ onCreateUser, loading }: CreateUserFormProps) {
       <OtpDisplay
         username={created.username}
         oneTimePassword={created.oneTimePassword}
-        onDone={() => setCreated(null)}
+        onDone={() => { setCreated(null); onDone?.(); }}
       />
     );
   }

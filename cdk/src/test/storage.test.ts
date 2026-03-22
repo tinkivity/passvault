@@ -45,10 +45,40 @@ describe('StorageConstruct (dev)', () => {
     });
   });
 
-  it('retains the DynamoDB table on stack deletion', () => {
-    const tables = template.findResources('AWS::DynamoDB::Table');
+  it('retains the users DynamoDB table on stack deletion', () => {
+    const tables = template.findResources('AWS::DynamoDB::Table', {
+      Properties: { TableName: 'passvault-users-dev' },
+    });
     const table = Object.values(tables)[0];
     expect(table.DeletionPolicy).toBe('Retain');
+  });
+
+  it('creates a login events table named passvault-login-events-dev', () => {
+    template.hasResourceProperties('AWS::DynamoDB::Table', {
+      TableName: 'passvault-login-events-dev',
+    });
+  });
+
+  it('login events table uses PAY_PER_REQUEST billing', () => {
+    template.hasResourceProperties('AWS::DynamoDB::Table', {
+      TableName: 'passvault-login-events-dev',
+      BillingMode: 'PAY_PER_REQUEST',
+    });
+  });
+
+  it('login events table has TTL attribute expiresAt', () => {
+    template.hasResourceProperties('AWS::DynamoDB::Table', {
+      TableName: 'passvault-login-events-dev',
+      TimeToLiveSpecification: { AttributeName: 'expiresAt', Enabled: true },
+    });
+  });
+
+  it('destroys the login events table on stack deletion', () => {
+    const tables = template.findResources('AWS::DynamoDB::Table', {
+      Properties: { TableName: 'passvault-login-events-dev' },
+    });
+    const table = Object.values(tables)[0];
+    expect(table.DeletionPolicy).toBe('Delete');
   });
 
   it('does not enable PITR in dev', () => {

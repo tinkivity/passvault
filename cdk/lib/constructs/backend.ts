@@ -175,6 +175,15 @@ export class BackendConstruct extends Construct {
     storage.usersTable.grantReadWriteData(this.adminFn);
     storage.usersTable.grantReadWriteData(this.vaultFn);
 
+    // IAM: login events table — auth writes, admin reads
+    storage.loginEventsTable.grantWriteData(this.authFn);
+    storage.loginEventsTable.grantWriteData(this.adminFn);
+    storage.loginEventsTable.grantReadData(this.adminFn);
+
+    // Pass login events table name to auth + admin Lambdas
+    this.authFn.addEnvironment('LOGIN_EVENTS_TABLE_NAME', storage.loginEventsTable.tableName);
+    this.adminFn.addEnvironment('LOGIN_EVENTS_TABLE_NAME', storage.loginEventsTable.tableName);
+
     // IAM: grant S3 file access to vault
     storage.filesBucket.grantReadWrite(this.vaultFn);
 
@@ -276,12 +285,18 @@ export class BackendConstruct extends Construct {
     adminUsersRefreshOtp.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
     const adminVault = admin.addResource('vault');
     adminVault.addMethod('GET', new apigateway.LambdaIntegration(this.adminFn));
+    const adminStats = admin.addResource('stats');
+    adminStats.addMethod('GET', new apigateway.LambdaIntegration(this.adminFn));
+    const adminLoginEvents = admin.addResource('login-events');
+    adminLoginEvents.addMethod('GET', new apigateway.LambdaIntegration(this.adminFn));
 
     const authEmail = auth.addResource('email');
     const authEmailChange = authEmail.addResource('change');
     authEmailChange.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
     const authEmailVerify = authEmail.addResource('verify');
     authEmailVerify.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
+    const authLogout = auth.addResource('logout');
+    authLogout.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
 
     const vault = apiRoot.addResource('vault');
     vault.addMethod('GET', new apigateway.LambdaIntegration(this.vaultFn));

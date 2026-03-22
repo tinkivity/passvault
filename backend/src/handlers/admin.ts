@@ -4,7 +4,7 @@ import { success, error } from '../utils/response.js';
 import { validatePow } from '../middleware/pow.js';
 import { validateHoneypot } from '../middleware/honeypot.js';
 import { requireAuth } from '../middleware/auth.js';
-import { adminLogin, adminChangePassword, createUserInvitation, listUsers, refreshOtp, deleteNewUser } from '../services/admin.js';
+import { adminLogin, adminChangePassword, createUserInvitation, listUsers, refreshOtp, deleteNewUser, getStats, listLoginEvents } from '../services/admin.js';
 import { downloadVault } from '../services/vault.js';
 import {
   generateChallengeJwt,
@@ -77,6 +77,14 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // GET /admin/vault?userId=...
     if (path === API_PATHS.ADMIN_USER_VAULT && method === 'GET') {
       return await handleDownloadUserVault(event);
+    }
+    // GET /admin/stats
+    if (path === API_PATHS.ADMIN_STATS && method === 'GET') {
+      return await handleGetStats(event);
+    }
+    // GET /admin/login-events
+    if (path === API_PATHS.ADMIN_LOGIN_EVENTS && method === 'GET') {
+      return await handleGetLoginEvents(event);
     }
 
     return error('Not found', 404);
@@ -366,4 +374,40 @@ async function handleDeleteUser(event: APIGatewayProxyEvent): Promise<APIGateway
     return error(result.error, result.statusCode || 400);
   }
   return success(result.response);
+}
+
+async function handleGetLoginEvents(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
+  if (pow.errorResponse) return pow.errorResponse;
+
+  const { user, errorResponse } = await requireAuth(event);
+  if (errorResponse) return errorResponse;
+
+  if (user!.role !== 'admin') {
+    return error(ERRORS.FORBIDDEN, 403);
+  }
+  if (user!.status !== 'active') {
+    return error(ERRORS.ADMIN_NOT_ACTIVE, 403);
+  }
+
+  const result = await listLoginEvents();
+  return success(result);
+}
+
+async function handleGetStats(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
+  if (pow.errorResponse) return pow.errorResponse;
+
+  const { user, errorResponse } = await requireAuth(event);
+  if (errorResponse) return errorResponse;
+
+  if (user!.role !== 'admin') {
+    return error(ERRORS.FORBIDDEN, 403);
+  }
+  if (user!.status !== 'active') {
+    return error(ERRORS.ADMIN_NOT_ACTIVE, 403);
+  }
+
+  const stats = await getStats();
+  return success(stats);
 }

@@ -7,7 +7,7 @@ import { authenticateWithPasskey } from '../services/passkey.js';
 import { createHoneypot, getHoneypotFields } from '../services/honeypot.js';
 
 export function useAuth() {
-  const { token, role, username, status, setAuth, clearAuth } = useAuthContext();
+  const { token, role, username, status, loginEventId, setAuth, clearAuth } = useAuthContext();
   const { deriveKey, clearKey } = useEncryptionContext();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,6 +57,7 @@ export function useAuth() {
             ? 'pending_passkey_setup'
             : 'active',
         encryptionSalt,
+        loginEventId: res.loginEventId ?? null,
       });
 
       return res;
@@ -85,6 +86,7 @@ export function useAuth() {
         username: res.username,
         status: res.requirePasswordChange ? 'pending_first_login' : 'active',
         encryptionSalt: res.encryptionSalt,
+        loginEventId: res.loginEventId ?? null,
       });
 
       return res;
@@ -140,6 +142,7 @@ export function useAuth() {
             ? 'pending_passkey_setup'
             : 'active',
         encryptionSalt,
+        loginEventId: res.loginEventId ?? null,
       });
 
       return res;
@@ -166,6 +169,7 @@ export function useAuth() {
         username: res.username,
         status: res.requirePasswordChange ? 'pending_first_login' : 'active',
         encryptionSalt: res.encryptionSalt,
+        loginEventId: res.loginEventId ?? null,
       });
 
       return res;
@@ -240,9 +244,12 @@ export function useAuth() {
   }, [token]);
 
   const logout = useCallback(() => {
+    if (token && loginEventId) {
+      api.logout(loginEventId, token).catch(() => { /* best-effort */ });
+    }
     clearKey();
     clearAuth();
-  }, [clearAuth, clearKey]);
+  }, [clearAuth, clearKey, token, loginEventId]);
 
   return {
     token,

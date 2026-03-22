@@ -25,6 +25,8 @@ vi.mock('../utils/dynamodb.js', () => ({
   updateUser: vi.fn().mockResolvedValue(undefined),
   listAllUsers: vi.fn(),
   deleteUser: vi.fn().mockResolvedValue(undefined),
+  recordLoginEvent: vi.fn().mockResolvedValue(undefined),
+  getLoginCountSince: vi.fn().mockResolvedValue(0),
 }));
 
 vi.mock('../utils/crypto.js', () => ({
@@ -53,8 +55,8 @@ vi.mock('./passkey.js', () => ({
   verifyPasskeyToken: vi.fn(),
 }));
 
-import { adminLogin, adminChangePassword, createUserInvitation, listUsers, refreshOtp, deleteNewUser } from './admin.js';
-import { getUserByUsername, getUserById, updateUser, createUser, listAllUsers, deleteUser } from '../utils/dynamodb.js';
+import { adminLogin, adminChangePassword, createUserInvitation, listUsers, refreshOtp, deleteNewUser, getStats } from './admin.js';
+import { getUserByUsername, getUserById, updateUser, createUser, listAllUsers, deleteUser, getLoginCountSince } from '../utils/dynamodb.js';
 import { verifyPassword } from '../utils/crypto.js';
 import { verifyPasskeyToken } from './passkey.js';
 import { config } from '../config.js';
@@ -66,6 +68,7 @@ const mockVerifyPw = vi.mocked(verifyPassword);
 const mockVerifyPasskeyToken = vi.mocked(verifyPasskeyToken);
 const mockUpdateUser = vi.mocked(updateUser);
 const mockListAllUsers = vi.mocked(listAllUsers);
+const mockGetLoginCountSince = vi.mocked(getLoginCountSince);
 
 function makeAdmin(overrides: Partial<User> = {}): User {
   return {
@@ -469,5 +472,70 @@ describe('deleteNewUser', () => {
     const result = await deleteNewUser('user-1');
     expect(result.response?.success).toBe(true);
     expect(vi.mocked(deleteUser)).toHaveBeenCalledWith('user-1');
+  });
+});
+
+// ── getStats() ────────────────────────────────────────────────────────────────
+
+import { getVaultFileSize } from '../utils/s3.js';
+
+const mockGetVaultFileSize = vi.mocked(getVaultFileSize);
+
+describe('getStats', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('returns totalUsers count excluding admins', async () => {
+    mockListAllUsers.mockResolvedValue([
+      makeAdmin({ userId: 'admin-1', role: 'admin' }),
+      makeAdmin({ userId: 'user-1', username: 'alice', role: 'user' }),
+      makeAdmin({ userId: 'user-2', username: 'bob', role: 'user' }),
+    ]);
+    mockGetVaultFileSize.mockResolvedValue(0);
+    mockGetLoginCountSince.mockResolvedValue(0);
+    const result = await getStats();
+    expect(result.totalUsers).toBe(2);
+  });
+
+  it('returns summed vault sizes for regular users', async () => {
+    mockListAllUsers.mockResolvedValue([
+      makeAdmin({ userId: 'user-1', username: 'alice', role: 'user' }),
+      makeAdmin({ userId: 'user-2', username: 'bob', role: 'user' }),
+    ]);
+    mockGetVaultFileSize.mockResolvedValueOnce(1024).mockResolvedValueOnce(512);
+    mockGetLoginCountSince.mockResolvedValue(0);
+    const result = await getStats();
+    expect(result.totalVaultSizeBytes).toBe(1536);
+  });
+
+  it('handles null vault sizes gracefully', async () => {
+    mockListAllUsers.mockResolvedValue([
+      makeAdmin({ userId: 'user-1', username: 'alice', role: 'user' }),
+    ]);
+    mockGetVaultFileSize.mockResolvedValue(null as unknown as number);
+    mockGetLoginCountSince.mockResolvedValue(0);
+    const result = await getStats();
+    expect(result.totalVaultSizeBytes).toBe(0);
+  });
+
+  it('returns loginsLast7Days from getLoginCountSince', async () => {
+    mockListAllUsers.mockResolvedValue([
+      makeAdmin({ userId: 'user-1', username: 'alice', role: 'user' }),
+    ]);
+    mockGetVaultFileSize.mockResolvedValue(0);
+    mockGetLoginCountSince.mockResolvedValue(42);
+    const result = await getStats();
+    expect(result.loginsLast7Days).toBe(42);
+    expect(mockGetLoginCountSince).toHaveBeenCalledWith(expect.any(String));
+  });
+
+  it('passes a timestamp approximately 7 days ago to getLoginCountSince', async () => {
+    mockListAllUsers.mockResolvedValue([]);
+    mockGetLoginCountSince.mockResolvedValue(0);
+    const before = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000 - 1000).toISOString();
+    await getStats();
+    const after = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000 + 1000).toISOString();
+    const calledWith = mockGetLoginCountSince.mock.calls[0][0];
+    expect(calledWith >= before).toBe(true);
+    expect(calledWith <= after).toBe(true);
   });
 });

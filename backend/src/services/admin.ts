@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 import {
   ERRORS,
   LIMITS,
@@ -9,10 +10,12 @@ import {
   type CreateUserRequest,
   type CreateUserResponse,
   type ListUsersResponse,
+  type ListLoginEventsResponse,
+  type AdminStats,
   type User,
   type UserStatus,
 } from '@passvault/shared';
-import { getUserById, getUserByUsername, createUser, updateUser, listAllUsers, deleteUser } from '../utils/dynamodb.js';
+import { getUserById, getUserByUsername, createUser, updateUser, listAllUsers, deleteUser, recordLoginEvent, getLoginCountSince, getLoginEvents } from '../utils/dynamodb.js';
 import { hashPassword, verifyPassword, generateOtp, generateSalt } from '../utils/crypto.js';
 import { validatePassword } from '../utils/password.js';
 import { signToken } from '../utils/jwt.js';
@@ -62,13 +65,13 @@ export async function adminLogin(request: LoginRequest): Promise<{ response?: Lo
   if (user.status === 'pending_first_login') {
     const valid = await verifyPassword(request.password, user.passwordHash);
     if (!valid) {
-      await recordFailedAttempt(user.userId, user.failedLoginAttempts ?? 0);
+      await recordFailedAttempt(user.userId, user.username, user.failedLoginAttempts ?? 0);
       return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
     }
   } else {
     const passwordValid = await verifyPassword(request.password, user.passwordHash);
     if (!passwordValid) {
-      await recordFailedAttempt(user.userId, user.failedLoginAttempts ?? 0);
+      await recordFailedAttempt(user.userId, user.username, user.failedLoginAttempts ?? 0);
       return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
     }
   }
@@ -78,6 +81,12 @@ export async function adminLogin(request: LoginRequest): Promise<{ response?: Lo
     lastLoginAt: new Date().toISOString(),
     failedLoginAttempts: 0,
     lockedUntil: null,
+  });
+
+  // Fire-and-forget: record login event for admin dashboard metrics
+  const loginEventId = randomUUID();
+  recordLoginEvent(loginEventId, user.userId, user.username, true).catch(err => {
+    console.error('Failed to record admin login event:', err);
   });
 
   const token = await signToken({
@@ -92,6 +101,7 @@ export async function adminLogin(request: LoginRequest): Promise<{ response?: Lo
     role: user.role,
     username: user.username,
     encryptionSalt: user.encryptionSalt,
+    loginEventId,
   };
 
   if (user.status === 'pending_first_login') {
@@ -305,11 +315,33 @@ export async function deleteNewUser(
   return { response: { success: true } };
 }
 
-async function recordFailedAttempt(userId: string, currentAttempts: number): Promise<void> {
+export async function listLoginEvents(): Promise<ListLoginEventsResponse> {
+  const events = await getLoginEvents(500);
+  return { events };
+}
+
+export async function getStats(): Promise<AdminStats> {
+  const users = await listAllUsers();
+  const regularUsers = users.filter((u) => u.role === 'user');
+  const sizes = await Promise.all(regularUsers.map((u) => getVaultFileSize(u.userId)));
+  const totalVaultSizeBytes = sizes.reduce<number>((sum, s) => sum + (s ?? 0), 0);
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const loginsLast7Days = await getLoginCountSince(sevenDaysAgo);
+  return {
+    totalUsers: regularUsers.length,
+    totalVaultSizeBytes,
+    loginsLast7Days,
+  };
+}
+
+async function recordFailedAttempt(userId: string, username: string, currentAttempts: number): Promise<void> {
   const newCount = currentAttempts + 1;
   const lockedUntil =
     newCount >= LIMITS.RATE_LIMIT_FAILED_ATTEMPTS
       ? new Date(Date.now() + LIMITS.RATE_LIMIT_WINDOW_MINUTES * 60 * 1000).toISOString()
       : null;
   await updateUser(userId, { failedLoginAttempts: newCount, lockedUntil });
+  recordLoginEvent(randomUUID(), userId, username, false).catch(err => {
+    console.error('Failed to record failed admin login event:', err);
+  });
 }

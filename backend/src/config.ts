@@ -7,6 +7,7 @@ export const config: EnvironmentConfig = getEnvironmentConfig(env);
 
 export const DYNAMODB_TABLE = process.env.DYNAMODB_TABLE || `passvault-users-${env}`;
 export const FILES_BUCKET = process.env.FILES_BUCKET || `passvault-files-${env}`;
+export const LOGIN_EVENTS_TABLE = process.env.LOGIN_EVENTS_TABLE_NAME || `passvault-login-events-${env}`;
 
 let jwtSecretCache: string | undefined;
 
