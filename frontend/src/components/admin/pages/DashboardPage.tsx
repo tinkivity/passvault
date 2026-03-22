@@ -14,7 +14,7 @@ function formatBytes(bytes: number): string {
 
 function MetricCard({ label, value, linkTo }: { label: string; value: string | null; linkTo?: string }) {
   return (
-    <div className="bg-base-100 rounded-xl shadow-sm p-6">
+    <div className="bg-base-100 rounded-xl border border-base-300 p-6">
       <p className="text-xs font-semibold uppercase tracking-wider text-base-content/50 mb-3">
         {label}
       </p>

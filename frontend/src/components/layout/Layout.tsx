@@ -23,7 +23,7 @@ interface CardProps {
 
 export function Card({ children, className = '' }: CardProps) {
   return (
-    <div className={`bg-base-100 rounded-xl shadow-md p-6 w-full max-w-md ${className}`}>
+    <div className={`bg-base-100 rounded-xl border border-base-300 p-6 w-full max-w-md ${className}`}>
       {children}
     </div>
   );

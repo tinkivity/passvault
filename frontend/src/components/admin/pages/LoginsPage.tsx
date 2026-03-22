@@ -215,7 +215,7 @@ export function LoginsPage() {
 
       {/* Filter bar — only shown once data is loaded */}
       {loaded && events.length > 0 && (
-        <div className="flex flex-wrap items-end gap-3 mb-4 p-3 bg-base-100 rounded-xl shadow-sm">
+        <div className="flex flex-wrap items-end gap-3 mb-4 p-3 bg-base-100 rounded-xl border border-base-300">
           {/* Status */}
           <label className="flex flex-col gap-1 text-xs text-base-content/50">
             Status
@@ -302,7 +302,7 @@ export function LoginsPage() {
         </div>
       )}
 
-      <div className="bg-base-100 rounded-xl shadow-sm overflow-hidden">
+      <div className="bg-base-100 rounded-xl border border-base-300 overflow-hidden">
         {admin.loading && !loaded ? (
           <p className="text-center text-base-content/50 py-8 text-sm">Loading login events…</p>
         ) : events.length === 0 ? (

@@ -1,17 +1,27 @@
 import { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
+import {
+  HomeIcon,
+  UsersIcon,
+  Cog6ToothIcon,
+  ArrowRightOnRectangleIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+} from '@heroicons/react/24/outline';
 
 const sections = [
   {
     label: 'Management',
     items: [
-      { to: '/admin/users', label: 'User' },
-      { to: '/admin/management/admin', label: 'Admin' },
+      { to: '/admin/users', label: 'User', icon: UsersIcon },
+      { to: '/admin/management/admin', label: 'Admin', icon: Cog6ToothIcon },
     ],
   },
   {
     label: 'Logs',
-    items: [{ to: '/admin/logs/logins', label: 'Logins' }],
+    items: [
+      { to: '/admin/logs/logins', label: 'Logins', icon: ArrowRightOnRectangleIcon },
+    ],
   },
 ];
 
@@ -25,14 +35,14 @@ function getInitialExpanded(pathname: string): Record<string, boolean> {
 }
 
 const topLinkClass = ({ isActive }: { isActive: boolean }) =>
-  `block px-4 py-2 text-sm transition-colors border-l-2 ${
+  `flex items-center gap-2.5 px-4 py-2 text-sm transition-colors border-l-2 ${
     isActive
       ? 'bg-primary/10 border-primary text-primary font-medium'
       : 'border-transparent text-base-content/70 hover:bg-base-200 hover:text-base-content'
   }`;
 
 const childLinkClass = ({ isActive }: { isActive: boolean }) =>
-  `block pl-7 pr-4 py-2 text-sm transition-colors border-l-2 ${
+  `flex items-center gap-2.5 pl-7 pr-4 py-2 text-sm transition-colors border-l-2 ${
     isActive
       ? 'bg-primary/10 border-primary text-primary font-medium'
       : 'border-transparent text-base-content/60 hover:bg-base-200 hover:text-base-content'
@@ -56,26 +66,30 @@ export function AdminSidebar() {
     setExpanded((prev) => ({ ...prev, [label]: !prev[label] }));
 
   return (
-    <nav className="w-48 shrink-0 bg-base-300 flex flex-col py-3">
+    <nav className="w-52 shrink-0 bg-base-200 border-r border-base-300 flex flex-col py-3">
       <NavLink to="/admin/dashboard" className={topLinkClass}>
+        <HomeIcon className="w-4 h-4 shrink-0" />
         Dashboard
       </NavLink>
 
-      <div className="mt-2 border-t border-base-content/10" />
+      <div className="mt-2 border-t border-base-300" />
 
       {sections.map((section) => (
         <div key={section.label}>
           <button
-            className="w-full flex items-center justify-between px-4 py-2 text-sm font-semibold text-base-content/50 hover:text-base-content transition-colors"
+            className="w-full flex items-center justify-between px-4 py-2 text-xs font-semibold uppercase tracking-wider text-base-content/40 hover:text-base-content/70 transition-colors"
             onClick={() => toggle(section.label)}
           >
             {section.label}
-            <span className="text-xs">{expanded[section.label] ? '▾' : '▸'}</span>
+            {expanded[section.label]
+              ? <ChevronDownIcon className="w-3 h-3" />
+              : <ChevronRightIcon className="w-3 h-3" />}
           </button>
           {expanded[section.label] &&
-            section.items.map((item) => (
-              <NavLink key={item.to} to={item.to} className={childLinkClass}>
-                {item.label}
+            section.items.map(({ to, label, icon: Icon }) => (
+              <NavLink key={to} to={to} className={childLinkClass}>
+                <Icon className="w-4 h-4 shrink-0" />
+                {label}
               </NavLink>
             ))}
         </div>

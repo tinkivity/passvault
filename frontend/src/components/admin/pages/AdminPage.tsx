@@ -39,7 +39,7 @@ export function AdminPage() {
     <div>
       <h1 className="text-xl font-bold mb-6">Admin</h1>
 
-      <div className="bg-base-100 rounded-xl shadow-sm p-6 max-w-md">
+      <div className="bg-base-100 rounded-xl border border-base-300 p-6 max-w-md">
         <h2 className="text-base font-semibold mb-4">Change Password</h2>
 
         {success && (

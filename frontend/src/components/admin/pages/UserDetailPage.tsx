@@ -85,7 +85,7 @@ export function UserDetailPage() {
         ← Users
       </button>
 
-      <div className="bg-base-100 rounded-xl shadow-sm p-6">
+      <div className="bg-base-100 rounded-xl border border-base-300 p-6">
         <div className="flex items-start gap-3 mb-6">
           <div>
             <h1 className="text-xl font-bold font-mono">{user.username}</h1>

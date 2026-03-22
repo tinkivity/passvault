@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
+import { ArrowRightStartOnRectangleIcon } from '@heroicons/react/24/outline';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useAutoLogout } from '../../hooks/useAutoLogout.js';
 import { EnvironmentBanner } from '../layout/EnvironmentBanner.js';
@@ -42,7 +43,11 @@ export function AdminShell() {
           <span className="text-sm text-base-content/60 hidden sm:inline">
             {username} · {timeDisplay}
           </span>
-          <button className="btn btn-sm btn-ghost text-error" onClick={handleLogout}>
+          <button
+            className="btn btn-sm btn-ghost text-error flex items-center gap-1.5"
+            onClick={handleLogout}
+          >
+            <ArrowRightStartOnRectangleIcon className="w-4 h-4" />
             Logout
           </button>
         </div>

@@ -64,7 +64,7 @@ export function UsersPage() {
 
       {admin.error && <p className="text-error text-sm mb-4">{admin.error}</p>}
 
-      <div className="bg-base-100 rounded-xl shadow-sm overflow-hidden">
+      <div className="bg-base-100 rounded-xl border border-base-300 overflow-hidden">
         <UserList
           users={users}
           loading={admin.loading && !usersLoaded}
