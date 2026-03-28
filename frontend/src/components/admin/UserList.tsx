@@ -1,14 +1,53 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
+import type { ColumnDef, SortingFn } from '@tanstack/react-table';
 import type { UserSummary, UserStatus } from '@passvault/shared';
 import {
   ArrowDownTrayIcon,
   ArrowPathIcon,
   TrashIcon,
   InboxIcon,
-  FunnelIcon,
+  EllipsisHorizontalIcon,
+  PlusCircleIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline';
-import { SortButton } from './SortButton.js';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+} from '@/components/ui/command';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { OtpDisplay } from './OtpDisplay.js';
+import { DateRangeFilter } from './DateRangeFilter.js';
+import { DataTable } from './DataTable.js';
 
 const isEmailEnv = import.meta.env.VITE_ENVIRONMENT !== 'dev';
 
@@ -28,6 +67,8 @@ interface UserListProps {
   onRowClick?: (user: UserSummary) => void;
 }
 
+const ALL_STATUSES: UserStatus[] = ['active', 'pending_first_login', 'pending_passkey_setup'];
+
 const statusLabel: Record<UserStatus, string> = {
   pending_first_login: 'Awaiting first login',
   pending_passkey_setup: 'Awaiting passkey setup',
@@ -35,77 +76,195 @@ const statusLabel: Record<UserStatus, string> = {
 };
 
 const statusDot: Record<UserStatus, string> = {
-  pending_first_login: 'bg-warning',
-  pending_passkey_setup: 'bg-info',
-  active: 'bg-success',
+  pending_first_login: 'bg-amber-500',
+  pending_passkey_setup: 'bg-blue-500',
+  active: 'bg-green-600',
 };
 
 const statusPill: Record<UserStatus, string> = {
-  pending_first_login: 'bg-warning/15 text-warning',
-  pending_passkey_setup: 'bg-info/15 text-info',
-  active: 'bg-success/15 text-success',
+  pending_first_login: 'bg-amber-500/15 text-amber-600',
+  pending_passkey_setup: 'bg-blue-500/15 text-blue-500',
+  active: 'bg-green-600/15 text-green-600',
 };
 
-type SortColumn = 'username' | 'status' | 'createdAt' | 'lastLoginAt';
-type SortDirection = 'asc' | 'desc';
-type StatusFilter = 'all' | UserStatus;
+// Null-last sort for lastLoginAt
+const nullLastSortFn: SortingFn<UserSummary> = (rowA, rowB, columnId) => {
+  const a = rowA.getValue<string | null>(columnId);
+  const b = rowB.getValue<string | null>(columnId);
+  if (!a && !b) return 0;
+  if (!a) return 1;
+  if (!b) return -1;
+  return a.localeCompare(b);
+};
 
-interface FilterState {
-  status: StatusFilter;
-  username: string;
-}
-
-const DEFAULT_FILTERS: FilterState = { status: 'all', username: '' };
-
-function applyFilters(users: UserSummary[], f: FilterState): UserSummary[] {
+function applyFilters(
+  users: UserSummary[],
+  statuses: Set<UserStatus>,
+  username: string,
+  createdFrom: string,
+  createdTo: string,
+  lastLoginFrom: string,
+  lastLoginTo: string,
+): UserSummary[] {
   return users.filter((u) => {
-    if (f.status !== 'all' && u.status !== f.status) return false;
-    if (f.username && !u.username.toLowerCase().includes(f.username.toLowerCase())) return false;
+    if (statuses.size > 0 && !statuses.has(u.status)) return false;
+    if (username && !u.username.toLowerCase().includes(username.toLowerCase())) return false;
+    const created = u.createdAt.slice(0, 10);
+    if (createdFrom && created < createdFrom) return false;
+    if (createdTo && created > createdTo) return false;
+    if (lastLoginFrom || lastLoginTo) {
+      const ll = u.lastLoginAt ? u.lastLoginAt.slice(0, 10) : null;
+      if (!ll) return false;
+      if (lastLoginFrom && ll < lastLoginFrom) return false;
+      if (lastLoginTo && ll > lastLoginTo) return false;
+    }
     return true;
   });
 }
 
-function applySorting(users: UserSummary[], col: SortColumn, dir: SortDirection): UserSummary[] {
-  return [...users].sort((a, b) => {
-    let cmp = 0;
-    if (col === 'username') {
-      cmp = a.username.localeCompare(b.username);
-    } else if (col === 'status') {
-      cmp = statusLabel[a.status].localeCompare(statusLabel[b.status]);
-    } else if (col === 'createdAt') {
-      cmp = a.createdAt.localeCompare(b.createdAt);
-    } else if (col === 'lastLoginAt') {
-      if (!a.lastLoginAt && !b.lastLoginAt) cmp = 0;
-      else if (!a.lastLoginAt) cmp = 1;
-      else if (!b.lastLoginAt) cmp = -1;
-      else cmp = a.lastLoginAt.localeCompare(b.lastLoginAt);
-    }
-    return dir === 'asc' ? cmp : -cmp;
-  });
-}
+function getUserColumns(
+  onDownload: UserListProps['onDownload'],
+  onRefreshOtp: (userId: string) => Promise<void>,
+  onDeleteUser: (user: UserSummary) => void,
+  actionLoading: string | null,
+): ColumnDef<UserSummary>[] {
+  const cols: ColumnDef<UserSummary>[] = [
+    {
+      accessorKey: 'username',
+      header: 'Username',
+      size: 144,
+      cell: ({ row }) => (
+        <span className="font-mono">{row.original.username}</span>
+      ),
+    },
+    {
+      accessorKey: 'status',
+      header: 'Status',
+      size: 176,
+      sortingFn: (rowA, rowB) =>
+        statusLabel[rowA.original.status].localeCompare(statusLabel[rowB.original.status]),
+      cell: ({ row }) => (
+        <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${statusPill[row.original.status]}`}>
+          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusDot[row.original.status]}`} />
+          {statusLabel[row.original.status]}
+        </span>
+      ),
+    },
+  ];
 
-const SKELETON_ROWS = 5;
-
-export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUser, onRowClick }: UserListProps) {
-  const [sortCol, setSortCol] = useState<SortColumn>('username');
-  const [sortDir, setSortDir] = useState<SortDirection>('asc');
-  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
-  const [refreshedOtp, setRefreshedOtp] = useState<{ username: string; oneTimePassword: string } | null>(null);
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
-
-  function handleSort(col: SortColumn) {
-    if (sortCol === col) {
-      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortCol(col);
-      setSortDir('asc');
-    }
+  if (isEmailEnv) {
+    cols.push({
+      accessorKey: 'email',
+      header: 'Email',
+      cell: ({ row }) => (
+        <span className="text-muted-foreground">{row.original.email ?? '—'}</span>
+      ),
+    });
   }
 
-  const setFilter = <K extends keyof FilterState>(key: K, value: FilterState[K]) => {
-    setFilters((prev) => ({ ...prev, [key]: value }));
-  };
+  cols.push(
+    {
+      accessorKey: 'createdAt',
+      header: 'Created',
+      size: 112,
+      cell: ({ row }) => (
+        <span className="text-muted-foreground">
+          {new Date(row.original.createdAt).toISOString().slice(0, 10)}
+        </span>
+      ),
+    },
+    {
+      accessorKey: 'lastLoginAt',
+      header: 'Last login',
+      size: 112,
+      sortingFn: nullLastSortFn,
+      cell: ({ row }) => (
+        <span className="text-muted-foreground">
+          {row.original.lastLoginAt
+            ? new Date(row.original.lastLoginAt).toISOString().slice(0, 10)
+            : '—'}
+        </span>
+      ),
+    },
+    {
+      accessorKey: 'vaultSizeBytes',
+      header: 'Vault Size',
+      size: 96,
+      cell: ({ row }) => (
+        <span className="text-muted-foreground tabular-nums">
+          {formatBytes(row.original.vaultSizeBytes)}
+        </span>
+      ),
+    },
+    {
+      id: 'actions',
+      enableSorting: false,
+      size: 40,
+      cell: ({ row }) => {
+        const user = row.original;
+        return (
+          <div onClick={e => e.stopPropagation()}>
+            <DropdownMenu>
+              <DropdownMenuTrigger render={
+                <Button variant="ghost" size="icon-sm" aria-label={`Actions for ${user.username}`} />
+              }>
+                <EllipsisHorizontalIcon className="h-4 w-4" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => onDownload(user.userId, user.username)}>
+                  <ArrowDownTrayIcon className="mr-2 h-4 w-4" />
+                  Download vault ({formatBytes(user.vaultSizeBytes)})
+                </DropdownMenuItem>
+                {user.status === 'pending_first_login' && (
+                  <>
+                    <DropdownMenuItem
+                      onClick={() => onRefreshOtp(user.userId)}
+                      disabled={actionLoading === user.userId + ':refresh'}
+                    >
+                      <ArrowPathIcon className="mr-2 h-4 w-4" />
+                      Refresh OTP
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onClick={() => onDeleteUser(user)}
+                    >
+                      <TrashIcon className="mr-2 h-4 w-4" />
+                      Delete user
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        );
+      },
+    },
+  );
+
+  return cols;
+}
+
+export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUser, onRowClick }: UserListProps) {
+  const [selectedStatuses, setSelectedStatuses] = useState<Set<UserStatus>>(new Set());
+  const [usernameFilter, setUsernameFilter] = useState('');
+  const [createdFrom, setCreatedFrom] = useState('');
+  const [createdTo, setCreatedTo] = useState('');
+  const [lastLoginFrom, setLastLoginFrom] = useState('');
+  const [lastLoginTo, setLastLoginTo] = useState('');
+  const [refreshedOtp, setRefreshedOtp] = useState<{ username: string; oneTimePassword: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<UserSummary | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  function toggleStatus(status: UserStatus) {
+    setSelectedStatuses(prev => {
+      const next = new Set(prev);
+      if (next.has(status)) next.delete(status);
+      else next.add(status);
+      return next;
+    });
+  }
 
   async function handleRefreshOtp(userId: string) {
     setActionLoading(userId + ':refresh');
@@ -117,15 +276,22 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUse
     }
   }
 
-  async function handleDeleteUser(userId: string) {
-    setActionLoading(userId + ':delete');
+  async function handleDeleteConfirm() {
+    if (!deleteTarget) return;
+    setDeleteLoading(true);
     try {
-      await onDeleteUser(userId);
-      setConfirmDelete(null);
+      await onDeleteUser(deleteTarget.userId);
+      setDeleteTarget(null);
     } finally {
-      setActionLoading(null);
+      setDeleteLoading(false);
     }
   }
+
+  const columns = useMemo(
+    () => getUserColumns(onDownload, handleRefreshOtp, setDeleteTarget, actionLoading),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [onDownload, actionLoading],
+  );
 
   if (refreshedOtp) {
     return (
@@ -137,42 +303,18 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUse
     );
   }
 
-  const colCount = isEmailEnv ? 6 : 5;
+  const hasFilters = selectedStatuses.size > 0 || usernameFilter !== '' ||
+    createdFrom !== '' || createdTo !== '' || lastLoginFrom !== '' || lastLoginTo !== '';
 
-  if (loading) {
-    return (
-      <div className="overflow-x-auto">
-        <span className="sr-only">Loading users…</span>
-        <table className="table table-fixed w-full">
-          <thead className="sticky top-0 z-10 bg-base-100 border-b border-base-300">
-            <tr className="text-xs font-semibold uppercase tracking-wider text-base-content/40">
-              <th className="py-3 px-4 w-36">Username</th>
-              <th className="py-3 px-4 w-44">Status</th>
-              {isEmailEnv && <th className="py-3 px-4">Email</th>}
-              <th className="py-3 px-4 w-28">Created</th>
-              <th className="py-3 px-4 w-28">Last login</th>
-              <th className="py-3 px-4 w-24"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-base-300">
-            {Array.from({ length: SKELETON_ROWS }).map((_, i) => (
-              <tr key={i} className="animate-pulse">
-                {Array.from({ length: colCount }).map((__, j) => (
-                  <td key={j} className="py-3 px-4">
-                    <div className="h-4 bg-base-300 rounded w-3/4" />
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
-  }
+  const filtered = applyFilters(users, selectedStatuses, usernameFilter, createdFrom, createdTo, lastLoginFrom, lastLoginTo);
 
-  if (users.length === 0) {
+  const footerLabel = hasFilters
+    ? `Showing ${filtered.length} of ${users.length} ${users.length === 1 ? 'record' : 'records'}`
+    : `${users.length} ${users.length === 1 ? 'record' : 'records'}`;
+
+  if (users.length === 0 && !loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-base-content/40">
+      <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
         <InboxIcon className="w-10 h-10 mb-3" />
         <p className="font-medium">No users yet</p>
         <p className="text-sm mt-1">Create the first user to get started.</p>
@@ -180,171 +322,161 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUse
     );
   }
 
-  const hasActiveFilters = filters.status !== 'all' || filters.username !== '';
-  const filtered = applyFilters(users, filters);
-  const sorted = applySorting(filtered, sortCol, sortDir);
-
   return (
-    <div>
-      {/* Filter bar */}
-      <div className="flex flex-wrap items-end gap-3 p-3 bg-base-100 border-b border-base-300">
-        <FunnelIcon className="w-4 h-4 text-base-content/40 self-end mb-1.5 shrink-0" />
-
-        {/* Status */}
-        <label className="flex flex-col gap-1 text-xs text-base-content/50">
-          Status
-          <select
-            className="select select-sm select-bordered w-48"
-            value={filters.status}
-            onChange={(e) => setFilter('status', e.target.value as StatusFilter)}
-            aria-label="Filter by status"
-          >
-            <option value="all">All statuses</option>
-            <option value="active">Active</option>
-            <option value="pending_first_login">Awaiting first login</option>
-            <option value="pending_passkey_setup">Awaiting passkey setup</option>
-          </select>
-        </label>
-
-        {/* Username */}
-        <label className="flex flex-col gap-1 text-xs text-base-content/50">
-          Username
-          <input
-            type="text"
-            className="input input-sm input-bordered w-40"
-            placeholder="Search…"
-            value={filters.username}
-            onChange={(e) => setFilter('username', e.target.value)}
+    <>
+      <div className="space-y-4">
+        {/* Toolbar */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Input
+            placeholder="Filter by username..."
             aria-label="Filter by username"
+            value={usernameFilter}
+            onChange={(e) => setUsernameFilter(e.target.value)}
+            className="h-8 w-[150px] lg:w-[250px]"
           />
-        </label>
 
-        {hasActiveFilters && (
-          <button
-            className="btn btn-ghost btn-sm self-end"
-            onClick={() => setFilters(DEFAULT_FILTERS)}
-          >
-            Clear filters
-          </button>
-        )}
-      </div>
-
-      <div className="overflow-x-auto">
-        {sorted.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-base-content/40">
-            <FunnelIcon className="w-10 h-10 mb-3" />
-            <p className="font-medium">No users match the current filters</p>
-            <p className="text-sm mt-1">Try adjusting or clearing the filters above.</p>
-          </div>
-        ) : (
-          <table className="table table-fixed w-full">
-            <thead className="sticky top-0 z-10 bg-base-100 border-b border-base-300">
-              <tr className="text-xs font-semibold uppercase tracking-wider text-base-content/40">
-                <th className="py-3 px-4 w-36">
-                  <SortButton label="Username" active={sortCol === 'username'} direction={sortDir} onClick={() => handleSort('username')} />
-                </th>
-                <th className="py-3 px-4 w-44">
-                  <SortButton label="Status" active={sortCol === 'status'} direction={sortDir} onClick={() => handleSort('status')} />
-                </th>
-                {isEmailEnv && <th className="py-3 px-4">Email</th>}
-                <th className="py-3 px-4 w-28">
-                  <SortButton label="Created" active={sortCol === 'createdAt'} direction={sortDir} onClick={() => handleSort('createdAt')} />
-                </th>
-                <th className="py-3 px-4 w-28">
-                  <SortButton label="Last login" active={sortCol === 'lastLoginAt'} direction={sortDir} onClick={() => handleSort('lastLoginAt')} />
-                </th>
-                <th className="py-3 px-4 w-24"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-base-300">
-              {sorted.map(user => (
-                <tr
-                  key={user.userId}
-                  onClick={() => onRowClick?.(user)}
-                  className={`group${onRowClick ? ' cursor-pointer hover:bg-base-200/50' : ''}`}
-                >
-                  <td className="py-3 px-4 font-mono text-sm">{user.username}</td>
-                  <td className="py-3 px-4">
-                    <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${statusPill[user.status]}`}>
-                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusDot[user.status]}`} />
-                      {statusLabel[user.status]}
-                    </span>
-                  </td>
-                  {isEmailEnv && (
-                    <td className="py-3 px-4 text-sm text-base-content/50">
-                      {user.email ?? '—'}
-                    </td>
-                  )}
-                  <td className="py-3 px-4 text-sm text-base-content/50">
-                    {new Date(user.createdAt).toISOString().slice(0, 10)}
-                  </td>
-                  <td className="py-3 px-4 text-sm text-base-content/50">
-                    {user.lastLoginAt ? new Date(user.lastLoginAt).toISOString().slice(0, 10) : '—'}
-                  </td>
-                  <td
-                    className={`py-3 px-4 flex gap-1 transition-opacity ${confirmDelete === user.userId ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-within:opacity-100'}`}
-                    onClick={e => e.stopPropagation()}
-                  >
-                    <button
-                      onClick={() => onDownload(user.userId, user.username)}
-                      className="btn btn-ghost btn-sm"
-                      title={`Download ${user.username}'s vault (${formatBytes(user.vaultSizeBytes)})`}
-                      aria-label={`Download ${user.username}'s vault`}
-                    >
-                      <ArrowDownTrayIcon className="w-4 h-4" />
-                    </button>
-                    {user.status === 'pending_first_login' && (
-                      <>
-                        <button
-                          onClick={() => handleRefreshOtp(user.userId)}
-                          disabled={actionLoading === user.userId + ':refresh'}
-                          className="btn btn-ghost btn-sm"
-                          title="Refresh OTP"
-                          aria-label={`Refresh OTP for ${user.username}`}
-                        >
-                          <ArrowPathIcon className="w-4 h-4" />
-                        </button>
-                        {confirmDelete === user.userId ? (
-                          <span className="flex items-center gap-1">
-                            <button
-                              onClick={() => handleDeleteUser(user.userId)}
-                              disabled={actionLoading === user.userId + ':delete'}
-                              className="btn btn-error btn-sm"
-                            >
-                              Confirm
-                            </button>
-                            <button
-                              onClick={() => setConfirmDelete(null)}
-                              className="btn btn-ghost btn-sm"
-                            >
-                              Cancel
-                            </button>
-                          </span>
-                        ) : (
-                          <button
-                            onClick={() => setConfirmDelete(user.userId)}
-                            className="btn btn-ghost btn-sm text-error"
-                            title="Delete user"
-                            aria-label={`Delete ${user.username}`}
-                          >
-                            <TrashIcon className="w-4 h-4" />
-                          </button>
-                        )}
-                      </>
+          <Popover>
+            <PopoverTrigger render={
+              <Button variant="outline" size="sm" className="h-8 border-dashed" aria-label="Filter by status" />
+            }>
+              <PlusCircleIcon className="mr-1 h-4 w-4" />
+              Status
+              {selectedStatuses.size > 0 && (
+                <>
+                  <Separator orientation="vertical" className="mx-2 h-4" />
+                  <Badge variant="secondary" className="rounded-sm px-1 font-normal lg:hidden">
+                    {selectedStatuses.size}
+                  </Badge>
+                  <div className="hidden space-x-1 lg:flex">
+                    {selectedStatuses.size > 2 ? (
+                      <Badge variant="secondary" className="rounded-sm px-1 font-normal">
+                        {selectedStatuses.size} selected
+                      </Badge>
+                    ) : (
+                      Array.from(selectedStatuses).map(status => (
+                        <Badge key={status} variant="secondary" className="rounded-sm px-1 font-normal">
+                          {statusLabel[status]}
+                        </Badge>
+                      ))
                     )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+                  </div>
+                </>
+              )}
+            </PopoverTrigger>
+            <PopoverContent className="w-[220px] p-0" align="start">
+              <Command>
+                <CommandInput placeholder="Status..." />
+                <CommandList>
+                  <CommandEmpty>No results.</CommandEmpty>
+                  <CommandGroup>
+                    {ALL_STATUSES.map(status => {
+                      const isSelected = selectedStatuses.has(status);
+                      return (
+                        <CommandItem
+                          key={status}
+                          onSelect={() => toggleStatus(status)}
+                          data-checked={isSelected ? 'true' : undefined}
+                        >
+                          <span className={`mr-2 inline-block h-2 w-2 rounded-full shrink-0 ${statusDot[status]}`} />
+                          {statusLabel[status]}
+                        </CommandItem>
+                      );
+                    })}
+                  </CommandGroup>
+                  {selectedStatuses.size > 0 && (
+                    <>
+                      <CommandSeparator />
+                      <CommandGroup>
+                        <CommandItem
+                          onSelect={() => setSelectedStatuses(new Set())}
+                          className="justify-center text-center"
+                        >
+                          Clear filters
+                        </CommandItem>
+                      </CommandGroup>
+                    </>
+                  )}
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+
+          <DateRangeFilter
+            label="Created"
+            ariaLabel="Filter by created date"
+            from={createdFrom}
+            to={createdTo}
+            onFrom={setCreatedFrom}
+            onTo={setCreatedTo}
+          />
+
+          <DateRangeFilter
+            label="Last login"
+            ariaLabel="Filter by last login date"
+            from={lastLoginFrom}
+            to={lastLoginTo}
+            onFrom={setLastLoginFrom}
+            onTo={setLastLoginTo}
+          />
+
+          {hasFilters && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 px-2 lg:px-3"
+              onClick={() => {
+                setSelectedStatuses(new Set());
+                setUsernameFilter('');
+                setCreatedFrom('');
+                setCreatedTo('');
+                setLastLoginFrom('');
+                setLastLoginTo('');
+              }}
+            >
+              Reset
+              <XMarkIcon className="ml-1 h-4 w-4" />
+            </Button>
+          )}
+        </div>
+
+        <DataTable
+          columns={columns}
+          data={filtered}
+          loading={loading}
+          loadingLabel="Loading users…"
+          emptyMessage={hasFilters ? 'No users match the current filters' : 'No users yet'}
+          defaultSorting={[{ id: 'username', desc: false }]}
+          onRowClick={onRowClick}
+        />
+
+        {/* Footer record count */}
+        <div className="text-sm text-muted-foreground">{footerLabel}</div>
       </div>
 
-      <div className="px-4 py-2 border-t border-base-300 text-xs text-base-content/40 text-right">
-        {hasActiveFilters
-          ? `Showing ${sorted.length} of ${users.length} ${users.length === 1 ? 'record' : 'records'}`
-          : `${users.length} ${users.length === 1 ? 'record' : 'records'}`}
-      </div>
-    </div>
+      {/* Delete confirmation */}
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete user?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete <strong>{deleteTarget?.username}</strong> and all associated data. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={handleDeleteConfirm}
+              disabled={deleteLoading}
+            >
+              {deleteLoading ? 'Deleting…' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }

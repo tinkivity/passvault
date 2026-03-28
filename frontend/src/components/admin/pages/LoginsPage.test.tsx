@@ -48,6 +48,11 @@ function setupMock(evs: LoginEventSummary[] = events) {
   } as unknown as ReturnType<typeof useAdmin>);
 }
 
+// Wait for table data to be present
+async function waitForData() {
+  await waitFor(() => screen.getByText('charlie'));
+}
+
 // ---- Helper unit tests -------------------------------------------------------
 
 describe('formatTimestamp', () => {
@@ -180,8 +185,8 @@ describe('LoginsPage', () => {
   it('clicking username header sorts alphabetically ascending', async () => {
     setupMock();
     renderPage();
-    await waitFor(() => screen.getByRole('button', { name: /username/i }));
-    await userEvent.click(screen.getByRole('button', { name: /username/i }));
+    await waitForData();
+    await userEvent.click(screen.getByRole('button', { name: 'Username' }));
     const rows = screen.getAllByRole('row').slice(1);
     expect(rows[0]).toHaveTextContent('alice');
     expect(rows[2]).toHaveTextContent('bob');
@@ -190,9 +195,9 @@ describe('LoginsPage', () => {
   it('clicking username header twice reverses sort', async () => {
     setupMock();
     renderPage();
-    await waitFor(() => screen.getByRole('button', { name: /username/i }));
-    await userEvent.click(screen.getByRole('button', { name: /username/i }));
-    await userEvent.click(screen.getByRole('button', { name: /username/i }));
+    await waitForData();
+    await userEvent.click(screen.getByRole('button', { name: 'Username' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Username' }));
     const rows = screen.getAllByRole('row').slice(1);
     expect(rows[0]).toHaveTextContent('charlie');
   });
@@ -210,8 +215,8 @@ describe('LoginsPage', () => {
   it('clicking duration header sorts by seconds ascending (nulls last)', async () => {
     setupMock();
     renderPage();
-    await waitFor(() => screen.getByRole('button', { name: /duration/i }));
-    await userEvent.click(screen.getByRole('button', { name: /duration/i }));
+    await waitForData();
+    await userEvent.click(screen.getByRole('button', { name: 'Duration' }));
     const rows = screen.getAllByRole('row').slice(1);
     // 30s (charlie), 180s (alice e1), 2700s (alice e3), null (bob)
     expect(rows[0]).toHaveTextContent('charlie');
@@ -229,8 +234,10 @@ describe('LoginsPage', () => {
   it('status filter "Failed only" hides successful events', async () => {
     setupMock();
     renderPage();
-    await waitFor(() => screen.getByLabelText(/filter by status/i));
-    await userEvent.selectOptions(screen.getByLabelText(/filter by status/i), 'false');
+    await waitForData();
+    await userEvent.click(screen.getByLabelText(/filter by status/i));
+    await userEvent.click(await screen.findByRole('option', { name: /^failed$/i }));
+    await userEvent.keyboard('{Escape}');
     const tbody = screen.getAllByRole('rowgroup')[1];
     expect(within(tbody).getByText('bob')).toBeInTheDocument();
     expect(within(tbody).queryByText('charlie')).not.toBeInTheDocument();
@@ -239,8 +246,10 @@ describe('LoginsPage', () => {
   it('status filter "Success only" hides failed events', async () => {
     setupMock();
     renderPage();
-    await waitFor(() => screen.getByLabelText(/filter by status/i));
-    await userEvent.selectOptions(screen.getByLabelText(/filter by status/i), 'true');
+    await waitForData();
+    await userEvent.click(screen.getByLabelText(/filter by status/i));
+    await userEvent.click(await screen.findByRole('option', { name: /^success$/i }));
+    await userEvent.keyboard('{Escape}');
     const tbody = screen.getAllByRole('rowgroup')[1];
     expect(within(tbody).queryByText('bob')).not.toBeInTheDocument();
     expect(within(tbody).getByText('charlie')).toBeInTheDocument();
@@ -249,8 +258,10 @@ describe('LoginsPage', () => {
   it('username filter shows only selected user', async () => {
     setupMock();
     renderPage();
-    await waitFor(() => screen.getByLabelText(/filter by username/i));
-    await userEvent.selectOptions(screen.getByLabelText(/filter by username/i), 'charlie');
+    await waitForData();
+    await userEvent.click(screen.getByLabelText(/filter by username/i));
+    await userEvent.click(await screen.findByRole('option', { name: 'charlie' }));
+    await userEvent.keyboard('{Escape}');
     const tbody = screen.getAllByRole('rowgroup')[1];
     expect(within(tbody).getByText('charlie')).toBeInTheDocument();
     expect(within(tbody).queryByText('bob')).not.toBeInTheDocument();
@@ -260,20 +271,20 @@ describe('LoginsPage', () => {
   it('username dropdown contains all unique usernames', async () => {
     setupMock();
     renderPage();
-    await waitFor(() => screen.getByLabelText(/filter by username/i));
-    const select = screen.getByLabelText(/filter by username/i);
-    const options = within(select).getAllByRole('option');
-    const labels = options.map((o) => o.textContent);
-    expect(labels).toContain('alice');
-    expect(labels).toContain('bob');
-    expect(labels).toContain('charlie');
+    await waitForData();
+    await userEvent.click(screen.getByLabelText(/filter by username/i));
+    expect(await screen.findByRole('option', { name: 'alice' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'bob' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'charlie' })).toBeInTheDocument();
   });
 
   it('duration filter "No duration recorded" shows only events without logoutAt', async () => {
     setupMock();
     renderPage();
-    await waitFor(() => screen.getByLabelText(/filter by duration/i));
-    await userEvent.selectOptions(screen.getByLabelText(/filter by duration/i), 'none');
+    await waitForData();
+    await userEvent.click(screen.getByLabelText(/filter by duration/i));
+    await userEvent.click(await screen.findByRole('option', { name: /no duration/i }));
+    await userEvent.keyboard('{Escape}');
     const tbody = screen.getAllByRole('rowgroup')[1];
     expect(within(tbody).getByText('bob')).toBeInTheDocument();
     expect(within(tbody).queryByText('alice')).not.toBeInTheDocument();
@@ -282,8 +293,10 @@ describe('LoginsPage', () => {
   it('duration filter "< 1 min" shows only sub-minute sessions', async () => {
     setupMock();
     renderPage();
-    await waitFor(() => screen.getByLabelText(/filter by duration/i));
-    await userEvent.selectOptions(screen.getByLabelText(/filter by duration/i), 'lt1');
+    await waitForData();
+    await userEvent.click(screen.getByLabelText(/filter by duration/i));
+    await userEvent.click(await screen.findByRole('option', { name: /< 1 min/i }));
+    await userEvent.keyboard('{Escape}');
     const tbody = screen.getAllByRole('rowgroup')[1];
     // charlie: 30 sec, others are longer or null
     expect(within(tbody).getByText('charlie')).toBeInTheDocument();
@@ -294,8 +307,10 @@ describe('LoginsPage', () => {
   it('duration filter "1 – 5 min" shows 3-minute session only', async () => {
     setupMock();
     renderPage();
-    await waitFor(() => screen.getByLabelText(/filter by duration/i));
-    await userEvent.selectOptions(screen.getByLabelText(/filter by duration/i), '1to5');
+    await waitForData();
+    await userEvent.click(screen.getByLabelText(/filter by duration/i));
+    await userEvent.click(await screen.findByRole('option', { name: /1.5 min/i }));
+    await userEvent.keyboard('{Escape}');
     // alice e1: 3 min → shown; alice e3: 45 min → hidden
     const rows = screen.getAllByRole('row').slice(1);
     expect(rows).toHaveLength(1);
@@ -306,8 +321,10 @@ describe('LoginsPage', () => {
   it('duration filter "15 – 60 min" shows 45-minute session', async () => {
     setupMock();
     renderPage();
-    await waitFor(() => screen.getByLabelText(/filter by duration/i));
-    await userEvent.selectOptions(screen.getByLabelText(/filter by duration/i), '15to60');
+    await waitForData();
+    await userEvent.click(screen.getByLabelText(/filter by duration/i));
+    await userEvent.click(await screen.findByRole('option', { name: /15.60 min/i }));
+    await userEvent.keyboard('{Escape}');
     const rows = screen.getAllByRole('row').slice(1);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toHaveTextContent('45:00');
@@ -316,45 +333,52 @@ describe('LoginsPage', () => {
   it('shows "no events match filters" when filters produce empty result', async () => {
     setupMock();
     renderPage();
-    await waitFor(() => screen.getByLabelText(/filter by status/i));
-    await userEvent.selectOptions(screen.getByLabelText(/filter by status/i), 'false');
-    await userEvent.selectOptions(screen.getByLabelText(/filter by duration/i), 'lt1');
-    expect(screen.getByText(/no events match the current filters/i)).toBeInTheDocument(); // heading text
+    await waitForData();
+    // Select "Failed" status (only bob)
+    await userEvent.click(screen.getByLabelText(/filter by status/i));
+    await userEvent.click(await screen.findByRole('option', { name: /^failed$/i }));
+    await userEvent.keyboard('{Escape}');
+    // Select "< 1 min" duration (only charlie — no overlap with bob)
+    await userEvent.click(screen.getByLabelText(/filter by duration/i));
+    await userEvent.click(await screen.findByRole('option', { name: /< 1 min/i }));
+    await userEvent.keyboard('{Escape}');
+    expect(screen.getByText(/no events match the current filters/i)).toBeInTheDocument();
   });
 
-  it('clear filters button resets all filters', async () => {
+  it('reset button resets all filters', async () => {
     setupMock();
     renderPage();
-    await waitFor(() => screen.getByLabelText(/filter by status/i));
-    await userEvent.selectOptions(screen.getByLabelText(/filter by status/i), 'false');
-    // Clear should appear
-    const clearBtn = await screen.findByRole('button', { name: /clear filters/i });
-    await userEvent.click(clearBtn);
-    // All events visible again
+    await waitForData();
+    await userEvent.click(screen.getByLabelText(/filter by status/i));
+    await userEvent.click(await screen.findByRole('option', { name: /^failed$/i }));
+    await userEvent.keyboard('{Escape}');
+    const resetBtn = await screen.findByRole('button', { name: /reset/i });
+    await userEvent.click(resetBtn);
     const tbody = screen.getAllByRole('rowgroup')[1];
     expect(within(tbody).getByText('charlie')).toBeInTheDocument();
     expect(within(tbody).getByText('bob')).toBeInTheDocument();
   });
 
-  it('clear filters button is hidden when no filters are active', async () => {
+  it('reset button is hidden when no filters are active', async () => {
     setupMock();
     renderPage();
-    await waitFor(() => screen.getByLabelText(/filter by status/i));
-    expect(screen.queryByRole('button', { name: /clear filters/i })).not.toBeInTheDocument();
+    await waitForData();
+    expect(screen.queryByRole('button', { name: /reset/i })).not.toBeInTheDocument();
   });
 
   it('shows total event count when no filters are active', async () => {
     setupMock();
     renderPage();
-    await waitFor(() => screen.getByLabelText(/filter by status/i));
-    expect(screen.getByText(/^4 events$/i)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/^4 events$/i)).toBeInTheDocument());
   });
 
   it('shows filtered vs total count when filters are active', async () => {
     setupMock();
     renderPage();
-    await waitFor(() => screen.getByLabelText(/filter by status/i));
-    await userEvent.selectOptions(screen.getByLabelText(/filter by status/i), 'true');
-    expect(screen.getByText(/showing 3 of 4 events/i)).toBeInTheDocument();
+    await waitForData();
+    await userEvent.click(screen.getByLabelText(/filter by status/i));
+    await userEvent.click(await screen.findByRole('option', { name: /^success$/i }));
+    await userEvent.keyboard('{Escape}');
+    expect(await screen.findByText(/showing 3 of 4 events/i)).toBeInTheDocument();
   });
 });

@@ -10,6 +10,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@passvault/shared': resolve(__dirname, '../shared/src/index.ts'),
+      '@': resolve(__dirname, './src'),
     },
   },
   test: {

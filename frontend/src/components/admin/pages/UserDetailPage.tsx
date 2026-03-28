@@ -4,6 +4,7 @@ import type { UserSummary, UserStatus } from '@passvault/shared';
 import { useAuth } from '../../../hooks/useAuth.js';
 import { useAdmin } from '../../../hooks/useAdmin.js';
 import { OtpDisplay } from '../OtpDisplay.js';
+import { Button } from '@/components/ui/button';
 
 const statusLabel: Record<UserStatus, string> = {
   pending_first_login: 'Awaiting first login',
@@ -12,9 +13,9 @@ const statusLabel: Record<UserStatus, string> = {
 };
 
 const statusClass: Record<UserStatus, string> = {
-  pending_first_login: 'badge badge-warning',
-  pending_passkey_setup: 'badge badge-info',
-  active: 'badge badge-success',
+  pending_first_login: 'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-amber-500/15 text-amber-600 border-amber-500/20',
+  pending_passkey_setup: 'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-blue-500/15 text-blue-500 border-blue-500/20',
+  active: 'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-green-600/15 text-green-600 border-green-600/20',
 };
 
 function formatBytes(bytes: number | null): string {
@@ -40,12 +41,12 @@ export function UserDetailPage() {
   if (!user) {
     return (
       <div>
-        <button className="btn btn-ghost btn-sm mb-4" onClick={handleBack}>
+        <Button variant="ghost" size="sm" className="mb-4" onClick={handleBack}>
           ← Users
-        </button>
-        <p className="text-base-content/50 text-sm">
+        </Button>
+        <p className="text-muted-foreground text-sm">
           User not found.{' '}
-          <button className="link" onClick={handleBack}>
+          <button className="underline" onClick={handleBack}>
             Return to users list
           </button>
           .
@@ -57,9 +58,9 @@ export function UserDetailPage() {
   if (refreshedOtp) {
     return (
       <div>
-        <button className="btn btn-ghost btn-sm mb-4" onClick={handleBack}>
+        <Button variant="ghost" size="sm" className="mb-4" onClick={handleBack}>
           ← Users
-        </button>
+        </Button>
         <OtpDisplay
           username={refreshedOtp.username}
           oneTimePassword={refreshedOtp.oneTimePassword}
@@ -81,11 +82,11 @@ export function UserDetailPage() {
 
   return (
     <div className="max-w-xl">
-      <button className="btn btn-ghost btn-sm mb-6" onClick={handleBack}>
+      <Button variant="ghost" size="sm" className="mb-6" onClick={handleBack}>
         ← Users
-      </button>
+      </Button>
 
-      <div className="bg-base-100 rounded-xl border border-base-300 p-6">
+      <div className="bg-card rounded-xl border border-border p-6">
         <div className="flex items-start gap-3 mb-6">
           <div>
             <h1 className="text-xl font-bold font-mono">{user.username}</h1>
@@ -96,66 +97,72 @@ export function UserDetailPage() {
         </div>
 
         <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-3 text-sm mb-6">
-          <dt className="text-base-content/50">Email</dt>
+          <dt className="text-muted-foreground">Email</dt>
           <dd>{user.email ?? '—'}</dd>
-          <dt className="text-base-content/50">Created</dt>
+          <dt className="text-muted-foreground">Created</dt>
           <dd>{new Date(user.createdAt).toISOString().slice(0, 10)}</dd>
-          <dt className="text-base-content/50">Last Login</dt>
+          <dt className="text-muted-foreground">Last Login</dt>
           <dd>
             {user.lastLoginAt
               ? new Date(user.lastLoginAt).toISOString().slice(0, 10)
               : '—'}
           </dd>
-          <dt className="text-base-content/50">Vault Size</dt>
+          <dt className="text-muted-foreground">Vault Size</dt>
           <dd>{formatBytes(user.vaultSizeBytes)}</dd>
-          <dt className="text-base-content/50">User ID</dt>
-          <dd className="font-mono text-xs text-base-content/50 break-all">{user.userId}</dd>
+          <dt className="text-muted-foreground">User ID</dt>
+          <dd className="font-mono text-xs text-muted-foreground break-all">{user.userId}</dd>
         </dl>
 
-        {admin.error && <p className="text-error text-sm mb-4">{admin.error}</p>}
+        {admin.error && <p className="text-destructive text-sm mb-4">{admin.error}</p>}
 
         <div className="flex flex-wrap gap-2">
-          <button
-            className="btn btn-sm btn-ghost"
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => admin.downloadUserVault(user.userId, user.username)}
             disabled={admin.loading}
           >
             Download Vault
-          </button>
+          </Button>
 
           {user.status === 'pending_first_login' && (
             <>
-              <button
-                className="btn btn-sm btn-ghost"
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={handleRefreshOtp}
                 disabled={admin.loading}
               >
                 Refresh OTP
-              </button>
+              </Button>
 
               {deleteConfirm ? (
                 <>
-                  <button
-                    className="btn btn-sm btn-error"
+                  <Button
+                    variant="destructive"
+                    size="sm"
                     onClick={handleDelete}
                     disabled={admin.loading}
                   >
                     Confirm Delete
-                  </button>
-                  <button
-                    className="btn btn-sm btn-ghost"
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => setDeleteConfirm(false)}
                   >
                     Cancel
-                  </button>
+                  </Button>
                 </>
               ) : (
-                <button
-                  className="btn btn-sm btn-ghost text-error"
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
                   onClick={() => setDeleteConfirm(true)}
                 >
                   Delete User
-                </button>
+                </Button>
               )}
             </>
           )}

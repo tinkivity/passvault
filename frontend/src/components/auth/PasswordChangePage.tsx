@@ -1,9 +1,21 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useAuthContext } from '../../context/AuthContext.js';
 import { validatePassword } from '@passvault/shared';
-import { Layout, Card, Button, Input, ErrorMessage } from '../layout/Layout.js';
+import { Layout, ErrorMessage } from '../layout/Layout.js';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import logo from '../../assets/logo.png';
 
 const PASSKEY_REQUIRED = import.meta.env.VITE_PASSKEY_REQUIRED === 'true';
 
@@ -49,7 +61,6 @@ export function PasswordChangePage({ isAdmin = false }: PasswordChangePageProps)
 
   const handleSuccessConfirm = () => {
     if (PASSKEY_REQUIRED) {
-      // Keep JWT in context so the passkey setup page can use it immediately
       navigate(isAdmin || role === 'admin' ? '/admin/passkey-setup' : '/passkey-setup', { replace: true });
     } else {
       logout();
@@ -59,59 +70,75 @@ export function PasswordChangePage({ isAdmin = false }: PasswordChangePageProps)
 
   if (success) {
     return (
-      <Layout theme="pv-dark">
-        <Card>
-          <h1 className="text-xl font-bold mb-4 text-center">Password Changed</h1>
-          <p className="text-center text-sm text-base-content/70 mb-6">
-            {PASSKEY_REQUIRED
-              ? 'Your password has been set successfully. Next, register your passkey.'
-              : 'Your password has been set successfully. Please log in with your new password.'}
-          </p>
-          <div className="flex justify-center">
-            <Button onClick={handleSuccessConfirm}>
-              {PASSKEY_REQUIRED ? 'Set Up Passkey' : 'Continue to Login'}
-            </Button>
-          </div>
-        </Card>
+      <Layout>
+        <div className="w-full max-w-sm">
+          <Card>
+            <img src={logo} alt="PassVault" className="w-full h-32 object-contain px-10 pt-6 bg-card" />
+            <CardHeader className="text-center">
+              <CardTitle className="text-xl">Password Changed</CardTitle>
+              <CardDescription>
+                {PASSKEY_REQUIRED
+                  ? 'Your password has been set. Next, register your passkey.'
+                  : 'Your password has been set. Please log in with your new password.'}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex justify-center pb-2">
+              <Button onClick={handleSuccessConfirm}>
+                {PASSKEY_REQUIRED ? 'Set Up Passkey' : 'Continue to Login'}
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
       </Layout>
     );
   }
 
   return (
     <Layout>
-      <Card>
-        <h1 className="text-xl font-bold mb-1 text-center">Change Password</h1>
-        <p className="text-center text-sm text-base-content/50 mb-6">
-          {username ? `Welcome, ${username}` : 'Set your new password'}
-        </p>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <Input
-            label="New Password"
-            id="new-password"
-            type="password"
-            autoComplete="new-password"
-            value={newPassword}
-            onChange={e => setNewPassword(e.target.value)}
-            required
-          />
-          <Input
-            label="Confirm Password"
-            id="confirm-password"
-            type="password"
-            autoComplete="new-password"
-            value={confirm}
-            onChange={e => setConfirm(e.target.value)}
-            required
-          />
-          <p className="text-xs text-base-content/50">
-            Password must be at least 12 characters with uppercase, lowercase, number, and special character.
-          </p>
-          <ErrorMessage message={error} />
-          <Button type="submit" loading={loading}>
-            Set Password
-          </Button>
-        </form>
-      </Card>
+      <div className="w-full max-w-sm">
+        <Card>
+          <img src={logo} alt="PassVault" className="w-full h-32 object-contain px-10 pt-6 bg-card" />
+          <CardHeader className="text-center">
+            <CardTitle className="text-xl">Change Password</CardTitle>
+            <CardDescription>
+              {username ? `Welcome, ${username}` : 'Set your new password'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="new-password">New Password</Label>
+                <Input
+                  id="new-password"
+                  type="password"
+                  autoComplete="new-password"
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="confirm-password">Confirm Password</Label>
+                <Input
+                  id="confirm-password"
+                  type="password"
+                  autoComplete="new-password"
+                  value={confirm}
+                  onChange={e => setConfirm(e.target.value)}
+                  required
+                />
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Password must be at least 12 characters with uppercase, lowercase, number, and special character.
+              </p>
+              <ErrorMessage message={error} />
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Please wait…</> : 'Set Password'}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
     </Layout>
   );
 }

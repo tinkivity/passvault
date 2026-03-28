@@ -45,7 +45,9 @@ export function useAuth() {
       const honeypot = createHoneypot();
       const res = await api.login({ passkeyToken, password }, getHoneypotFields(honeypot));
 
-      await deriveKey(password, encryptionSalt);
+      if (res.role === 'user') {
+        await deriveKey(password, encryptionSalt);
+      }
 
       setAuth({
         token: res.token,
@@ -70,7 +72,7 @@ export function useAuth() {
     }
   }, [setAuth, deriveKey]);
 
-  // dev/beta direct login: username + password
+  // dev/beta direct login: username + password (works for both user and admin roles)
   const login = useCallback(async (username: string, password: string) => {
     setLoading(true);
     setError(null);
@@ -78,7 +80,9 @@ export function useAuth() {
       const honeypot = createHoneypot();
       const res = await api.login({ username, password }, getHoneypotFields(honeypot));
 
-      await deriveKey(password, res.encryptionSalt);
+      if (res.role === 'user') {
+        await deriveKey(password, res.encryptionSalt);
+      }
 
       setAuth({
         token: res.token,
@@ -98,89 +102,6 @@ export function useAuth() {
       setLoading(false);
     }
   }, [setAuth, deriveKey]);
-
-  // prod step 1-3 for admin passkeys
-  const startAdminPasskeyLogin = useCallback(async (): Promise<PasskeyVerifyResponse> => {
-    setLoading(true);
-    setError(null);
-    try {
-      const { challengeJwt } = await api.getAdminPasskeyChallenge();
-      const honeypot = createHoneypot();
-      const assertion = await authenticateWithPasskey(challengeJwt);
-      return await api.verifyAdminPasskey(
-        { challengeJwt, assertion },
-        getHoneypotFields(honeypot),
-      );
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Passkey authentication failed';
-      setError(msg);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // prod step 4-6 for admin
-  const completeAdminLogin = useCallback(async (
-    passkeyToken: string,
-    password: string,
-    encryptionSalt: string,
-  ) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const honeypot = createHoneypot();
-      const res = await api.adminLogin({ passkeyToken, password }, getHoneypotFields(honeypot));
-
-      setAuth({
-        token: res.token,
-        role: res.role,
-        username: res.username,
-        status: res.requirePasswordChange
-          ? 'pending_first_login'
-          : res.requirePasskeySetup
-            ? 'pending_passkey_setup'
-            : 'active',
-        encryptionSalt,
-        loginEventId: res.loginEventId ?? null,
-      });
-
-      return res;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Login failed';
-      setError(msg);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, [setAuth]);
-
-  // dev/beta direct admin login
-  const adminLogin = useCallback(async (adminUsername: string, password: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const honeypot = createHoneypot();
-      const res = await api.adminLogin({ username: adminUsername, password }, getHoneypotFields(honeypot));
-
-      setAuth({
-        token: res.token,
-        role: res.role,
-        username: res.username,
-        status: res.requirePasswordChange ? 'pending_first_login' : 'active',
-        encryptionSalt: res.encryptionSalt,
-        loginEventId: res.loginEventId ?? null,
-      });
-
-      return res;
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Login failed';
-      setError(msg);
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, [setAuth]);
 
   const changePassword = useCallback(async (req: ChangePasswordRequest) => {
     if (!token) throw new Error('Not authenticated');
@@ -261,11 +182,8 @@ export function useAuth() {
     // prod passkey flow
     startPasskeyLogin,
     completeLogin,
-    startAdminPasskeyLogin,
-    completeAdminLogin,
     // dev/beta direct flow
     login,
-    adminLogin,
     // shared
     changePassword,
     adminChangePassword,

@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
 
-export type Theme = 'pv-light' | 'pv-dark';
+export type Theme = 'light' | 'dark';
 
 const STORAGE_KEY = 'pv-theme';
 
 function readStored(): Theme {
   try {
-    return localStorage.getItem(STORAGE_KEY) === 'pv-dark' ? 'pv-dark' : 'pv-light';
+    const val = localStorage.getItem(STORAGE_KEY);
+    return (val === 'dark' || val === 'pv-dark') ? 'dark' : 'light';
   } catch {
-    return 'pv-light';
+    return 'light';
   }
 }
 
@@ -16,7 +17,11 @@ export function useTheme() {
   const [theme, setThemeState] = useState<Theme>(readStored);
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
     try {
       localStorage.setItem(STORAGE_KEY, theme);
     } catch {
@@ -25,8 +30,8 @@ export function useTheme() {
   }, [theme]);
 
   const toggleTheme = useCallback(() => {
-    setThemeState((t) => (t === 'pv-light' ? 'pv-dark' : 'pv-light'));
+    setThemeState((t) => (t === 'light' ? 'dark' : 'light'));
   }, []);
 
-  return { theme, toggleTheme, isDark: theme === 'pv-dark' };
+  return { theme, toggleTheme, isDark: theme === 'dark' };
 }

@@ -176,8 +176,7 @@ The dev stack has `passkeyRequired: false` and `powEnabled: false`, so the login
 
 **Admin flow:**
 1. The script prints the one-time password on first run — copy it before pressing Enter
-2. Click "Admin Login" (or navigate to `/admin`)
-3. Log in with the OTP
+2. Navigate to `/login` and log in with the admin username and OTP
 4. Change password when prompted
 5. Passkey setup is **skipped** — you go directly to the dashboard
 6. Create a test user account from the admin dashboard

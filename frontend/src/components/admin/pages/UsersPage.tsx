@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { UserSummary } from '@passvault/shared';
 import { ArrowPathIcon } from '@heroicons/react/24/outline';
@@ -6,6 +6,8 @@ import { useAuth } from '../../../hooks/useAuth.js';
 import { useAdmin } from '../../../hooks/useAdmin.js';
 import { UserList } from '../UserList.js';
 import { CreateUserForm } from '../CreateUserForm.js';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 export function UsersPage() {
   const navigate = useNavigate();
@@ -13,7 +15,7 @@ export function UsersPage() {
   const admin = useAdmin(token);
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [usersLoaded, setUsersLoaded] = useState(false);
-  const dialogRef = useRef<HTMLDialogElement>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const refreshUsers = useCallback(async () => {
     const list = await admin.listUsers();
@@ -46,51 +48,48 @@ export function UsersPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-bold">Users</h1>
         <div className="flex items-center gap-2">
-          <button
-            className="btn btn-ghost btn-sm"
+          <Button
+            variant="ghost"
+            size="icon-sm"
             onClick={refreshUsers}
             disabled={admin.loading}
             title="Refresh"
             aria-label="Refresh"
           >
             <ArrowPathIcon className="w-4 h-4" />
-          </button>
-          <button
-            className="btn btn-primary btn-sm"
-            onClick={() => dialogRef.current?.showModal()}
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => setCreateOpen(true)}
           >
             + Create User
-          </button>
+          </Button>
         </div>
       </div>
 
-      {admin.error && <p className="text-error text-sm mb-4">{admin.error}</p>}
+      {admin.error && <p className="text-destructive text-sm mb-4">{admin.error}</p>}
 
-      <div className="bg-base-100 rounded-xl border border-base-300 overflow-hidden">
-        <UserList
-          users={users}
-          loading={admin.loading && !usersLoaded}
-          onDownload={admin.downloadUserVault}
-          onRefreshOtp={admin.refreshOtp}
-          onDeleteUser={handleDeleteUser}
-          onRowClick={handleRowClick}
-        />
-      </div>
+      <UserList
+        users={users}
+        loading={admin.loading && !usersLoaded}
+        onDownload={admin.downloadUserVault}
+        onRefreshOtp={admin.refreshOtp}
+        onDeleteUser={handleDeleteUser}
+        onRowClick={handleRowClick}
+      />
 
-      <dialog ref={dialogRef} className="modal">
-        <div className="modal-box">
-          <h3 className="font-bold text-lg mb-4">Create User</h3>
-          <CreateUserForm onCreateUser={handleCreateUser} loading={admin.loading} onDone={() => dialogRef.current?.close()} />
-          <div className="modal-action">
-            <form method="dialog">
-              <button className="btn btn-ghost btn-sm">Close</button>
-            </form>
-          </div>
-        </div>
-        <form method="dialog" className="modal-backdrop">
-          <button>close</button>
-        </form>
-      </dialog>
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create User</DialogTitle>
+          </DialogHeader>
+          <CreateUserForm
+            onCreateUser={handleCreateUser}
+            loading={admin.loading}
+            onDone={() => setCreateOpen(false)}
+          />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

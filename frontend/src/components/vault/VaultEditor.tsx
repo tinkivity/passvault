@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Button, ErrorMessage } from '../layout/Layout.js';
+import { Textarea } from '@/components/ui/textarea';
 import { ConfirmDialog } from './ConfirmDialog.js';
 import { LIMITS } from '@passvault/shared';
 
@@ -43,18 +44,18 @@ export function VaultEditor({
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
-        <span className="font-semibold text-sm text-base-content/70">Edit Vault</span>
+        <span className="font-semibold text-sm text-foreground/70">Edit Vault</span>
         <span
           className={`text-xs tabular-nums font-mono ${
-            isUrgent ? 'text-error font-semibold' : 'text-base-content/50'
+            isUrgent ? 'text-destructive font-semibold' : 'text-muted-foreground'
           }`}
         >
           Auto-logout {formatted}
         </span>
       </div>
 
-      <textarea
-        className="textarea textarea-bordered flex-1 w-full font-mono resize-none min-h-64"
+      <Textarea
+        className="flex-1 w-full font-mono resize-none min-h-64"
         value={content}
         onChange={e => setContent(e.target.value)}
         placeholder="Enter your sensitive text here…"
@@ -63,7 +64,7 @@ export function VaultEditor({
       />
 
       <div className="flex items-center justify-between mt-1">
-        <span className={`text-xs ${overLimit ? 'text-error font-semibold' : 'text-base-content/30'}`}>
+        <span className={`text-xs ${overLimit ? 'text-destructive font-semibold' : 'text-muted-foreground'}`}>
           {(byteSize / 1024).toFixed(1)} KB / 1024 KB
         </span>
       </div>

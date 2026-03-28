@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ArrowDownTrayIcon, EnvelopeIcon } from '@heroicons/react/24/outline';
 import { Button } from '../layout/Layout.js';
+import { Button as UIButton } from '@/components/ui/button';
 
 const isEmailEnv = import.meta.env.VITE_ENVIRONMENT !== 'dev';
 
@@ -52,52 +53,54 @@ export function VaultViewer({
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <div className="flex items-center gap-2">
-          <span className="font-semibold text-sm text-base-content/70">Vault</span>
+          <span className="font-semibold text-sm text-foreground/70">Vault</span>
           {lastModified && (
-            <span className="text-xs text-base-content/40">
+            <span className="text-xs text-muted-foreground">
               Last saved {new Date(lastModified).toISOString().slice(0, 10)}
             </span>
           )}
         </div>
         <span
           className={`text-xs tabular-nums font-mono ${
-            isUrgent ? 'text-error font-semibold' : 'text-base-content/50'
+            isUrgent ? 'text-destructive font-semibold' : 'text-muted-foreground'
           }`}
         >
           Auto-logout {formatted}
         </span>
       </div>
 
-      <pre className="flex-1 bg-base-200 border border-base-300 rounded-lg p-4 text-sm font-mono whitespace-pre-wrap overflow-auto min-h-64 text-base-content">
-        {content || <span className="text-base-content/30 italic">Vault is empty</span>}
+      <pre className="flex-1 bg-muted border border-border rounded-lg p-4 text-sm font-mono whitespace-pre-wrap overflow-auto min-h-64 text-foreground">
+        {content || <span className="text-muted-foreground italic">Vault is empty</span>}
       </pre>
 
       <div className="flex gap-2 mt-4 flex-wrap items-center">
         <Button onClick={onEdit}>Edit</Button>
-        <button
+        <UIButton
           onClick={onDownload}
-          className="btn btn-ghost btn-sm"
+          variant="ghost"
+          size="icon-sm"
           title="Download backup"
           aria-label="Download backup"
         >
           <ArrowDownTrayIcon className="w-5 h-5" />
-        </button>
+        </UIButton>
         {isEmailEnv && onSendEmail && (
-          <button
+          <UIButton
             onClick={handleSendEmail}
             disabled={emailSending}
-            className="btn btn-ghost btn-sm"
+            variant="ghost"
+            size="icon-sm"
             title="Send vault to email"
             aria-label="Send vault to email"
           >
             <EnvelopeIcon className="w-5 h-5" />
-          </button>
+          </UIButton>
         )}
         {emailStatus === 'sent' && (
-          <span className="text-xs text-success">Sent to your email</span>
+          <span className="text-xs text-green-600">Sent to your email</span>
         )}
         {emailStatus === 'error' && (
-          <span className="text-xs text-error">{emailError}</span>
+          <span className="text-xs text-destructive">{emailError}</span>
         )}
         <Button variant="danger" onClick={onLogout} className="ml-auto">
           Logout

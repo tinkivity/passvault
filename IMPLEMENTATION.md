@@ -206,7 +206,7 @@ Build order within step:
 1. **Contexts**: `AuthContext.tsx`, `EncryptionContext.tsx`
 2. **Hooks**: `useAuth.ts`, `useEncryption.ts`, `useAutoLogout.ts`, `useVault.ts`, `useAdmin.ts`
 3. **Layout**: `EnvironmentBanner.tsx`, `Layout.tsx`
-4. **Auth pages**: `LoginPage.tsx`, `AdminLoginPage.tsx`, `PasswordChangePage.tsx`, `PasskeySetupPage.tsx`
+4. **Auth pages**: `LoginPage.tsx`, `PasswordChangePage.tsx`, `PasskeySetupPage.tsx`
 5. **Vault pages**: `VaultPage.tsx` (view/edit orchestration), `VaultViewer.tsx`, `VaultEditor.tsx`, `CountdownTimer.tsx`, `ConfirmDialog.tsx`
 6. **Admin pages**: `AdminDashboard.tsx`, `CreateUserForm.tsx`, `UserList.tsx`, `OtpDisplay.tsx`
 7. **Wiring**: `router.tsx`, `App.tsx`
@@ -223,7 +223,7 @@ frontend/src/
 │   ├── useVault.ts            # fetch+decrypt, encrypt+save, download
 │   └── useAdmin.ts            # createUser, listUsers
 ├── components/
-│   ├── auth/                  # LoginPage, AdminLoginPage, PasswordChangePage, PasskeySetupPage
+│   ├── auth/                  # LoginPage, PasswordChangePage, PasskeySetupPage
 │   ├── vault/                 # VaultPage, VaultViewer, VaultEditor, CountdownTimer, ConfirmDialog
 │   ├── admin/                 # AdminDashboard, CreateUserForm, UserList, OtpDisplay
 │   └── layout/                # EnvironmentBanner, Layout

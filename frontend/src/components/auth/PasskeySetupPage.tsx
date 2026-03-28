@@ -1,15 +1,24 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
 import { api } from '../../services/api.js';
 import { registerPasskey } from '../../services/passkey.js';
 import { useAuthContext } from '../../context/AuthContext.js';
-import { Layout, Card, Button, ErrorMessage } from '../layout/Layout.js';
+import { Layout, ErrorMessage } from '../layout/Layout.js';
+import { Button } from '@/components/ui/button';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import logo from '../../assets/logo.png';
 
 interface PasskeySetupPageProps {
   isAdmin?: boolean;
 }
 
-// Extract userId from the JWT payload (no signature verification — server verifies on submit).
 function getUserIdFromToken(token: string): string {
   const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
   return payload.userId as string;
@@ -48,20 +57,25 @@ export function PasskeySetupPage({ isAdmin = false }: PasskeySetupPageProps) {
   };
 
   return (
-    <Layout theme="pv-dark">
-      <Card>
-        <h1 className="text-xl font-bold mb-2 text-center">Register Your Passkey</h1>
-        <p className="text-sm text-base-content/70 mb-6 text-center">
-          Set up a passkey (fingerprint, face ID, or security key) to secure your account.
-          You'll use it every time you sign in.
-        </p>
-        <ErrorMessage message={error} />
-        <div className="flex justify-center mt-4">
-          <Button onClick={handleRegister} loading={loading}>
-            {loading ? 'Waiting for passkey…' : 'Register passkey'}
-          </Button>
-        </div>
-      </Card>
+    <Layout>
+      <div className="w-full max-w-sm">
+        <Card>
+          <img src={logo} alt="PassVault" className="w-full h-32 object-contain px-10 pt-6 bg-card" />
+          <CardHeader className="text-center">
+            <CardTitle className="text-xl">Register Your Passkey</CardTitle>
+            <CardDescription>
+              Set up a passkey (fingerprint, face ID, or security key) to secure your account.
+              You'll use it every time you sign in.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4 items-center">
+            <ErrorMessage message={error} />
+            <Button onClick={handleRegister} disabled={loading}>
+              {loading ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Waiting for passkey…</> : 'Register passkey'}
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
     </Layout>
   );
 }

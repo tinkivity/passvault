@@ -1,99 +1,120 @@
-import { useEffect, useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
+import { Home, UserCog, Settings2, FileTerminal, LogOut } from 'lucide-react';
+import logo from '../../assets/logo.png';
 import {
-  HomeIcon,
-  UsersIcon,
-  Cog6ToothIcon,
-  ClockIcon,
-  ChevronDownIcon,
-  ChevronRightIcon,
-} from '@heroicons/react/24/outline';
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarRail,
+} from '@/components/ui/sidebar';
 
-const sections = [
-  {
-    label: 'Management',
-    items: [
-      { to: '/admin/users', label: 'User', icon: UsersIcon },
-      { to: '/admin/management/admin', label: 'Admin', icon: Cog6ToothIcon },
-    ],
-  },
-  {
-    label: 'Logs',
-    items: [
-      { to: '/admin/logs/logins', label: 'Logins', icon: ClockIcon },
-    ],
-  },
+interface NavItemDef {
+  to: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  end?: boolean;
+}
+
+const topItems: NavItemDef[] = [
+  { to: '/admin/dashboard', label: 'Dashboard', icon: Home, end: true },
 ];
 
-function getInitialExpanded(pathname: string): Record<string, boolean> {
-  return Object.fromEntries(
-    sections.map((s) => [
-      s.label,
-      s.items.some((item) => pathname.startsWith(item.to)),
-    ]),
+const managementItems: NavItemDef[] = [
+  { to: '/admin/users', label: 'Users', icon: UserCog },
+  { to: '/admin/management/admin', label: 'Admin', icon: Settings2 },
+];
+
+const logItems: NavItemDef[] = [
+  { to: '/admin/logs/logins', label: 'Logins', icon: FileTerminal },
+];
+
+function NavItem({ to, label, icon: Icon, end = false }: NavItemDef) {
+  const { pathname } = useLocation();
+  const isActive = end ? pathname === to : pathname.startsWith(to);
+
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton
+        render={<NavLink to={to} end={end} />}
+        isActive={isActive}
+        tooltip={label}
+      >
+        <Icon className="h-4 w-4 shrink-0" />
+        <span>{label}</span>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
   );
 }
 
-const topLinkClass = ({ isActive }: { isActive: boolean }) =>
-  `flex items-center gap-2.5 px-4 py-2 text-sm transition-colors border-l-2 ${
-    isActive
-      ? 'bg-primary/10 border-primary text-primary font-medium'
-      : 'border-transparent text-base-content/70 hover:bg-base-200 hover:text-base-content'
-  }`;
+interface AdminSidebarProps {
+  username: string;
+  onLogout: () => void;
+}
 
-const childLinkClass = ({ isActive }: { isActive: boolean }) =>
-  `flex items-center gap-2.5 pl-7 pr-4 py-2 text-sm transition-colors border-l-2 ${
-    isActive
-      ? 'bg-primary/10 border-primary text-primary font-medium'
-      : 'border-transparent text-base-content/60 hover:bg-base-200 hover:text-base-content'
-  }`;
-
-export function AdminSidebar() {
-  const { pathname } = useLocation();
-  const [expanded, setExpanded] = useState<Record<string, boolean>>(
-    () => getInitialExpanded(pathname),
-  );
-
-  useEffect(() => {
-    sections.forEach((section) => {
-      if (section.items.some((item) => pathname.startsWith(item.to))) {
-        setExpanded((prev) => ({ ...prev, [section.label]: true }));
-      }
-    });
-  }, [pathname]);
-
-  const toggle = (label: string) =>
-    setExpanded((prev) => ({ ...prev, [label]: !prev[label] }));
-
+export function AdminSidebar({ username, onLogout }: AdminSidebarProps) {
   return (
-    <nav className="w-52 shrink-0 bg-base-200 border-r border-base-300 flex flex-col py-3">
-      <NavLink to="/admin/dashboard" className={topLinkClass}>
-        <HomeIcon className="w-4 h-4 shrink-0" />
-        Dashboard
-      </NavLink>
-
-      <div className="mt-2 border-t border-base-300" />
-
-      {sections.map((section) => (
-        <div key={section.label}>
-          <button
-            className="w-full flex items-center justify-between px-4 py-2 text-xs font-semibold uppercase tracking-wider text-base-content/40 hover:text-base-content/70 transition-colors"
-            onClick={() => toggle(section.label)}
-          >
-            {section.label}
-            {expanded[section.label]
-              ? <ChevronDownIcon className="w-3 h-3" />
-              : <ChevronRightIcon className="w-3 h-3" />}
-          </button>
-          {expanded[section.label] &&
-            section.items.map(({ to, label, icon: Icon }) => (
-              <NavLink key={to} to={to} className={childLinkClass}>
-                <Icon className="w-4 h-4 shrink-0" />
-                {label}
-              </NavLink>
-            ))}
+    <Sidebar collapsible="icon">
+      <SidebarHeader className="border-b border-sidebar-border">
+        <div className="flex h-14 items-center gap-2 px-4 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
+          <img src={logo} alt="" className="h-6 w-6 shrink-0" />
+          <span className="font-bold text-sm truncate group-data-[collapsible=icon]:hidden">PassVault</span>
         </div>
-      ))}
-    </nav>
+      </SidebarHeader>
+
+      <SidebarContent>
+        {/* Dashboard */}
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {topItems.map(item => <NavItem key={item.to} {...item} />)}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* Management */}
+        <SidebarGroup>
+          <SidebarGroupLabel>Management</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {managementItems.map(item => <NavItem key={item.to} {...item} />)}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* Logs */}
+        <SidebarGroup>
+          <SidebarGroupLabel>Logs</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {logItems.map(item => <NavItem key={item.to} {...item} />)}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+
+      <SidebarFooter className="border-t border-sidebar-border">
+        <div className="px-3 py-1 text-xs text-sidebar-foreground/60 truncate group-data-[collapsible=icon]:hidden">
+          {username}
+        </div>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton onClick={onLogout} tooltip="Logout">
+              <LogOut className="h-4 w-4 shrink-0" />
+              <span>Logout</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+
+      <SidebarRail />
+    </Sidebar>
   );
 }

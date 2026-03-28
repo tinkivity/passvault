@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useAuth } from '../../../hooks/useAuth.js';
 import { validatePassword } from '@passvault/shared';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 
 export function AdminPage() {
   const { adminChangePassword, loading } = useAuth();
@@ -39,11 +41,11 @@ export function AdminPage() {
     <div>
       <h1 className="text-xl font-bold mb-6">Admin</h1>
 
-      <div className="bg-base-100 rounded-xl border border-base-300 p-6 max-w-md">
+      <div className="bg-card rounded-xl border border-border p-6 max-w-md">
         <h2 className="text-base font-semibold mb-4">Change Password</h2>
 
         {success && (
-          <p className="text-success text-sm mb-4">Password changed successfully.</p>
+          <p className="text-green-600 text-sm mb-4">Password changed successfully.</p>
         )}
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -51,10 +53,10 @@ export function AdminPage() {
             <label htmlFor="new-password" className="text-sm font-medium">
               New Password
             </label>
-            <input
+            <Input
               id="new-password"
               type="password"
-              className="input input-bordered input-sm"
+              className="h-7 text-[0.8rem]"
               autoComplete="new-password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
@@ -66,10 +68,10 @@ export function AdminPage() {
             <label htmlFor="confirm-password" className="text-sm font-medium">
               Confirm Password
             </label>
-            <input
+            <Input
               id="confirm-password"
               type="password"
-              className="input input-bordered input-sm"
+              className="h-7 text-[0.8rem]"
               autoComplete="new-password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
@@ -77,19 +79,20 @@ export function AdminPage() {
             />
           </div>
 
-          <p className="text-xs text-base-content/50">
+          <p className="text-xs text-muted-foreground">
             At least 12 characters with uppercase, lowercase, number, and special character.
           </p>
 
-          {error && <p className="text-error text-sm">{error}</p>}
+          {error && <p className="text-destructive text-sm">{error}</p>}
 
-          <button
+          <Button
             type="submit"
-            className="btn btn-primary btn-sm self-start"
+            size="sm"
+            className="self-start"
             disabled={loading}
           >
             {loading ? 'Saving…' : 'Change Password'}
-          </button>
+          </Button>
         </form>
       </div>
     </div>

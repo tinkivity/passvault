@@ -61,7 +61,7 @@ export function VaultPage() {
   if (!initialFetched && loading) {
     return (
       <Layout>
-        <div className="text-base-content/50 text-sm">Decrypting vault…</div>
+        <div className="text-muted-foreground text-sm">Decrypting vault…</div>
       </Layout>
     );
   }
@@ -69,7 +69,7 @@ export function VaultPage() {
   return (
     <Layout>
       <div className="w-full max-w-2xl flex flex-col gap-4">
-      <div className="bg-base-100 rounded-xl border border-base-300 p-6 flex flex-col min-h-[32rem]">
+      <div className="bg-card rounded-xl border border-border p-6 flex flex-col min-h-[32rem]">
         {mode === 'view' ? (
           <VaultViewer
             content={content}
@@ -92,7 +92,7 @@ export function VaultPage() {
         )}
       </div>
       {isEmailEnv && (
-        <div className="bg-base-100 rounded-xl border border-base-300 p-6">
+        <div className="bg-card rounded-xl border border-border p-6">
           <h2 className="text-sm font-semibold mb-3">Email address</h2>
           <EmailChangeForm
             currentEmail={null}

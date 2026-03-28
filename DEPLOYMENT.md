@@ -376,7 +376,7 @@ GET  /api/vault/download     → Vault Lambda
 POST /api/vault/email        → Vault Lambda
 ```
 
-### 5.5 CloudFront Flat-Rate Plan (Bot Protection) {#cloudfront-flat-rate-plan}
+### 5.5 CloudFront Flat-Rate Plan (Bot Protection)
 
 PassVault uses the **CloudFront Flat-Rate Pricing Plan** (Free tier) for edge-level protection. This is configured outside CDK — enroll the distribution after the first deployment.
 
@@ -444,7 +444,7 @@ All `cdk` commands accept context variables via `--context key=value`:
 | Variable | Required | Applies to | Description |
 |---|---|---|---|
 | `env` | **Yes** | All commands | Deployment environment. Must be `dev`, `beta`, or `prod`. Selects the environment config from `shared/src/config/environments.ts` and names the CloudFormation stack (`PassVault-Dev`, `PassVault-Beta`, `PassVault-Prod`). |
-| `domain` | No | All commands | Root domain name of an existing Route 53 hosted zone (e.g. `example.com`). When provided and `cloudFrontEnabled` is true for the selected environment, CDK creates a `CertificateStack` in `us-east-1` and configures CloudFront with a custom subdomain (`pv.example.com` for prod, `beta.pv.example.com` for beta, `dev.pv.example.com` for dev). Omit to use the auto-generated CloudFront URL. |
+| `domain` | No | `env=beta` or `env=prod` | Root domain name of an existing Route 53 hosted zone (e.g. `example.com`). When provided, CDK creates a `CertificateStack` in `us-east-1` and configures CloudFront with a custom subdomain (`pv.example.com` for prod, `beta.pv.example.com` for beta). Has no effect in dev (`cloudFrontEnabled` is false). Omit to use the auto-generated CloudFront URL. |
 | `alertEmail` | No | `env=beta` or `env=prod` | Email address to subscribe to the SNS alert topic. In prod: receives traffic spike alarms and daily cost alerts. In beta: receives kill switch activation notifications (useful when testing the kill switch manually). After deploy, AWS sends a confirmation email — the subscription is inactive until the link is clicked. Has no effect in dev (no SNS topic is created). |
 | `passkeyRpId` | `env=prod` | `env=prod` | WebAuthn relying party ID — the domain users will authenticate from (e.g. `vault.example.com`). Required when `passkeyRequired=true`. Can also be set via the `PASSKEY_RP_ID` environment variable before running `cdk deploy`. |
 | `passkeyOrigin` | `env=prod` | `env=prod` | WebAuthn relying party origin — the full origin URL (e.g. `https://vault.example.com`). Required when `passkeyRequired=true`. Can also be set via `PASSKEY_ORIGIN` environment variable. |

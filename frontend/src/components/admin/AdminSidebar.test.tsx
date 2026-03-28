@@ -1,165 +1,98 @@
-import { render, screen, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { render, screen } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
+import { SidebarProvider } from '@/components/ui/sidebar';
 import { AdminSidebar } from './AdminSidebar';
 
 function renderSidebar(path = '/admin/dashboard') {
   return render(
     <MemoryRouter initialEntries={[path]}>
-      <AdminSidebar />
+      <SidebarProvider>
+        <AdminSidebar username="testuser" onLogout={() => {}} />
+      </SidebarProvider>
     </MemoryRouter>,
   );
 }
 
 describe('AdminSidebar', () => {
-  // ---- Top-level Dashboard link --------------------------------------------
+  // ---- Navigation links always visible ----------------------------------------
 
-  it('renders Dashboard as a top-level nav link', () => {
+  it('renders Dashboard link', () => {
     renderSidebar();
-    expect(screen.getByRole('link', { name: 'Dashboard' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /dashboard/i })).toBeInTheDocument();
   });
 
   it('Dashboard link points to /admin/dashboard', () => {
     renderSidebar();
-    expect(screen.getByRole('link', { name: 'Dashboard' })).toHaveAttribute('href', '/admin/dashboard');
+    expect(screen.getByRole('link', { name: /dashboard/i })).toHaveAttribute('href', '/admin/dashboard');
   });
 
-  // ---- Management section ---------------------------------------------------
-
-  it('shows Management section header button', () => {
+  it('User link is always visible', () => {
     renderSidebar();
-    expect(screen.getByRole('button', { name: /management/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /^users?$/i })).toBeInTheDocument();
   });
 
-  it('Management label is not all-caps', () => {
+  it('User link points to /admin/users', () => {
     renderSidebar();
-    const btn = screen.getByRole('button', { name: /management/i });
-    expect(btn.textContent).toMatch(/Management/);
-    expect(btn.textContent).not.toBe('MANAGEMENT');
+    expect(screen.getByRole('link', { name: /^users?$/i })).toHaveAttribute('href', '/admin/users');
   });
 
-  it('User and Admin links are hidden when Management is collapsed', () => {
+  it('Admin link is always visible', () => {
     renderSidebar();
-    expect(screen.queryByRole('link', { name: 'User' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'Admin' })).not.toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /^admin$/i })).toBeInTheDocument();
   });
 
-  it('User and Admin links appear after expanding Management', async () => {
+  it('Admin link points to /admin/management/admin', () => {
     renderSidebar();
-    await userEvent.click(screen.getByRole('button', { name: /management/i }));
-    expect(screen.getByRole('link', { name: 'User' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Admin' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /^admin$/i })).toHaveAttribute('href', '/admin/management/admin');
   });
 
-  it('User link points to /admin/users', async () => {
+  it('Logins link is always visible', () => {
     renderSidebar();
-    await userEvent.click(screen.getByRole('button', { name: /management/i }));
-    expect(screen.getByRole('link', { name: 'User' })).toHaveAttribute('href', '/admin/users');
+    expect(screen.getByRole('link', { name: /^logins$/i })).toBeInTheDocument();
   });
 
-  it('Admin link points to /admin/management/admin', async () => {
+  it('Logins link points to /admin/logs/logins', () => {
     renderSidebar();
-    await userEvent.click(screen.getByRole('button', { name: /management/i }));
-    expect(screen.getByRole('link', { name: 'Admin' })).toHaveAttribute('href', '/admin/management/admin');
+    expect(screen.getByRole('link', { name: /^logins$/i })).toHaveAttribute('href', '/admin/logs/logins');
   });
 
-  it('clicking Management twice collapses it again', async () => {
+  // ---- Group labels -----------------------------------------------------------
+
+  it('shows Management group label', () => {
     renderSidebar();
-    await userEvent.click(screen.getByRole('button', { name: /management/i }));
-    await userEvent.click(screen.getByRole('button', { name: /management/i }));
-    expect(screen.queryByRole('link', { name: 'User' })).not.toBeInTheDocument();
+    expect(screen.getByText('Management')).toBeInTheDocument();
   });
 
-  // ---- Logs section --------------------------------------------------------
-
-  it('shows Logs section header button', () => {
+  it('shows Logs group label', () => {
     renderSidebar();
-    expect(screen.getByRole('button', { name: /^logs/i })).toBeInTheDocument();
+    expect(screen.getByText('Logs')).toBeInTheDocument();
   });
 
-  it('Logs label is not all-caps', () => {
-    renderSidebar();
-    const btn = screen.getByRole('button', { name: /^logs/i });
-    expect(btn.textContent).toMatch(/Logs/);
-    expect(btn.textContent).not.toBe('LOGS');
-  });
+  // ---- Active link (aria-current) ---------------------------------------------
 
-  it('Logins link is hidden when Logs is collapsed', () => {
-    renderSidebar();
-    expect(screen.queryByRole('link', { name: 'Logins' })).not.toBeInTheDocument();
-  });
-
-  it('Logins link appears after expanding Logs', async () => {
-    renderSidebar();
-    await userEvent.click(screen.getByRole('button', { name: /^logs/i }));
-    expect(screen.getByRole('link', { name: 'Logins' })).toBeInTheDocument();
-  });
-
-  it('Logins link points to /admin/logs/logins', async () => {
-    renderSidebar();
-    await userEvent.click(screen.getByRole('button', { name: /^logs/i }));
-    expect(screen.getByRole('link', { name: 'Logins' })).toHaveAttribute('href', '/admin/logs/logins');
-  });
-
-  it('clicking Logs twice collapses it again', async () => {
-    renderSidebar();
-    await userEvent.click(screen.getByRole('button', { name: /^logs/i }));
-    await userEvent.click(screen.getByRole('button', { name: /^logs/i }));
-    expect(screen.queryByRole('link', { name: 'Logins' })).not.toBeInTheDocument();
-  });
-
-  // ---- Auto-expand on active route ----------------------------------------
-
-  it('auto-expands Management when on /admin/users', () => {
-    renderSidebar('/admin/users');
-    expect(screen.getByRole('link', { name: 'User' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Admin' })).toBeInTheDocument();
-  });
-
-  it('auto-expands Management when on /admin/management/admin', () => {
-    renderSidebar('/admin/management/admin');
-    expect(screen.getByRole('link', { name: 'Admin' })).toBeInTheDocument();
-  });
-
-  it('auto-expands Logs when on /admin/logs/logins', () => {
-    renderSidebar('/admin/logs/logins');
-    expect(screen.getByRole('link', { name: 'Logins' })).toBeInTheDocument();
-  });
-
-  it('does not auto-expand other sections when on /admin/logs/logins', () => {
-    renderSidebar('/admin/logs/logins');
-    expect(screen.queryByRole('link', { name: 'User' })).not.toBeInTheDocument();
-  });
-
-  // ---- Active styling ------------------------------------------------------
-
-  it('applies active styling to Dashboard when on /admin/dashboard', () => {
+  it('Dashboard link has aria-current="page" when on /admin/dashboard', () => {
     renderSidebar('/admin/dashboard');
-    expect(screen.getByRole('link', { name: 'Dashboard' }).className).toMatch(/border-primary/);
+    expect(screen.getByRole('link', { name: /dashboard/i })).toHaveAttribute('aria-current', 'page');
   });
 
-  it('applies active styling to User when on /admin/users', () => {
+  it('User link has aria-current="page" when on /admin/users', () => {
     renderSidebar('/admin/users');
-    expect(screen.getByRole('link', { name: 'User' }).className).toMatch(/border-primary/);
+    expect(screen.getByRole('link', { name: /^users?$/i })).toHaveAttribute('aria-current', 'page');
   });
 
-  it('applies active styling to Logins when on /admin/logs/logins', () => {
+  it('Logins link has aria-current="page" when on /admin/logs/logins', () => {
     renderSidebar('/admin/logs/logins');
-    expect(screen.getByRole('link', { name: 'Logins' }).className).toMatch(/border-primary/);
+    expect(screen.getByRole('link', { name: /^logins$/i })).toHaveAttribute('aria-current', 'page');
   });
 
-  it('applies active styling to Admin when on /admin/management/admin', () => {
+  it('Admin link has aria-current="page" when on /admin/management/admin', () => {
     renderSidebar('/admin/management/admin');
-    expect(screen.getByRole('link', { name: 'Admin' }).className).toMatch(/border-primary/);
+    expect(screen.getByRole('link', { name: /^admin$/i })).toHaveAttribute('aria-current', 'page');
   });
 
-  // ---- Initial visible links -----------------------------------------------
-
-  it('only Dashboard is visible as a link on initial render', () => {
-    renderSidebar();
-    const nav = screen.getByRole('navigation');
-    const links = within(nav).getAllByRole('link');
-    expect(links.map((l) => l.textContent)).toEqual(['Dashboard']);
+  it('Dashboard link does not have aria-current when on /admin/users', () => {
+    renderSidebar('/admin/users');
+    expect(screen.getByRole('link', { name: /dashboard/i })).not.toHaveAttribute('aria-current', 'page');
   });
 });

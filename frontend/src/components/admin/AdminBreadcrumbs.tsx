@@ -48,15 +48,15 @@ export function AdminBreadcrumbs() {
         const isLast = i === crumbs.length - 1;
         return (
           <span key={i} className="flex items-center gap-1 min-w-0">
-            {i > 0 && <span className="text-base-content/30 select-none shrink-0">›</span>}
+            {i > 0 && <span className="text-muted-foreground select-none shrink-0">›</span>}
             {isLast || !crumb.to ? (
-              <span className={`truncate ${isLast ? 'text-base-content font-medium' : 'text-base-content/50'}`}>
+              <span className={`truncate ${isLast ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
                 {crumb.label}
               </span>
             ) : (
               <Link
                 to={crumb.to}
-                className="text-base-content/50 hover:text-base-content transition-colors truncate"
+                className="text-muted-foreground hover:text-foreground transition-colors truncate"
               >
                 {crumb.label}
               </Link>

@@ -13,7 +13,11 @@
     "jsx": "react-jsx",
     "declaration": false,
     "sourceMap": true,
-    "noEmit": true
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
   },
   "include": ["src"]
 }

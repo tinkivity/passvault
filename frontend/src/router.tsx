@@ -1,7 +1,6 @@
 import { Navigate, Outlet, createBrowserRouter } from 'react-router-dom';
 import { useAuthContext } from './context/AuthContext.js';
 import { LoginPage } from './components/auth/LoginPage.js';
-import { AdminLoginPage } from './components/auth/AdminLoginPage.js';
 import { PasswordChangePage } from './components/auth/PasswordChangePage.js';
 import { PasskeySetupPage } from './components/auth/PasskeySetupPage.js';
 import { VaultPage } from './components/vault/VaultPage.js';
@@ -71,9 +70,6 @@ export const router = createBrowserRouter([
     element: <RequireAuth requiredRole="user" />,
     children: [{ index: true, element: <VaultPage /> }],
   },
-
-  // Admin login
-  { path: '/admin/login', element: <AdminLoginPage /> },
 
   // Admin onboarding
   {

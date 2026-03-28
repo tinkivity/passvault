@@ -55,7 +55,7 @@ export function EmailChangeForm({ currentEmail, onRequestChange, onConfirmChange
 
   if (success) {
     return (
-      <div className="text-sm text-success">
+      <div className="text-sm text-green-600">
         Email updated to {confirmedEmail}.{' '}
         <button className="underline" onClick={() => setSuccess(false)}>Change again</button>
       </div>
@@ -64,7 +64,7 @@ export function EmailChangeForm({ currentEmail, onRequestChange, onConfirmChange
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="text-xs text-base-content/50">
+      <div className="text-xs text-muted-foreground">
         Current email: <span className="font-mono">{currentEmail ?? '—'}</span>
       </div>
 
@@ -94,7 +94,7 @@ export function EmailChangeForm({ currentEmail, onRequestChange, onConfirmChange
         </form>
       ) : (
         <form onSubmit={handleVerifySubmit} className="flex flex-col gap-3">
-          <p className="text-xs text-base-content/60">
+          <p className="text-xs text-muted-foreground">
             A 6-digit verification code has been sent to {newEmail}.
           </p>
           <Input

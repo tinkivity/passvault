@@ -64,7 +64,7 @@ describe('UserList', () => {
 
   it('shows a loading skeleton while loading', () => {
     renderList({ users: [], loading: true });
-    expect(screen.getByText(/Loading users/)).toBeInTheDocument(); // sr-only
+    expect(screen.getByText(/Loading users/)).toBeInTheDocument(); // caption sr-only
   });
 
   it('shows an empty-state message when there are no users', () => {
@@ -90,7 +90,7 @@ describe('UserList', () => {
 
   it('clicking a different column sorts by that column', async () => {
     renderList();
-    await userEvent.click(screen.getByRole('button', { name: /created/i }));
+    await userEvent.click(screen.getByRole('button', { name: 'Created' }));
     const rows = screen.getAllByRole('row').slice(1);
     // createdAt ascending: charlie (Jan 15), bob (Jan 20), alice (Feb 01)
     expect(rows[0]).toHaveTextContent('charlie');
@@ -100,7 +100,7 @@ describe('UserList', () => {
 
   it('sorts lastLoginAt ascending with null values last', async () => {
     renderList();
-    await userEvent.click(screen.getByRole('button', { name: /last login/i }));
+    await userEvent.click(screen.getByRole('button', { name: 'Last login' }));
     const rows = screen.getAllByRole('row').slice(1);
     // bob: Feb 15, charlie: Mar 01, alice: null (last)
     expect(rows[0]).toHaveTextContent('bob');
@@ -127,7 +127,8 @@ describe('UserList', () => {
         onDeleteUser={vi.fn()}
       />,
     );
-    await userEvent.click(screen.getByLabelText("Download alice's vault"));
+    await userEvent.click(screen.getByRole('button', { name: "Actions for alice" }));
+    await userEvent.click(await screen.findByText(/download vault/i));
     expect(onDownload).toHaveBeenCalledWith('u2', 'alice');
   });
 
@@ -139,12 +140,19 @@ describe('UserList', () => {
     expect(screen.getAllByText('—').length).toBeGreaterThan(0);
   });
 
-  it('shows Refresh OTP and Delete buttons only for pending_first_login users', () => {
+  it('shows Refresh OTP and Delete options only for pending_first_login users', async () => {
     renderList();
-    expect(screen.getByLabelText('Refresh OTP for alice')).toBeInTheDocument();
-    expect(screen.getByLabelText('Delete alice')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Refresh OTP for charlie')).not.toBeInTheDocument();
-    expect(screen.queryByLabelText('Refresh OTP for bob')).not.toBeInTheDocument();
+    // alice is pending_first_login — should have both options
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for alice' }));
+    expect(await screen.findByText(/refresh otp/i)).toBeInTheDocument();
+    expect(screen.getByText(/delete user/i)).toBeInTheDocument();
+    // close menu
+    await userEvent.keyboard('{Escape}');
+    // bob is pending_passkey_setup — no refresh/delete
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for bob' }));
+    await screen.findByText(/download vault/i);
+    expect(screen.queryByText(/refresh otp/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/delete user/i)).not.toBeInTheDocument();
   });
 
   it('calls onRefreshOtp and shows OtpDisplay on success', async () => {
@@ -153,7 +161,8 @@ describe('UserList', () => {
       oneTimePassword: 'NEWOTP99',
     });
     renderList({ onRefreshOtp });
-    await userEvent.click(screen.getByLabelText('Refresh OTP for alice'));
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for alice' }));
+    await userEvent.click(await screen.findByText(/refresh otp/i));
     expect(onRefreshOtp).toHaveBeenCalledWith('u2');
     expect(await screen.findByText('NEWOTP99')).toBeInTheDocument();
   });
@@ -164,7 +173,8 @@ describe('UserList', () => {
       oneTimePassword: 'NEWOTP99',
     });
     renderList({ onRefreshOtp });
-    await userEvent.click(screen.getByLabelText('Refresh OTP for alice'));
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for alice' }));
+    await userEvent.click(await screen.findByText(/refresh otp/i));
     await screen.findByText('NEWOTP99');
     await userEvent.click(screen.getByText('Done'));
     const tbody = screen.getAllByRole('rowgroup')[1];
@@ -174,27 +184,30 @@ describe('UserList', () => {
   it('shows confirm/cancel buttons before calling onDeleteUser', async () => {
     const onDeleteUser = vi.fn().mockResolvedValue(undefined);
     renderList({ onDeleteUser });
-    await userEvent.click(screen.getByLabelText('Delete alice'));
-    expect(screen.getByText('Confirm')).toBeInTheDocument();
-    expect(screen.getByText('Cancel')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for alice' }));
+    await userEvent.click(await screen.findByText(/delete user/i));
+    expect(await screen.findByRole('button', { name: /^delete$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^cancel$/i })).toBeInTheDocument();
     expect(onDeleteUser).not.toHaveBeenCalled();
   });
 
   it('calls onDeleteUser when delete is confirmed', async () => {
     const onDeleteUser = vi.fn().mockResolvedValue(undefined);
     renderList({ onDeleteUser });
-    await userEvent.click(screen.getByLabelText('Delete alice'));
-    await userEvent.click(screen.getByText('Confirm'));
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for alice' }));
+    await userEvent.click(await screen.findByText(/delete user/i));
+    await userEvent.click(await screen.findByRole('button', { name: /^delete$/i }));
     expect(onDeleteUser).toHaveBeenCalledWith('u2');
   });
 
   it('cancels delete when Cancel is clicked', async () => {
     const onDeleteUser = vi.fn();
     renderList({ onDeleteUser });
-    await userEvent.click(screen.getByLabelText('Delete alice'));
-    await userEvent.click(screen.getByText('Cancel'));
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for alice' }));
+    await userEvent.click(await screen.findByText(/delete user/i));
+    await userEvent.click(await screen.findByRole('button', { name: /^cancel$/i }));
     expect(onDeleteUser).not.toHaveBeenCalled();
-    expect(screen.getByLabelText('Delete alice')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Actions for alice' })).toBeInTheDocument();
   });
 
   it('calls onRowClick with the user when a row is clicked', async () => {
@@ -205,10 +218,10 @@ describe('UserList', () => {
     expect(onRowClick).toHaveBeenCalledWith(mockUsers.find(u => u.username === 'charlie'));
   });
 
-  it('does not call onRowClick when an action button is clicked', async () => {
+  it('does not call onRowClick when the actions dropdown trigger is clicked', async () => {
     const onRowClick = vi.fn();
     renderList({ onRowClick });
-    await userEvent.click(screen.getByLabelText("Download alice's vault"));
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for alice' }));
     expect(onRowClick).not.toHaveBeenCalled();
   });
 
@@ -237,7 +250,9 @@ describe('UserList', () => {
 
   it('status filter hides non-matching users', async () => {
     renderList();
-    await userEvent.selectOptions(screen.getByLabelText(/filter by status/i), 'active');
+    await userEvent.click(screen.getByLabelText(/filter by status/i));
+    await userEvent.click(await screen.findByRole('option', { name: /^active$/i }));
+    await userEvent.keyboard('{Escape}');
     const tbody = screen.getAllByRole('rowgroup')[1];
     expect(within(tbody).getByText('charlie')).toBeInTheDocument();
     expect(within(tbody).queryByText('alice')).not.toBeInTheDocument();
@@ -259,16 +274,16 @@ describe('UserList', () => {
     expect(screen.getByText(/no users match the current filters/i)).toBeInTheDocument();
   });
 
-  it('shows clear filters button when filters are active', async () => {
+  it('shows reset button when filters are active', async () => {
     renderList();
-    await userEvent.selectOptions(screen.getByLabelText(/filter by status/i), 'active');
-    expect(screen.getByRole('button', { name: /clear filters/i })).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText(/filter by username/i), 'ali');
+    expect(screen.getByRole('button', { name: /reset/i })).toBeInTheDocument();
   });
 
-  it('clear filters button resets all filters', async () => {
+  it('reset button clears all filters', async () => {
     renderList();
-    await userEvent.selectOptions(screen.getByLabelText(/filter by status/i), 'active');
-    await userEvent.click(screen.getByRole('button', { name: /clear filters/i }));
+    await userEvent.type(screen.getByLabelText(/filter by username/i), 'ali');
+    await userEvent.click(screen.getByRole('button', { name: /reset/i }));
     const tbody = screen.getAllByRole('rowgroup')[1];
     expect(within(tbody).getByText('alice')).toBeInTheDocument();
     expect(within(tbody).getByText('bob')).toBeInTheDocument();
@@ -282,7 +297,7 @@ describe('UserList', () => {
 
   it('shows filtered record count when filters are active', async () => {
     renderList();
-    await userEvent.selectOptions(screen.getByLabelText(/filter by status/i), 'active');
+    await userEvent.type(screen.getByLabelText(/filter by username/i), 'ali');
     expect(screen.getByText(/showing 1 of 3 records/i)).toBeInTheDocument();
   });
 });

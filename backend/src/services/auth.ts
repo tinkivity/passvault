@@ -35,7 +35,7 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
       return { error: ERRORS.INVALID_PASSKEY, statusCode: 401 };
     }
     user = await getUserById(userId);
-    if (!user || user.role !== 'user') {
+    if (!user) {
       return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
     }
   } else {
@@ -44,7 +44,7 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
       return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
     }
     user = await getUserByUsername(request.username);
-    if (!user || user.role !== 'user') {
+    if (!user) {
       return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
     }
   }

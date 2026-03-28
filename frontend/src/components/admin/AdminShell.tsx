@@ -1,7 +1,6 @@
 import { useCallback } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import {
-  ArrowRightStartOnRectangleIcon,
   SunIcon,
   MoonIcon,
 } from '@heroicons/react/24/outline';
@@ -11,6 +10,9 @@ import { useTheme } from '../../hooks/useTheme.js';
 import { EnvironmentBanner } from '../layout/EnvironmentBanner.js';
 import { AdminSidebar } from './AdminSidebar.js';
 import { AdminBreadcrumbs } from './AdminBreadcrumbs.js';
+import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
+import { SidebarProvider, SidebarTrigger, SidebarInset } from '@/components/ui/sidebar';
 
 const ADMIN_TIMEOUT = Number(import.meta.env.VITE_ADMIN_TIMEOUT_SECONDS ?? 86400);
 
@@ -21,7 +23,7 @@ export function AdminShell() {
 
   const handleLogout = useCallback(() => {
     logout();
-    navigate('/admin/login', { replace: true });
+    navigate('/login', { replace: true });
   }, [logout, navigate]);
 
   const { secondsLeft } = useAutoLogout({
@@ -35,45 +37,39 @@ export function AdminShell() {
   const timeDisplay = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
-      <EnvironmentBanner />
-      <header className="h-14 flex items-center px-4 bg-base-100 border-b border-base-300 shrink-0 gap-4">
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="font-bold text-base-content">PassVault</span>
-          <span className="text-base-content/40 text-sm hidden sm:inline">Admin Console</span>
+    <SidebarProvider>
+      <div className="admin-area flex h-screen flex-col w-full">
+        <EnvironmentBanner />
+        <div className="flex flex-1 overflow-hidden">
+          <AdminSidebar username={username ?? ''} onLogout={handleLogout} />
+          <SidebarInset className="flex flex-col overflow-hidden">
+            <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b bg-background px-4">
+              <SidebarTrigger className="-ml-1" />
+              <Separator orientation="vertical" className="mr-2 h-4" />
+              <div className="flex-1 min-w-0">
+                <AdminBreadcrumbs />
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <span className="text-sm text-foreground/60 hidden sm:inline mr-2">{timeDisplay}</span>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={toggleTheme}
+                  title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+                  aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+                >
+                  {isDark
+                    ? <SunIcon className="w-4 h-4" />
+                    : <MoonIcon className="w-4 h-4" />}
+                </Button>
+              </div>
+            </header>
+            <main className="flex-1 overflow-auto bg-muted p-6">
+              <Outlet />
+            </main>
+          </SidebarInset>
         </div>
-        <div className="flex-1 min-w-0">
-          <AdminBreadcrumbs />
-        </div>
-        <div className="flex items-center gap-1 shrink-0">
-          <span className="text-sm text-base-content/60 hidden sm:inline mr-2">
-            {username} · {timeDisplay}
-          </span>
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={toggleTheme}
-            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-            aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-          >
-            {isDark
-              ? <SunIcon className="w-4 h-4" />
-              : <MoonIcon className="w-4 h-4" />}
-          </button>
-          <button
-            className="btn btn-sm btn-ghost text-error flex items-center gap-1.5"
-            onClick={handleLogout}
-          >
-            <ArrowRightStartOnRectangleIcon className="w-4 h-4" />
-            Logout
-          </button>
-        </div>
-      </header>
-      <div className="flex flex-1 overflow-hidden">
-        <AdminSidebar />
-        <main className="flex-1 overflow-auto p-6 bg-base-200">
-          <Outlet />
-        </main>
       </div>
-    </div>
+    </SidebarProvider>
   );
 }

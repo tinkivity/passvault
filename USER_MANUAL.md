@@ -219,7 +219,7 @@ Click **Edit** to switch to edit mode. The background changes to indicate you ar
 
 ### 3.1 First-Time Admin Login
 
-The admin account is created by running `scripts/init-admin.ts`. The initial password is printed to the console once and never stored. Use it to log in at `/admin/login`.
+The admin account is created by running `scripts/init-admin.ts`. The initial password is printed to the console once and never stored. Use it to log in at `/login` — the same login page used by regular users. The backend detects the admin role and redirects accordingly.
 
 The flow mirrors the end-user first-time login:
 1. Log in with the initial password.
@@ -231,18 +231,30 @@ The flow mirrors the end-user first-time login:
 
 ### 3.2 Normal Admin Login
 
-Navigate to `/admin/login`.
+Navigate to `/login` — the same page used by regular users.
+
+#### Production (passkey + password)
 
 ```
 ┌─────────────────────────────────────────────────┐
-│              PassVault Admin Login              │
+│                   PassVault                     │
 │                                                 │
-│  (Production — Step 1)                          │
+│  Step 1 of 2                                    │
 │             [ Sign in with Passkey ]            │
 │                                                 │
-│  ─────────────────── OR ──────────────────────  │
+│  Your browser will ask for your biometric       │
+│  or device PIN to identify you.                 │
+└─────────────────────────────────────────────────┘
+```
+
+After the passkey is verified, the username is pre-filled and you enter your password. The backend determines whether the account is admin or user and redirects accordingly.
+
+#### Dev / Beta (username + password only)
+
+```
+┌─────────────────────────────────────────────────┐
+│             PassVault  [BETA ENVIRONMENT]       │
 │                                                 │
-│  (Dev / Beta — direct)                          │
 │  Username  [ admin                            ] │
 │  Password  [ ••••••••••••••••                 ] │
 │                                                 │
@@ -250,26 +262,32 @@ Navigate to `/admin/login`.
 └─────────────────────────────────────────────────┘
 ```
 
+After login the admin is redirected to `/admin/dashboard`; a regular user is redirected to `/vault`.
+
 ---
 
 ### 3.3 Dashboard
 
-After login the admin is taken to the **Dashboard** (`/admin/dashboard`). The console uses a full-browser layout.
+After login the admin is taken to the **Dashboard** (`/admin/dashboard`). The console uses a full-browser layout with a collapsible sidebar on the left and a content area on the right.
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│  PassVault  Admin Console    Admin > Dashboard    admin · 7:42 · [Logout] │
-├──────────────────┬───────────────────────────────────────────────┤
-│                  │                                               │
-│  Dashboard       │  Dashboard                                    │
-│                  │                                               │
-│  Users           │  ┌──────────┐  ┌──────────────┐  ┌────────┐ │
-│                  │  │  Users   │  │ Vault Storage │  │ Logins │ │
-│  Logs            │  │    [12]  │  │   [1.3 MB]   │  │  [47]  │ │
-│    Logins        │  └──────────┘  └──────────────┘  └────────┘ │
-│                  │  (clickable)                    (clickable)  │
-│                  │                                               │
-└──────────────────┴───────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│ [logo] PassVault  │ [≡] Admin › Dashboard                  7h 42m ☀ │
+│───────────────────│──────────────────────────────────────────────────│
+│                   │                                                  │
+│  Dashboard        │  Dashboard                                       │
+│                   │                                                  │
+│  Management       │  ┌──────────┐  ┌──────────────┐  ┌──────────┐  │
+│    Users          │  │  Users   │  │ Vault Storage │  │  Logins  │  │
+│    Admin          │  │   [12]   │  │   [1.3 MB]   │  │   [47]   │  │
+│                   │  └──────────┘  └──────────────┘  └──────────┘  │
+│  Logs             │  (clickable)                      (clickable)   │
+│    Logins         │                                                  │
+│                   │  [Login chart — today: hourly / 7d or 30d: daily]│
+│───────────────────│                                                  │
+│  admin            │                                                  │
+│  [Logout]         │                                                  │
+└───────────────────┴──────────────────────────────────────────────────┘
 ```
 
 **Metric cards:**
@@ -277,15 +295,26 @@ After login the admin is taken to the **Dashboard** (`/admin/dashboard`). The co
 - **Vault Storage** — combined size of all encrypted vault files.
 - **Logins (last 7 days)** — login event count. Click the number to go to the Logins screen.
 
-**Top bar (right side):**
-- Username label
-- Session countdown timer (e.g. `7:42`)
-- **Logout** button
+**Sticky header (top of content area):**
+- `[≡]` — sidebar collapse/expand toggle
+- Breadcrumbs (e.g. `Admin › Dashboard`)
+- Session countdown timer (e.g. `7h 42m`) — hidden on small screens
+- Dark/light mode toggle (☀/🌙)
 
-**Sidebar:**
+**Sidebar footer:**
+- Username label
+- **Logout** button (icon-only when sidebar is collapsed)
+
+**Sidebar nav:**
 - *Dashboard* — this screen
-- *Users* — user management
+- *Management > Users* — user management
+- *Management > Admin* — admin account management
 - *Logs > Logins* — login event history
+
+**Login chart (below metric cards):**
+- Range selector: **Today** / **Last 7 days** / **Last 30 days**
+- *Today*: x-axis shows hours (`0h`, `4h`, `8h`, …, `20h`); subtitle "Number of logins per hour"
+- *Last 7 / 30 days*: x-axis shows dates (`Mar 28`); subtitle "Number of logins per day"
 
 ---
 
@@ -294,20 +323,23 @@ After login the admin is taken to the **Dashboard** (`/admin/dashboard`). The co
 Navigate to `/admin/users` via the sidebar.
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│  PassVault  Admin Console    Admin > Users        admin · 7:30 · [Logout] │
-├──────────────────┬───────────────────────────────────────────────┤
-│                  │  Users                          [+ Create User] │
-│  Dashboard       │                                               │
-│                  │  ┌────────┬──────────┬──────────┬───────────┐ │
-│  Users  ◄        │  │ User   │  Status  │  Created │ Last Login│ │
-│                  │  ├────────┼──────────┼──────────┼───────────┤ │
-│  Logs            │  │ alice  │ active   │ 2024-01  │ 2024-03   │ │
-│    Logins        │  │ bob    │ pending  │ 2024-02  │ —         │ │
-│                  │  │ carol  │ active   │ 2024-02  │ 2024-03   │ │
-│                  │  └────────┴──────────┴──────────┴───────────┘ │
-│                  │  (click any row for details)                  │
-└──────────────────┴───────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│ [logo] PassVault  │ [≡] Admin › Users                      7h 30m ☀ │
+│───────────────────│──────────────────────────────────────────────────│
+│                   │  Users                            [+ Create User] │
+│  Dashboard        │                                                  │
+│                   │  ┌────────┬─────────┬──────────┬──────────┬──────────┐ │
+│  Management       │  │ User   │ Status  │ Created  │ Last Login│Vault Size│ │
+│    Users  ◄       │  ├────────┼─────────┼──────────┼──────────┼──────────┤ │
+│    Admin          │  │ alice  │ active  │ 2024-01  │ 2024-03  │  4.2 KB  │ │
+│                   │  │ bob    │ pending │ 2024-02  │ —        │  empty   │ │
+│  Logs             │  │ carol  │ active  │ 2024-02  │ 2024-03  │  1.8 KB  │ │
+│    Logins         │  └────────┴─────────┴──────────┴──────────┴──────────┘ │
+│                   │  (click any row for details)                    │
+│───────────────────│                                                  │
+│  admin            │                                                  │
+│  [Logout]         │                                                  │
+└───────────────────┴──────────────────────────────────────────────────┘
 ```
 
 #### Create User
@@ -351,23 +383,23 @@ Click **Done** to close the modal. If an email was provided, the OTP was also se
 Click any row on the Users screen to open the detail view (`/admin/users/:userId`).
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│  PassVault  Admin Console  Admin > Users > alice  admin · 7:18 · [Logout] │
-├──────────────────┬───────────────────────────────────────────────┤
-│                  │  ← Users                                      │
-│  Dashboard       │                                               │
-│                  │  alice                                        │
-│  Users  ◄        │  ──────────────────────────────────────────  │
-│                  │  Status:       active                         │
-│  Logs            │  Email:        alice@example.com              │
-│    Logins        │  Created:      2024-01-15 09:00 UTC           │
-│                  │  Last Login:   2024-03-10 08:00 UTC           │
-│                  │  Vault Size:   4.2 KB                         │
-│                  │                                               │
-│                  │  [ Download Vault ]                           │
-│                  │  [ Refresh OTP ]    (pending users only)      │
-│                  │  [ Delete User ]    (pending users only)      │
-└──────────────────┴───────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│ [logo] PassVault  │ [≡] Admin › Users › alice              7h 18m ☀ │
+│───────────────────│──────────────────────────────────────────────────│
+│                   │  ← Users                                         │
+│  Dashboard        │                                                  │
+│                   │  alice                                           │
+│  Management       │  ──────────────────────────────────────────────  │
+│    Users  ◄       │  Status:       active                            │
+│    Admin          │  Email:        alice@example.com                 │
+│                   │  Created:      2024-01-15 09:00 UTC              │
+│  Logs             │  Last Login:   2024-03-10 08:00 UTC              │
+│    Logins         │  Vault Size:   4.2 KB                            │
+│                   │                                                  │
+│───────────────────│  [ Download Vault ]                              │
+│  admin            │  [ Refresh OTP ]    (pending users only)         │
+│  [Logout]         │  [ Delete User ]    (pending users only)         │
+└───────────────────┴──────────────────────────────────────────────────┘
 ```
 
 | Button | Available when | Action |
@@ -385,24 +417,23 @@ Click any row on the Users screen to open the detail view (`/admin/users/:userId
 Navigate to `/admin/logs/logins` via **Logs > Logins** in the sidebar (or click the Logins count on the Dashboard).
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│  PassVault  Admin Console  Admin > Logs > Logins  admin · 6:55 · [Logout] │
-├──────────────────┬───────────────────────────────────────────────┤
-│                  │  Logins                                    [↺] │
-│  Dashboard       │                                               │
-│                  │  Status [All ▼]  Username [All ▼]            │
-│  Users           │  From [          ]  To [          ]          │
-│                  │  Duration [All durations ▼]  [Clear filters] │
-│  Logs            │                                               │
-│    Logins  ◄     │  ┌────────┬──────────┬───────────────┬───────┐ │
-│                  │  │ Status │ Username │ Login Time    │ Dur.  │ │
-│                  │  ├────────┼──────────┼───────────────┼───────┤ │
-│                  │  │  ✓     │ alice    │ 2024-03-13 …  │ 03:22 │ │
-│                  │  │  ✗     │ bob      │ 2024-03-12 …  │ —     │ │
-│                  │  │  ✓     │ alice    │ 2024-03-11 …  │ 45:00 │ │
-│                  │  └────────┴──────────┴───────────────┴───────┘ │
-│                  │                   Showing 3 of 47 events      │
-└──────────────────┴───────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│ [logo] PassVault  │ [≡] Admin › Logs › Logins              6h 55m ☀ │
+│───────────────────│──────────────────────────────────────────────────│
+│                   │  Logins                                      [↺] │
+│  Dashboard        │                                                  │
+│                   │  Status [All ▼]  Username [All ▼]               │
+│  Management       │  From [          ]  To [          ]             │
+│    Users          │  Duration [All durations ▼]  [Clear filters]    │
+│    Admin          │                                                  │
+│                   │  ┌────────┬──────────┬───────────────┬───────┐  │
+│  Logs             │  │ Status │ Username │ Login Time    │ Dur.  │  │
+│    Logins  ◄      │  ├────────┼──────────┼───────────────┼───────┤  │
+│                   │  │  ✓     │ alice    │ 2024-03-13 …  │ 03:22 │  │
+│───────────────────│  │  ✗     │ bob      │ 2024-03-12 …  │ —     │  │
+│  admin            │  │  ✓     │ alice    │ 2024-03-11 …  │ 45:00 │  │
+│  [Logout]         │  └────────┴──────────┴───────────────┴───────┘  │
+└───────────────────┴──────────────────────────────────────────────────┘
 ```
 
 #### Columns
