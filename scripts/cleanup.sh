@@ -7,7 +7,10 @@
 # Run this after: cdk destroy PassVault-{Dev|Beta|Prod} --context env={env}
 #
 # Resources cleaned up:
-#   • DynamoDB table    passvault-users-{env}                  (removalPolicy: RETAIN)
+#   • DynamoDB tables   passvault-users-{env}                  (removalPolicy: RETAIN)
+#                       passvault-vaults-{env}                 (removalPolicy: RETAIN)
+#                       passvault-config-{env}                 (removalPolicy: RETAIN)
+#                       passvault-login-events-{env}           (removalPolicy: DESTROY, sometimes missed)
 #   • S3 files bucket   auto-named, found via CFN stack tag    (removalPolicy: RETAIN)
 #   • CloudWatch logs   /aws/lambda/passvault-*-{env}          (DESTROY but sometimes missed)
 #   • (prod only)       /aws/lambda/passvault-kill-switch
@@ -114,32 +117,40 @@ section() {
 
 # ── DynamoDB ──────────────────────────────────────────────────────────────────
 section "DynamoDB ───────────────────────────────────────────────────────────────"
-TABLE="passvault-users-${ENV}"
 
-if aws dynamodb describe-table \
-    --table-name "$TABLE" \
-    --region "$REGION" &>/dev/null; then
+_delete_table() {
+  local table="$1"
+  if aws dynamodb describe-table \
+      --table-name "$table" \
+      --region "$REGION" &>/dev/null; then
 
-  ITEM_COUNT=$(aws dynamodb scan \
-    --table-name "$TABLE" \
-    --region "$REGION" \
-    --select COUNT \
-    --query "Count" \
-    --output text)
-  echo "  Found: $TABLE  ($ITEM_COUNT items)"
+    local item_count
+    item_count=$(aws dynamodb scan \
+      --table-name "$table" \
+      --region "$REGION" \
+      --select COUNT \
+      --query "Count" \
+      --output text)
+    echo "  Found: $table  ($item_count items)"
 
-  if confirm "Delete table '$TABLE'?"; then
-    aws dynamodb delete-table \
-      --table-name "$TABLE" \
-      --region "$REGION" &>/dev/null
-    echo "  ✓ Deleted."
-    DELETED+=("DynamoDB: $TABLE")
+    if confirm "Delete table '$table'?"; then
+      aws dynamodb delete-table \
+        --table-name "$table" \
+        --region "$REGION" &>/dev/null
+      echo "  ✓ Deleted."
+      DELETED+=("DynamoDB: $table")
+    else
+      echo "  Skipped."
+    fi
   else
-    echo "  Skipped."
+    echo "  Not found: $table  (already removed or never deployed)"
   fi
-else
-  echo "  Not found: $TABLE  (already removed or never deployed)"
-fi
+}
+
+_delete_table "passvault-users-${ENV}"
+_delete_table "passvault-vaults-${ENV}"
+_delete_table "passvault-config-${ENV}"
+_delete_table "passvault-login-events-${ENV}"
 
 # ── S3 files bucket ───────────────────────────────────────────────────────────
 section "S3 ──────────────────────────────────────────────────────────────────────"
