@@ -3,7 +3,16 @@ import { API_PATHS, POW_CONFIG, ERRORS } from '@passvault/shared';
 import { success, error } from '../utils/response.js';
 import { validatePow } from '../middleware/pow.js';
 import { requireAuth } from '../middleware/auth.js';
-import { getVault, putVault, downloadVault, sendVaultEmail } from '../services/vault.js';
+import {
+  listVaults,
+  createVault,
+  deleteVault,
+  getVault,
+  putVault,
+  downloadVault,
+  sendVaultEmail,
+  getWarningCodes,
+} from '../services/vault.js';
 
 function parseBody(event: APIGatewayProxyEvent): { body: Record<string, unknown> } | { parseError: APIGatewayProxyResult } {
   try {
@@ -17,26 +26,60 @@ function parseBody(event: APIGatewayProxyEvent): { body: Record<string, unknown>
   }
 }
 
+/** Extract vaultId from paths like /api/vault/{vaultId} or /api/vaults/{vaultId} */
+function extractVaultId(path: string): string | null {
+  const m = path.match(/\/api\/vault[s]?\/([^/]+)/);
+  return m?.[1] ?? null;
+}
+
 export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
   const path = event.path;
   const method = event.httpMethod;
 
   try {
-    // GET /vault
-    if (path === API_PATHS.VAULT && method === 'GET') {
-      return await handleGetVault(event);
+    // GET /api/config/warning-codes — public, no auth
+    if (path === API_PATHS.CONFIG_WARNING_CODES && method === 'GET') {
+      const result = await getWarningCodes();
+      return success(result.response);
     }
-    // PUT /vault
-    if (path === API_PATHS.VAULT && method === 'PUT') {
-      return await handlePutVault(event);
+
+    // GET /api/vaults — list user vaults
+    if (path === API_PATHS.VAULTS && method === 'GET') {
+      return await handleListVaults(event);
     }
-    // GET /vault/download
-    if (path === API_PATHS.VAULT_DOWNLOAD && method === 'GET') {
-      return await handleDownloadVault(event);
+
+    // POST /api/vaults — create vault
+    if (path === API_PATHS.VAULTS && method === 'POST') {
+      return await handleCreateVault(event);
     }
-    // POST /vault/email
-    if (path === API_PATHS.VAULT_SEND_EMAIL && method === 'POST') {
-      return await handleSendVaultEmail(event);
+
+    // DELETE /api/vaults/{vaultId}
+    const vaultsDeleteMatch = path.match(/^\/api\/vaults\/([^/]+)$/);
+    if (vaultsDeleteMatch && method === 'DELETE') {
+      return await handleDeleteVault(event, vaultsDeleteMatch[1]);
+    }
+
+    // GET /api/vault/{vaultId} — get vault content
+    const vaultGetMatch = path.match(/^\/api\/vault\/([^/]+)$/);
+    if (vaultGetMatch && method === 'GET') {
+      return await handleGetVault(event, vaultGetMatch[1]);
+    }
+
+    // PUT /api/vault/{vaultId} — save vault content
+    if (vaultGetMatch && method === 'PUT') {
+      return await handlePutVault(event, vaultGetMatch[1]);
+    }
+
+    // GET /api/vault/{vaultId}/download
+    const vaultDownloadMatch = path.match(/^\/api\/vault\/([^/]+)\/download$/);
+    if (vaultDownloadMatch && method === 'GET') {
+      return await handleDownloadVault(event, vaultDownloadMatch[1]);
+    }
+
+    // POST /api/vault/{vaultId}/email
+    const vaultEmailMatch = path.match(/^\/api\/vault\/([^/]+)\/email$/);
+    if (vaultEmailMatch && method === 'POST') {
+      return await handleSendVaultEmail(event, vaultEmailMatch[1]);
     }
 
     return error('Not found', 404);
@@ -46,25 +89,30 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
   }
 }
 
-async function handleGetVault(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+async function requireActiveOrExpired(event: APIGatewayProxyEvent): Promise<
+  { user: { userId: string; status: string }; errorResponse?: never } |
+  { errorResponse: APIGatewayProxyResult; user?: never }
+> {
+  const { user, errorResponse } = await requireAuth(event);
+  if (errorResponse) return { errorResponse };
+  if (user!.status === 'retired' || user!.status === 'locked') {
+    return { errorResponse: error(ERRORS.FORBIDDEN, 403) };
+  }
+  return { user: user! };
+}
+
+async function handleListVaults(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
   const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
   if (pow.errorResponse) return pow.errorResponse;
 
   const { user, errorResponse } = await requireAuth(event);
   if (errorResponse) return errorResponse;
 
-  if (user!.status !== 'active') {
-    return error(ERRORS.FORBIDDEN, 403);
-  }
-
-  const result = await getVault(user!.userId);
-  if (result.error) {
-    return error(result.error, result.statusCode || 500);
-  }
+  const result = await listVaults(user!.userId);
   return success(result.response);
 }
 
-async function handlePutVault(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+async function handleCreateVault(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
   const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
   if (pow.errorResponse) return pow.errorResponse;
 
@@ -77,14 +125,13 @@ async function handlePutVault(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
   const parsed = parseBody(event);
   if ('parseError' in parsed) return parsed.parseError;
-  const result = await putVault(user!.userId, parsed.body);
-  if (result.error) {
-    return error(result.error, result.statusCode || 500);
-  }
-  return success(result.response);
+
+  const result = await createVault(user!.userId, parsed.body as { displayName: string });
+  if (result.error) return error(result.error, result.statusCode || 400);
+  return success(result.response, 201);
 }
 
-async function handleDownloadVault(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+async function handleDeleteVault(event: APIGatewayProxyEvent, vaultId: string): Promise<APIGatewayProxyResult> {
   const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
   if (pow.errorResponse) return pow.errorResponse;
 
@@ -95,14 +142,68 @@ async function handleDownloadVault(event: APIGatewayProxyEvent): Promise<APIGate
     return error(ERRORS.FORBIDDEN, 403);
   }
 
-  const result = await downloadVault(user!.userId);
-  if (result.error) {
-    return error(result.error, result.statusCode || 500);
-  }
+  const result = await deleteVault(user!.userId, vaultId);
+  if (result.error) return error(result.error, result.statusCode || 400);
   return success(result.response);
 }
 
-async function handleSendVaultEmail(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+async function handleGetVault(event: APIGatewayProxyEvent, vaultId: string): Promise<APIGatewayProxyResult> {
+  const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
+  if (pow.errorResponse) return pow.errorResponse;
+
+  const { user, errorResponse } = await requireAuth(event);
+  if (errorResponse) return errorResponse;
+
+  // Allow active and expired users to read
+  if (user!.status !== 'active' && user!.status !== 'expired') {
+    return error(ERRORS.FORBIDDEN, 403);
+  }
+
+  const result = await getVault(user!.userId, vaultId);
+  if (result.error) return error(result.error, result.statusCode || 500);
+  return success(result.response);
+}
+
+async function handlePutVault(event: APIGatewayProxyEvent, vaultId: string): Promise<APIGatewayProxyResult> {
+  const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
+  if (pow.errorResponse) return pow.errorResponse;
+
+  const { user, errorResponse } = await requireAuth(event);
+  if (errorResponse) return errorResponse;
+
+  // Only active users can write
+  if (user!.status === 'expired') {
+    return error(ERRORS.ACCOUNT_EXPIRED, 403);
+  }
+  if (user!.status !== 'active') {
+    return error(ERRORS.FORBIDDEN, 403);
+  }
+
+  const parsed = parseBody(event);
+  if ('parseError' in parsed) return parsed.parseError;
+
+  const result = await putVault(user!.userId, vaultId, parsed.body as { encryptedContent: string });
+  if (result.error) return error(result.error, result.statusCode || 500);
+  return success(result.response);
+}
+
+async function handleDownloadVault(event: APIGatewayProxyEvent, vaultId: string): Promise<APIGatewayProxyResult> {
+  const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
+  if (pow.errorResponse) return pow.errorResponse;
+
+  const { user, errorResponse } = await requireAuth(event);
+  if (errorResponse) return errorResponse;
+
+  if (user!.status !== 'active' && user!.status !== 'expired') {
+    return error(ERRORS.FORBIDDEN, 403);
+  }
+
+  const result = await downloadVault(user!.userId, vaultId);
+  if (result.error) return error(result.error, result.statusCode || 500);
+  return success(result.response);
+}
+
+async function handleSendVaultEmail(event: APIGatewayProxyEvent, vaultId: string): Promise<APIGatewayProxyResult> {
   const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
   if (pow.errorResponse) return pow.errorResponse;
 
@@ -113,9 +214,7 @@ async function handleSendVaultEmail(event: APIGatewayProxyEvent): Promise<APIGat
     return error(ERRORS.FORBIDDEN, 403);
   }
 
-  const result = await sendVaultEmail(user!.userId);
-  if (result.error) {
-    return error(result.error, result.statusCode || 500);
-  }
+  const result = await sendVaultEmail(user!.userId, vaultId);
+  if (result.error) return error(result.error, result.statusCode || 500);
   return success(result.response);
 }

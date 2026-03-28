@@ -141,12 +141,16 @@ API_URL=$(_cfn_output ApiUrl) || {
 }
 
 TABLE_NAME=$(_cfn_output UsersTableName)
+FILES_BUCKET_NAME=$(_cfn_output FilesBucketName)
 
 if [[ -z "$API_URL" || "$API_URL" == "None" ]]; then
   echo "Error: ApiUrl output not found in stack $STACK." >&2; exit 1
 fi
 if [[ -z "$TABLE_NAME" || "$TABLE_NAME" == "None" ]]; then
   echo "Error: UsersTableName output not found in stack $STACK." >&2; exit 1
+fi
+if [[ "$ENV" == "dev" && ( -z "$FILES_BUCKET_NAME" || "$FILES_BUCKET_NAME" == "None" ) ]]; then
+  echo "Error: FilesBucketName output not found in stack $STACK." >&2; exit 1
 fi
 
 # Strip trailing slash — ApiClient prepends paths with /
@@ -174,6 +178,7 @@ echo "  API URL          : $API_URL"
 [[ "$ENV" != "dev" ]] && echo "  Frontend bucket  : $FRONTEND_BUCKET"
 [[ "$ENV" != "dev" ]] && echo "  CloudFront URL   : $CLOUDFRONT_URL"
 echo "  DynamoDB table   : $TABLE_NAME"
+[[ "$ENV" == "dev" ]] && echo "  Files bucket     : $FILES_BUCKET_NAME"
 
 # ── Check/initialise admin account ───────────────────────────────────────────
 section "Admin account ───────────────────────────────────────────────────────────"
@@ -206,6 +211,16 @@ if [[ "$ADMIN_COUNT" -eq 0 ]]; then
   read -r
 else
   echo "  Admin account already exists — skipping initialisation."
+fi
+
+# ── Dev: seed test users ─────────────────────────────────────────────────────
+if [[ "$ENV" == "dev" ]]; then
+  section "Test users ──────────────────────────────────────────────────────────────"
+  ENVIRONMENT="$ENV" \
+  DYNAMODB_TABLE="$TABLE_NAME" \
+  VAULTS_TABLE_NAME="passvault-vaults-${ENV}" \
+  FILES_BUCKET="$FILES_BUCKET_NAME" \
+    npx tsx "$REPO_ROOT/scripts/seed-dev.ts" || echo "  ⚠  Seed step failed — skipping (see above)."
 fi
 
 # ── Production confirmation ───────────────────────────────────────────────────

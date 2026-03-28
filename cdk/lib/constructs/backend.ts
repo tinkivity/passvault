@@ -40,6 +40,8 @@ export class BackendConstruct extends Construct {
       ENVIRONMENT: env,
       DYNAMODB_TABLE: storage.usersTable.tableName,
       FILES_BUCKET: storage.filesBucket.bucketName,
+      VAULTS_TABLE_NAME: storage.vaultsTable.tableName,
+      CONFIG_TABLE_NAME: storage.configTable.tableName,
     };
 
     const runtime = lambda.Runtime.NODEJS_22_X;
@@ -184,6 +186,13 @@ export class BackendConstruct extends Construct {
     this.authFn.addEnvironment('LOGIN_EVENTS_TABLE_NAME', storage.loginEventsTable.tableName);
     this.adminFn.addEnvironment('LOGIN_EVENTS_TABLE_NAME', storage.loginEventsTable.tableName);
 
+    // IAM: grant vaults table access to vault + admin Lambdas
+    storage.vaultsTable.grantReadWriteData(this.vaultFn);
+    storage.vaultsTable.grantReadWriteData(this.adminFn);
+
+    // IAM: grant config table read access to vault Lambda (warning codes endpoint)
+    storage.configTable.grantReadData(this.vaultFn);
+
     // IAM: grant S3 file access to vault
     storage.filesBucket.grantReadWrite(this.vaultFn);
 
@@ -283,6 +292,14 @@ export class BackendConstruct extends Construct {
     adminUsers.addMethod('DELETE', new apigateway.LambdaIntegration(this.adminFn));
     const adminUsersRefreshOtp = adminUsers.addResource('refresh-otp');
     adminUsersRefreshOtp.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
+    const adminUsersLock = adminUsers.addResource('lock');
+    adminUsersLock.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
+    const adminUsersUnlock = adminUsers.addResource('unlock');
+    adminUsersUnlock.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
+    const adminUsersRetire = adminUsers.addResource('retire');
+    adminUsersRetire.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
+    const adminUsersExpire = adminUsers.addResource('expire');
+    adminUsersExpire.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
     const adminVault = admin.addResource('vault');
     adminVault.addMethod('GET', new apigateway.LambdaIntegration(this.adminFn));
     const adminStats = admin.addResource('stats');
@@ -290,20 +307,31 @@ export class BackendConstruct extends Construct {
     const adminLoginEvents = admin.addResource('login-events');
     adminLoginEvents.addMethod('GET', new apigateway.LambdaIntegration(this.adminFn));
 
-    const authEmail = auth.addResource('email');
-    const authEmailChange = authEmail.addResource('change');
-    authEmailChange.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
-    const authEmailVerify = authEmail.addResource('verify');
-    authEmailVerify.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
+    const authVerifyEmail = auth.addResource('verify-email');
+    authVerifyEmail.addMethod('GET', new apigateway.LambdaIntegration(this.authFn));
     const authLogout = auth.addResource('logout');
     authLogout.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
 
+    // Vaults (plural) — list and create
+    const vaults = apiRoot.addResource('vaults');
+    vaults.addMethod('GET', new apigateway.LambdaIntegration(this.vaultFn));
+    vaults.addMethod('POST', new apigateway.LambdaIntegration(this.vaultFn));
+    const vaultById = vaults.addResource('{vaultId}');
+    vaultById.addMethod('DELETE', new apigateway.LambdaIntegration(this.vaultFn));
+
+    // Vault (singular) — content operations on a specific vault
     const vault = apiRoot.addResource('vault');
-    vault.addMethod('GET', new apigateway.LambdaIntegration(this.vaultFn));
-    vault.addMethod('PUT', new apigateway.LambdaIntegration(this.vaultFn));
-    const vaultDownload = vault.addResource('download');
+    const vaultId = vault.addResource('{vaultId}');
+    vaultId.addMethod('GET', new apigateway.LambdaIntegration(this.vaultFn));
+    vaultId.addMethod('PUT', new apigateway.LambdaIntegration(this.vaultFn));
+    const vaultDownload = vaultId.addResource('download');
     vaultDownload.addMethod('GET', new apigateway.LambdaIntegration(this.vaultFn));
-    const vaultEmail = vault.addResource('email');
+    const vaultEmail = vaultId.addResource('email');
     vaultEmail.addMethod('POST', new apigateway.LambdaIntegration(this.vaultFn));
+
+    // Config (warning codes catalog — public, no auth required)
+    const configResource = apiRoot.addResource('config');
+    const configWarningCodes = configResource.addResource('warning-codes');
+    configWarningCodes.addMethod('GET', new apigateway.LambdaIntegration(this.vaultFn));
   }
 }

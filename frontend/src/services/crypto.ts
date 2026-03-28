@@ -73,6 +73,49 @@ export async function decrypt(encryptedBase64: string): Promise<string> {
 }
 
 /**
+ * Verify a password by attempting to decrypt a known encrypted blob.
+ * Uses a temporary local key — does NOT overwrite the module-level derivedKey.
+ * Returns true if decryption succeeds, false if the password is wrong.
+ */
+export async function verifyPassword(password: string, saltBase64: string, encryptedContent: string): Promise<boolean> {
+  try {
+    const salt = base64ToBytes(saltBase64);
+
+    const hashBytes = await argon2id({
+      password,
+      salt,
+      iterations: ARGON2_PARAMS.iterations,
+      memorySize: ARGON2_PARAMS.memory,
+      parallelism: ARGON2_PARAMS.parallelism,
+      hashLength: ARGON2_PARAMS.hashLength,
+      outputType: 'binary',
+    });
+
+    const tempKey = await crypto.subtle.importKey(
+      'raw',
+      hashBytes as Uint8Array<ArrayBuffer>,
+      { name: AES_PARAMS.algorithm, length: AES_PARAMS.keyLength },
+      false,
+      ['decrypt'],
+    );
+
+    const combined = base64ToBytes(encryptedContent);
+    const iv = combined.slice(0, AES_PARAMS.ivLength);
+    const ciphertext = combined.slice(AES_PARAMS.ivLength);
+
+    await crypto.subtle.decrypt(
+      { name: AES_PARAMS.algorithm, iv, tagLength: AES_PARAMS.tagLength },
+      tempKey,
+      ciphertext,
+    );
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Clear the in-memory key on logout.
  */
 export function clearKey(): void {

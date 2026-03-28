@@ -48,17 +48,18 @@ The contract layer. Every other package imports from here, nothing imports into 
 shared/src/
 ├── types/
 │   ├── environment.ts    # EnvironmentConfig, FeatureFlags, SessionConfig
-│   ├── user.ts           # User model, UserRole, UserStatus
-│   ├── auth.ts           # LoginRequest/Response, ChangePasswordRequest/Response
-│   ├── admin.ts          # CreateUserRequest/Response, ListUsersResponse
-│   ├── vault.ts          # VaultGetResponse, VaultPutRequest, VaultDownloadResponse
+│   ├── user.ts           # User model, UserRole, UserStatus, UserPlan
+│   ├── auth.ts           # LoginRequest/Response (incl. plan), ChangePasswordRequest/Response
+│   ├── admin.ts          # CreateUserRequest/Response, ListUsersResponse, AdminStats
+│   ├── vault.ts          # VaultGetResponse, VaultPutRequest, VaultDownloadResponse, VaultSummary
+│   ├── vault-schema.ts   # VaultFile, VaultItem, all 7 category types, WarningCode
 │   ├── challenge.ts      # ChallengeResponse, PowHeaders
 │   └── api.ts            # ApiResponse<T>, ApiError
 ├── config/
 │   ├── environments.ts   # devConfig, betaConfig, prodConfig, getEnvironmentConfig()
 │   ├── password-policy.ts# PASSWORD_MIN_LENGTH, validatePassword()
 │   └── crypto-params.ts  # ARGON2_PARAMS, AES_PARAMS, SALT_LENGTH, ENCRYPTION_ALGORITHM
-├── constants.ts          # API paths, header names, error messages
+├── constants.ts          # API paths, error messages, LIMITS (incl. VAULT_LIMITS, EMAIL_PATTERN)
 └── index.ts              # barrel export
 ```
 
@@ -107,8 +108,8 @@ backend/src/
 │   ├── crypto.ts         # bcrypt hash/verify, random OTP generation, salt generation
 │   ├── password.ts       # validatePassword() (server-side, calls shared policy)
 │   ├── jwt.ts            # signToken(), verifyToken(), token payload types
-│   ├── s3.ts             # getVaultFile(), putVaultFile(), getAdminPassword()
-│   ├── dynamodb.ts       # DynamoDB client, getUserByUsername(), getUserById(), createUser(), updateUser()
+│   ├── s3.ts             # getVaultFile(), putVaultFile(), deleteVaultFile(), getLegacyVaultFile(), migrateLegacyVaultFile()
+│   ├── dynamodb.ts       # DynamoDB client, user CRUD, vault record CRUD (passvault-vaults table), login events
 │   └── response.ts       # success(), error() Lambda response builders with CORS headers
 ├── config.ts             # loads EnvironmentConfig from ENVIRONMENT env var
 └── package.json
@@ -143,10 +144,10 @@ Business logic layer. Depends on utils (Step 3). Called by handlers (Step 6).
 
 ```
 backend/src/services/
-├── auth.ts               # login(), changePassword() — env-conditional passkey flow
-├── admin.ts              # adminLogin(), adminChangePassword(), createUser(), listUsers()
+├── auth.ts               # login(), changePassword() — env-conditional passkey flow; locked/retired/expired status checks
+├── admin.ts              # adminLogin(), createUserInvitation(), listUsers(), lockUser(), unlockUser(), expireUser(), retireUser(), verifyEmailToken()
 ├── passkey.ts            # challenge JWTs, passkey tokens, WebAuthn verify/register
-├── vault.ts              # getVault(), putVault(), downloadVault()
+├── vault.ts              # getVault(), putVault(), downloadVault(), createVault() (plan limits), deleteVault(), sendVaultEmail()
 └── challenge.ts          # generateChallenge(), validateSolution()
 ```
 
@@ -165,8 +166,21 @@ Lambda entry points. Thin layer: parse event → call middleware → call servic
 ```
 backend/src/handlers/
 ├── auth.ts               # POST /api/auth/login, /api/auth/change-password, /api/auth/passkey/*
-├── admin.ts              # POST /api/admin/login, /api/admin/change-password, /api/admin/passkey/*, /api/admin/users; GET /api/admin/users
-├── vault.ts              # GET /api/vault, PUT /api/vault, GET /api/vault/download
+│                         # GET /api/auth/verify-email?token=xxx (prod: email verification link)
+│                         # POST /api/auth/logout
+├── admin.ts              # POST /api/admin/login, /api/admin/change-password, /api/admin/passkey/*
+│                         # GET /api/admin/users, POST /api/admin/users (create)
+│                         # GET /api/admin/users/:userId
+│                         # POST /api/admin/users/lock, /unlock, /expire, /retire
+│                         # POST /api/admin/users/refresh-otp
+│                         # DELETE /api/admin/users?userId= (delete pending user)
+│                         # GET /api/admin/stats
+│                         # GET /api/admin/login-events
+├── vault.ts              # GET /api/vaults, POST /api/vaults (create), DELETE /api/vaults/:vaultId
+│                         # GET /api/vault/:vaultId, PUT /api/vault/:vaultId
+│                         # GET /api/vault/:vaultId/download
+│                         # POST /api/vault/:vaultId/email
+│                         # GET /api/config/warning-codes (no auth — warning code catalog)
 ├── challenge.ts          # GET /api/challenge
 └── health.ts             # GET /api/health
 ```
@@ -186,12 +200,18 @@ The non-UI layer of the frontend. Depends only on `shared/` types.
 ```
 frontend/src/services/
 ├── crypto.ts             # deriveKey() [Argon2id], encrypt() [AES-256-GCM], decrypt(), clearKey()
+│                         # verifyPassword() — derives temp key, attempts decrypt, no backend call
 ├── api.ts                # ApiClient class: auto PoW, auth headers, error handling
+│                         # getVaults(), createVault(), deleteVault()
+│                         # getVault(vaultId), putVault(vaultId, ...), downloadVault(vaultId)
+│                         # sendVaultEmail(vaultId), getWarningCodes()
 ├── pow-solver.ts         # SHA-256 PoW solver (Web Worker)
 └── honeypot.ts           # hidden field generation, timing tracking
 ```
 
-**Done when**: crypto round-trip test passes (encrypt → decrypt = original). API client correctly fetches challenge and attaches PoW headers. PoW solver finds valid solutions.
+Also: `frontend/src/lib/password-gen.ts` — `generateSecurePassword(length?)` using `crypto.getRandomValues`; mixed character classes; used by password fields in vault item forms.
+
+**Done when**: crypto round-trip test passes (encrypt → decrypt = original). `verifyPassword` returns true for correct password, false for wrong. API client correctly fetches challenge and attaches PoW headers. PoW solver finds valid solutions.
 
 **Status**: Complete
 
@@ -204,34 +224,59 @@ Components, hooks, contexts, routing. Depends on services (Step 7).
 Build order within step:
 
 1. **Contexts**: `AuthContext.tsx`, `EncryptionContext.tsx`
-2. **Hooks**: `useAuth.ts`, `useEncryption.ts`, `useAutoLogout.ts`, `useVault.ts`, `useAdmin.ts`
-3. **Layout**: `EnvironmentBanner.tsx`, `Layout.tsx`
+2. **Hooks**: `useAuth.ts`, `useEncryption.ts`, `useAutoLogout.ts`, `useVault.ts`, `useVaults.ts`, `useWarningCatalog.ts`, `useAdmin.ts`
+3. **Vault shell**: `VaultShell.tsx`, `VaultSidebar.tsx`, `VaultBreadcrumbs.tsx`
 4. **Auth pages**: `LoginPage.tsx`, `PasswordChangePage.tsx`, `PasskeySetupPage.tsx`
-5. **Vault pages**: `VaultPage.tsx` (view/edit orchestration), `VaultViewer.tsx`, `VaultEditor.tsx`, `CountdownTimer.tsx`, `ConfirmDialog.tsx`
-6. **Admin pages**: `AdminDashboard.tsx`, `CreateUserForm.tsx`, `UserList.tsx`, `OtpDisplay.tsx`
+5. **Vault pages**: `VaultItemsPage.tsx`, `VaultItemDetailPage.tsx`, `VaultItemNewPage.tsx`, `SecretField.tsx`, `CountdownTimer.tsx`, `ConfirmDialog.tsx`
+6. **Admin pages**: `AdminShell.tsx`, `AdminSidebar.tsx`, `AdminBreadcrumbs.tsx`, `CreateUserForm.tsx`, `UserList.tsx`, `OtpDisplay.tsx`, pages: `DashboardPage.tsx`, `AdminPage.tsx`, `UserDetailPage.tsx`, `LoginsPage.tsx`
 7. **Wiring**: `router.tsx`, `App.tsx`
 
 ```
 frontend/src/
 ├── context/
-│   ├── AuthContext.tsx        # token, role, status in memory
+│   ├── AuthContext.tsx        # token, role, status, plan in memory
 │   └── EncryptionContext.tsx  # key lifecycle (derive, encrypt, decrypt, clear)
 ├── hooks/
 │   ├── useAuth.ts             # login, logout, changePassword
 │   ├── useEncryption.ts       # wraps EncryptionContext
 │   ├── useAutoLogout.ts       # countdown timer, auto-trigger logout
-│   ├── useVault.ts            # fetch+decrypt, encrypt+save, download
-│   └── useAdmin.ts            # createUser, listUsers
+│   ├── useVault.ts            # fetchAndDecrypt, save, addItem, updateItem, deleteItem, download, sendEmail
+│   │                          # exports computeWarnings() — recomputes warningCodes before every save
+│   ├── useVaults.ts           # fetchVaults(), createVault(displayName), deleteVault(vaultId)
+│   ├── useWarningCatalog.ts   # fetches GET /api/config/warning-codes once; getLabel(code) helper
+│   └── useAdmin.ts            # createUser, listUsers, lockUser, unlockUser, expireUser, retireUser
+├── lib/
+│   └── password-gen.ts        # generateSecurePassword(length?) using crypto.getRandomValues
 ├── components/
 │   ├── auth/                  # LoginPage, PasswordChangePage, PasskeySetupPage
-│   ├── vault/                 # VaultPage, VaultViewer, VaultEditor, CountdownTimer, ConfirmDialog
-│   ├── admin/                 # AdminDashboard, CreateUserForm, UserList, OtpDisplay
-│   └── layout/                # EnvironmentBanner, Layout
-├── router.tsx                 # routes + guards
-└── App.tsx                    # root wiring
+│   ├── vault/
+│   │   ├── VaultShell.tsx     # full-viewport shell: sidebar + outlet; loads vault list + warning catalog
+│   │   ├── VaultSidebar.tsx   # one entry per vault; New Vault (if under plan limit); Logout footer
+│   │   ├── VaultBreadcrumbs.tsx  # breadcrumb trail from URL
+│   │   ├── VaultItemsPage.tsx    # table with Name/Category/Display field/⚠ badge; filter; + New Item
+│   │   ├── VaultItemDetailPage.tsx  # view + edit + delete; SecretField for masked values; [Generate]
+│   │   ├── VaultItemNewPage.tsx     # category selector → dynamic fields; [Generate] on password fields
+│   │   ├── SecretField.tsx          # masked value; Eye/EyeOff toggle; Copy with Check feedback
+│   │   ├── CountdownTimer.tsx   # session countdown display
+│   │   └── ConfirmDialog.tsx    # generic confirmation dialog (used for delete + unsaved-changes)
+│   ├── admin/
+│   │   ├── AdminShell.tsx       # full-viewport shell: top bar + sidebar + Outlet
+│   │   ├── AdminSidebar.tsx     # collapsible sections (Management, Logs); heroicons
+│   │   ├── AdminBreadcrumbs.tsx # reads useLocation() pathname + state
+│   │   ├── CreateUserForm.tsx   # email-as-username form; OtpDisplay on success
+│   │   ├── UserList.tsx         # TanStack Table; lock icon badge; filter; Lock/Download/Refresh OTP/Delete actions
+│   │   ├── OtpDisplay.tsx       # OTP + copy + Done
+│   │   └── pages/
+│   │       ├── DashboardPage.tsx    # stats cards + recharts area chart
+│   │       ├── AdminPage.tsx        # admin account management (change password, passkey)
+│   │       ├── UserDetailPage.tsx   # user detail; Lock/Unlock/Expire/Retire buttons; OTP refresh
+│   │       └── LoginsPage.tsx       # login events table; sorting + filtering
+│   └── layout/                  # EnvironmentBanner, Layout (auth pages wrapper)
+├── router.tsx                   # /vault/:vaultId/* routes; /admin/* routes; auth guards
+└── App.tsx                      # root wiring
 ```
 
-**Done when**: full user flow works end-to-end against the deployed dev stack. Admin login → password change → create user → user login → password change → view vault → edit → save → re-login → content preserved. Environment banner shows. Auto-logout fires. Copy/download work.
+**Done when**: full user flow works end-to-end against the deployed dev stack. Admin login → password change → create user → user login → password change → vault item list → add login item → warning badge appears for duplicate password → fix → badge clears on save → download backup. Lock/Unlock/Expire/Retire buttons work in admin User Detail. Auto-logout fires. Copy/download work.
 
 **Status**: Complete
 
@@ -261,12 +306,15 @@ After Step 8, deploy to dev and run the full smoke test:
 1. `cdk deploy PassVault-Dev --context env=dev`
 2. `scripts/init-admin.ts` → creates admin
 3. Admin login → password change → dashboard (no passkey in dev)
-4. Create user → OTP shown
-5. User login with OTP → password change → vault
-6. View empty vault → countdown timer ticking
-7. Edit mode → type content → save → immediate logout
-8. Re-login → content decrypted correctly
-9. Copy to clipboard, download backup
-10. Cancel with unsaved changes → confirmation dialog → logout
-11. Auto-logout fires at timeout
-12. "DEV ENVIRONMENT" banner visible
+4. Create user (email address as username) → OTP shown
+5. User login with OTP → password change → vault item list (Personal Vault)
+6. Add login item → countdown timer ticking
+7. Add second login with same password → both show ⚠ warning badge
+8. Fix one password → badge clears on next save
+9. Download encrypted backup (contains `warningCodes` in decrypted JSON)
+10. Re-login → items decrypted correctly
+11. Admin: Lock user → login returns `ACCOUNT_SUSPENDED`; Unlock → login works
+12. Admin: Expire user → vault read-only; write blocked
+13. Admin: Retire user → disappears from list; same email can create new account
+14. Auto-logout fires at timeout
+15. "DEV ENVIRONMENT" banner visible

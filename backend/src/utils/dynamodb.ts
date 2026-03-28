@@ -9,8 +9,8 @@ import {
   DeleteCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { randomUUID } from 'crypto';
-import type { User } from '@passvault/shared';
-import { DYNAMODB_TABLE, LOGIN_EVENTS_TABLE } from '../config.js';
+import type { User, VaultSummary } from '@passvault/shared';
+import { DYNAMODB_TABLE, LOGIN_EVENTS_TABLE, VAULTS_TABLE } from '../config.js';
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
@@ -177,4 +177,54 @@ export async function getLoginCountSince(isoTimestamp: string): Promise<number> 
     lastKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
   } while (lastKey);
   return count;
+}
+
+// ---- Vault CRUD -----------------------------------------------------------
+
+export async function createVaultRecord(vaultId: string, userId: string, displayName: string): Promise<void> {
+  await docClient.send(
+    new PutCommand({
+      TableName: VAULTS_TABLE,
+      Item: {
+        vaultId,
+        userId,
+        displayName,
+        createdAt: new Date().toISOString(),
+      },
+      ConditionExpression: 'attribute_not_exists(vaultId)',
+    }),
+  );
+}
+
+export async function getVaultRecord(vaultId: string): Promise<{ vaultId: string; userId: string; displayName: string; createdAt: string } | null> {
+  const result = await docClient.send(
+    new GetCommand({
+      TableName: VAULTS_TABLE,
+      Key: { vaultId },
+    }),
+  );
+  return (result.Item as { vaultId: string; userId: string; displayName: string; createdAt: string }) || null;
+}
+
+export async function listVaultsByUser(userId: string): Promise<VaultSummary[]> {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: VAULTS_TABLE,
+      IndexName: 'byUser',
+      KeyConditionExpression: 'userId = :uid',
+      ExpressionAttributeValues: { ':uid': userId },
+    }),
+  );
+  return ((result.Items ?? []) as VaultSummary[]).sort(
+    (a, b) => a.createdAt.localeCompare(b.createdAt),
+  );
+}
+
+export async function deleteVaultRecord(vaultId: string): Promise<void> {
+  await docClient.send(
+    new DeleteCommand({
+      TableName: VAULTS_TABLE,
+      Key: { vaultId },
+    }),
+  );
 }

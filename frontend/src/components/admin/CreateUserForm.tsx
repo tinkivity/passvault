@@ -1,19 +1,18 @@
 import { useState } from 'react';
 import { LIMITS } from '@passvault/shared';
-import { Button, Input, ErrorMessage } from '../layout/Layout.js';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { OtpDisplay } from './OtpDisplay.js';
 
-const isEmailEnv = import.meta.env.VITE_ENVIRONMENT !== 'dev';
-
 interface CreateUserFormProps {
-  onCreateUser: (username: string, email?: string) => Promise<{ username: string; oneTimePassword: string }>;
+  onCreateUser: (username: string) => Promise<{ username: string; oneTimePassword: string }>;
   loading: boolean;
   onDone?: () => void;
 }
 
 export function CreateUserForm({ onCreateUser, loading, onDone }: CreateUserFormProps) {
   const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<{ username: string; oneTimePassword: string } | null>(null);
 
@@ -21,16 +20,15 @@ export function CreateUserForm({ onCreateUser, loading, onDone }: CreateUserForm
     e.preventDefault();
     setError(null);
 
-    if (!LIMITS.USERNAME_PATTERN.test(username)) {
-      setError('Username must be 3-30 characters, alphanumeric with hyphens/underscores');
+    if (!LIMITS.EMAIL_PATTERN.test(username.trim())) {
+      setError('Enter a valid email address');
       return;
     }
 
     try {
-      const result = await onCreateUser(username, email.trim() || undefined);
+      const result = await onCreateUser(username.trim());
       setCreated(result);
       setUsername('');
-      setEmail('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create user');
     }
@@ -47,30 +45,23 @@ export function CreateUserForm({ onCreateUser, loading, onDone }: CreateUserForm
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-      <Input
-        label="Username"
-        id="new-username"
-        type="text"
-        value={username}
-        onChange={e => setUsername(e.target.value)}
-        minLength={LIMITS.USERNAME_MIN_LENGTH}
-        maxLength={LIMITS.USERNAME_MAX_LENGTH}
-        required
-      />
-      {isEmailEnv && (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="space-y-1">
+        <Label htmlFor="new-username">Email address</Label>
         <Input
-          label="Email address (optional)"
-          id="new-email"
-          type="email"
-          value={email}
-          onChange={e => setEmail(e.target.value)}
+          id="new-username"
+          type="text"
+          value={username}
+          onChange={e => setUsername(e.target.value)}
+          placeholder="user@example.com"
           maxLength={LIMITS.EMAIL_MAX_LENGTH}
+          required
+          autoFocus
         />
-      )}
-      <ErrorMessage message={error} />
-      <Button type="submit" loading={loading}>
-        Create user
+      </div>
+      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      <Button type="submit" disabled={loading} className="w-full">
+        {loading ? 'Creating…' : 'Create user'}
       </Button>
     </form>
   );

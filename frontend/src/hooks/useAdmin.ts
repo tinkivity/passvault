@@ -6,12 +6,12 @@ export function useAdmin(token: string | null) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const createUser = useCallback(async (username: string, email?: string): Promise<{ username: string; oneTimePassword: string }> => {
+  const createUser = useCallback(async (username: string): Promise<{ username: string; oneTimePassword: string }> => {
     if (!token) throw new Error('Not authenticated');
     setLoading(true);
     setError(null);
     try {
-      const res = await api.createUser({ username, email }, token);
+      const res = await api.createUser({ username }, token);
       return { username: res.username, oneTimePassword: res.oneTimePassword };
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to create user';
@@ -121,5 +121,65 @@ export function useAdmin(token: string | null) {
     }
   }, [token]);
 
-  return { loading, error, createUser, listUsers, downloadUserVault, refreshOtp, deleteUser, getStats, getLoginEvents };
+  const lockUser = useCallback(async (userId: string): Promise<void> => {
+    if (!token) throw new Error('Not authenticated');
+    setLoading(true);
+    setError(null);
+    try {
+      await api.lockUser(userId, token);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to lock user';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  const unlockUser = useCallback(async (userId: string): Promise<void> => {
+    if (!token) throw new Error('Not authenticated');
+    setLoading(true);
+    setError(null);
+    try {
+      await api.unlockUser(userId, token);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to unlock user';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  const expireUser = useCallback(async (userId: string): Promise<void> => {
+    if (!token) throw new Error('Not authenticated');
+    setLoading(true);
+    setError(null);
+    try {
+      await api.expireUser(userId, token);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to expire user';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  const retireUser = useCallback(async (userId: string): Promise<void> => {
+    if (!token) throw new Error('Not authenticated');
+    setLoading(true);
+    setError(null);
+    try {
+      await api.retireUser(userId, token);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to retire user';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  return { loading, error, createUser, listUsers, downloadUserVault, refreshOtp, deleteUser, lockUser, unlockUser, expireUser, retireUser, getStats, getLoginEvents };
 }

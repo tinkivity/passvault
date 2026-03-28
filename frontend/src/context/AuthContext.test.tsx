@@ -8,6 +8,7 @@ const sampleAuth = {
   role: 'user' as const,
   username: 'alice',
   status: 'active' as const,
+  plan: 'free' as const,
   encryptionSalt: 'salt-abc',
   loginEventId: null,
 };

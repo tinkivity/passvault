@@ -14,11 +14,14 @@ import type {
   VaultPutRequest,
   VaultPutResponse,
   VaultDownloadResponse,
+  VaultSummary,
+  CreateVaultRequest,
   CreateUserRequest,
   CreateUserResponse,
   ListUsersResponse,
   ListLoginEventsResponse,
   AdminStats,
+  WarningCodeDefinition,
 } from '@passvault/shared';
 import { API_PATHS, POW_CONFIG } from '@passvault/shared';
 import { solveChallenge } from './pow-solver.js';
@@ -56,10 +59,8 @@ export class ApiClient {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
-    // Auto-solve PoW when needed
     if (powDifficulty !== undefined) {
       const challenge = await this.fetchChallenge();
-      // Override challenge difficulty with what we expect (server enforces actual)
       const pow = await solveChallenge({ ...challenge, difficulty: powDifficulty });
       Object.assign(headers, pow);
     }
@@ -149,6 +150,14 @@ export class ApiClient {
     });
   }
 
+  async logout(eventId: string, token: string): Promise<void> {
+    return this.request(API_PATHS.AUTH_LOGOUT, {
+      method: 'POST',
+      body: { eventId },
+      token,
+    });
+  }
+
   // ---- Admin Auth ------------------------------------------------------
 
   async adminChangePassword(
@@ -225,6 +234,42 @@ export class ApiClient {
     });
   }
 
+  async lockUser(userId: string, token: string): Promise<void> {
+    return this.request(API_PATHS.ADMIN_USERS_LOCK, {
+      method: 'POST',
+      body: { userId },
+      token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+    });
+  }
+
+  async unlockUser(userId: string, token: string): Promise<void> {
+    return this.request(API_PATHS.ADMIN_USERS_UNLOCK, {
+      method: 'POST',
+      body: { userId },
+      token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+    });
+  }
+
+  async expireUser(userId: string, token: string): Promise<void> {
+    return this.request(API_PATHS.ADMIN_USERS_EXPIRE, {
+      method: 'POST',
+      body: { userId },
+      token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+    });
+  }
+
+  async retireUser(userId: string, token: string): Promise<void> {
+    return this.request(API_PATHS.ADMIN_USERS_RETIRE, {
+      method: 'POST',
+      body: { userId },
+      token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+    });
+  }
+
   async getAdminStats(token: string): Promise<AdminStats> {
     return this.request<AdminStats>(API_PATHS.ADMIN_STATS, {
       method: 'GET',
@@ -241,26 +286,43 @@ export class ApiClient {
     });
   }
 
-  async logout(eventId: string, token: string): Promise<void> {
-    return this.request(API_PATHS.AUTH_LOGOUT, {
-      method: 'POST',
-      body: { eventId },
-      token,
-    });
-  }
+  // ---- Vaults ----------------------------------------------------------
 
-  // ---- Vault -----------------------------------------------------------
-
-  async getVault(token: string): Promise<VaultGetResponse> {
-    return this.request<VaultGetResponse>(API_PATHS.VAULT, {
+  async listVaults(token: string): Promise<VaultSummary[]> {
+    return this.request<VaultSummary[]>(API_PATHS.VAULTS, {
       method: 'GET',
       token,
       powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
     });
   }
 
-  async putVault(req: VaultPutRequest, token: string): Promise<VaultPutResponse> {
-    return this.request<VaultPutResponse>(API_PATHS.VAULT, {
+  async createVault(req: CreateVaultRequest, token: string): Promise<VaultSummary> {
+    return this.request<VaultSummary>(API_PATHS.VAULTS, {
+      method: 'POST',
+      body: req,
+      token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+    });
+  }
+
+  async deleteVault(vaultId: string, token: string): Promise<void> {
+    return this.request(`${API_PATHS.VAULTS}/${encodeURIComponent(vaultId)}`, {
+      method: 'DELETE',
+      token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+    });
+  }
+
+  async getVault(vaultId: string, token: string): Promise<VaultGetResponse> {
+    return this.request<VaultGetResponse>(`/api/vault/${encodeURIComponent(vaultId)}`, {
+      method: 'GET',
+      token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+    });
+  }
+
+  async putVault(vaultId: string, req: VaultPutRequest, token: string): Promise<VaultPutResponse> {
+    return this.request<VaultPutResponse>(`/api/vault/${encodeURIComponent(vaultId)}`, {
       method: 'PUT',
       body: req,
       token,
@@ -268,37 +330,27 @@ export class ApiClient {
     });
   }
 
-  async downloadVault(token: string): Promise<VaultDownloadResponse> {
-    return this.request<VaultDownloadResponse>(API_PATHS.VAULT_DOWNLOAD, {
+  async downloadVault(vaultId: string, token: string): Promise<VaultDownloadResponse> {
+    return this.request<VaultDownloadResponse>(`/api/vault/${encodeURIComponent(vaultId)}/download`, {
       method: 'GET',
       token,
       powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
     });
   }
 
-  async sendVaultEmail(token: string): Promise<void> {
-    return this.request(API_PATHS.VAULT_SEND_EMAIL, {
+  async sendVaultEmail(vaultId: string, token: string): Promise<void> {
+    return this.request(`/api/vault/${encodeURIComponent(vaultId)}/email`, {
       method: 'POST',
       token,
       powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
     });
   }
 
-  async requestEmailChange(newEmail: string, password: string, token: string): Promise<void> {
-    return this.request(API_PATHS.AUTH_EMAIL_CHANGE, {
-      method: 'POST',
-      body: { newEmail, password },
-      token,
-      powDifficulty: POW_CONFIG.DIFFICULTY.MEDIUM,
-    });
-  }
+  // ---- Config ----------------------------------------------------------
 
-  async confirmEmailChange(code: string, token: string): Promise<void> {
-    return this.request(API_PATHS.AUTH_EMAIL_VERIFY, {
-      method: 'POST',
-      body: { code },
-      token,
-      powDifficulty: POW_CONFIG.DIFFICULTY.MEDIUM,
+  async getWarningCodes(): Promise<WarningCodeDefinition[]> {
+    return this.request<WarningCodeDefinition[]>(API_PATHS.CONFIG_WARNING_CODES, {
+      method: 'GET',
     });
   }
 }

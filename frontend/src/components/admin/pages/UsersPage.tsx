@@ -28,8 +28,8 @@ export function UsersPage() {
     refreshUsers();
   }, [token, usersLoaded, refreshUsers]);
 
-  const handleCreateUser = async (username: string, email?: string) => {
-    const result = await admin.createUser(username, email);
+  const handleCreateUser = async (username: string) => {
+    const result = await admin.createUser(username);
     await refreshUsers();
     return result;
   };

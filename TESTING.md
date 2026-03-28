@@ -31,28 +31,55 @@ npm run test:watch --workspace=backend
 
 ### Current coverage
 
-173 tests across 14 files in the `backend` package (all passing). `frontend`, `cdk`, and `shared` do not have unit tests — they are covered by TypeScript type checking and manual UI testing.
+501 tests across 35 files (all passing): 261 backend, 183 frontend, 57 shared.
+
+#### Backend (`backend/src/`)
 
 | File | Tests | What is covered |
 |---|---|---|
-| `src/utils/jwt.test.ts` | 5 | `signToken`/`verifyToken` round-trips, tamper detection, wrong secret, missing env var |
-| `src/utils/crypto.test.ts` | 6 | `hashPassword`/`verifyPassword`, `generateOtp`, `generateSalt` |
-| `src/utils/password.test.ts` | 8 | `validatePassword` — all policy rules, username rejection, common patterns |
-| `src/utils/dynamodb.test.ts` | 5 | `getUserByUsername`, `getUserById`, `createUser`, `updateUser`, `listAllUsers` |
-| `src/utils/s3.test.ts` | 6 | `getVaultFile`, `putVaultFile`, `getVaultFileSize` |
-| `src/utils/response.test.ts` | 4 | `success()` / `error()` shape, CORS headers, details array |
-| `src/middleware/auth.test.ts` | 8 | Valid/invalid JWT extraction, missing header, wrong role, expired token |
-| `src/middleware/pow.test.ts` | 8 | Valid/invalid PoW solutions, difficulty check, TTL expiry, disabled mode |
-| `src/middleware/honeypot.test.ts` | 5 | Hidden field detection (email/phone/website), disabled mode |
-| `src/services/challenge.test.ts` | 6 | Challenge generation, PoW solution validation |
-| `src/services/auth.test.ts` | 26 | Login (OTP, normal, passkeyToken), changePassword, account lockout (H2), input validation (M3) |
-| `src/services/admin.test.ts` | 24 | adminLogin, adminChangePassword, createUserInvitation, listUsers, lockout, input validation |
-| `src/services/vault.test.ts` | 12 | getVault, putVault, downloadVault — auth checks, S3 round-trips |
-| `src/handlers/auth.test.ts` | 15 | Handler routing, PoW/honeypot middleware, invalid JSON body (C2 fix) |
-| `src/handlers/admin.test.ts` | 15 | Handler routing, auth middleware, invalid JSON body (C2 fix) |
-| `src/handlers/vault.test.ts` | 10 | Handler routing, auth middleware, invalid JSON body (C2 fix) |
+| `src/utils/jwt.test.ts` | 6 | `signToken`/`verifyToken` round-trips, tamper detection, wrong secret, missing env var |
+| `src/utils/crypto.test.ts` | 13 | `hashPassword`/`verifyPassword`, `generateOtp`, `generateSalt` |
+| `src/utils/password.test.ts` | 10 | `validatePassword` — all policy rules, username rejection, common patterns |
+| `src/middleware/auth.test.ts` | 13 | Valid/invalid JWT extraction, missing header, wrong role, expired token |
+| `src/middleware/pow.test.ts` | 7 | Valid/invalid PoW solutions, difficulty check, TTL expiry, disabled mode |
+| `src/middleware/honeypot.test.ts` | 8 | Hidden field detection (email/phone/website), disabled mode |
+| `src/services/challenge.test.ts` | 3 | Challenge generation, PoW solution validation |
+| `src/services/auth.test.ts` | 31 | Login (OTP, normal, passkeyToken), changePassword, lockout, OTP expiry, status checks (locked/retired/expired) |
+| `src/services/admin.test.ts` | 69 | adminLogin, adminChangePassword, createUserInvitation, listUsers, lockout, lockUser, unlockUser, expireUser, retireUser, verifyEmailToken |
+| `src/services/vault.test.ts` | 24 | getVault, putVault, downloadVault, sendVaultEmail, createVault (plan limits), deleteVault |
+| `src/services/passkey.test.ts` | 11 | Challenge JWTs, passkey tokens, WebAuthn assertion/attestation verification |
+| `src/handlers/auth.test.ts` | 25 | Handler routing, PoW/honeypot middleware, passkey endpoints, email verification, logout |
+| `src/handlers/admin.test.ts` | 28 | Handler routing, auth middleware, all admin endpoints including lock/unlock/expire/retire |
+| `src/handlers/challenge.test.ts` | 3 | Challenge handler routing |
+| `src/handlers/vault.test.ts` | 13 | Handler routing, auth middleware, vault CRUD, status checks (expired/locked) |
+| `src/handlers/health.test.ts` | 4 | Health check handler |
 
 All tests mock AWS SDK calls (`@aws-sdk/client-dynamodb`, `@aws-sdk/client-s3`) and SSM (`getJwtSecret`) — no real AWS credentials are required to run them.
+
+#### Frontend (`frontend/src/`)
+
+| File | Tests | What is covered |
+|---|---|---|
+| `src/services/honeypot.test.ts` | 6 | Hidden field generation and timing |
+| `src/hooks/useAutoLogout.test.ts` | 7 | Timer countdown, auto-logout, activity reset |
+| `src/hooks/useVault.computeWarnings.test.ts` | 8 | `computeWarnings` — duplicate_password, too_simple_password detection and code reset |
+| `src/context/AuthContext.test.tsx` | 4 | Auth state, plan field, logout |
+| `src/components/vault/CountdownTimer.test.tsx` | 8 | Timer display, expiry callback |
+| `src/components/vault/ConfirmDialog.test.tsx` | 5 | Confirm/cancel dialog |
+| `src/components/admin/OtpDisplay.test.tsx` | 5 | OTP display, copy, Done |
+| `src/components/admin/AdminBreadcrumbs.test.tsx` | 10 | Breadcrumb rendering for all routes |
+| `src/components/admin/AdminSidebar.test.tsx` | 15 | Sidebar nav, collapsible sections |
+| `src/components/admin/CreateUserForm.test.tsx` | 7 | Email validation, OTP display, error handling |
+| `src/components/admin/UserList.test.tsx` | 28 | Table, sorting, filters, actions (download/refresh OTP/delete), status badges |
+| `src/components/admin/pages/DashboardPage.test.tsx` | 9 | Stats cards, chart rendering |
+| `src/components/admin/pages/AdminPage.test.tsx` | 10 | Admin account management |
+| `src/components/admin/pages/UserDetailPage.test.tsx` | 17 | User detail, lock/unlock/expire/retire buttons, OTP refresh, delete |
+| `src/components/admin/pages/LoginsPage.test.tsx` | 34 | Login events table, sorting, filtering |
+| `src/components/layout/Layout.test.tsx` | 11 | Layout rendering, environment banner |
+
+#### Shared (`shared/src/`)
+
+57 tests covering `validatePassword`, environment configs, constants, and API type contracts.
 
 **Pattern for mocking AWS in new tests:**
 
@@ -217,29 +244,35 @@ These scenarios cover features introduced after the initial implementation. Run 
 
 ### Admin: Delete Pending User (`DELETE /api/admin/users?userId=`)
 
-- Delete a `pending_first_login` user → user disappears from list; S3 vault file is removed (`user-{userId}.enc` no longer exists)
+- Delete a `pending_first_login` or `pending_email_verification` user → user disappears from list; S3 vault files are removed
 - Attempt to delete a user with status `active` or `pending_passkey_setup` → 400 error
 - After deletion, attempting to log in with the deleted user's credentials → 401
 
-### Registration Email (Beta/Prod)
+### Registration Email (Prod)
 
-- Create user with `email` field provided and SES configured → email arrives with OTP and expiry notice
-- Create user without `email` field → no email; OTP shown in admin UI only
-- Create user with `email` in dev environment → `email` field ignored; no SES send
+- Create user with SES configured (prod) → single email sent with OTP + email verification link
+- User clicks verification link → `GET /api/auth/verify-email?token=xxx` → status transitions `pending_email_verification` → `pending_first_login`; OTP login now works
+- User attempts OTP login before clicking link → 403
+- Expired verification link (> 7 days) → 400 `EMAIL_VERIFICATION_INVALID`
+- Create user in dev/beta → status starts at `pending_first_login` directly; no verification required
 
-### Vault Email (`POST /api/vault/email`)
+### Admin: User Lifecycle (Lock / Unlock / Expire / Retire)
 
-- User with email set clicks "Email Encrypted Backup" → email arrives containing JSON vault backup
-- User without email set clicks button → 400 `NO_EMAIL_ADDRESS`; UI shows appropriate error
-- Call from dev or with `SENDER_EMAIL` unset → 503 or `EMAIL_CHANGE_NOT_AVAILABLE`
+- **Lock:** Lock an active user → login returns 403 `ACCOUNT_SUSPENDED`; admin unlocks → login works again
+- **Expire:** Mark user expired → login succeeds; vault GET works; vault PUT returns 403 `ACCOUNT_EXPIRED`
+- **Retire:** Retire user → user disappears from admin list; original email address can be used to create a new account; retired user login returns 401 `INVALID_CREDENTIALS`
+- Admin cannot lock/unlock/expire/retire another admin account → 403
 
-### Email Change Flow (`POST /api/auth/email/change` + `POST /api/auth/email/verify`)
+### Multi-Vault (Plan Limits)
 
-- Happy path (beta/prod): Submit new email + correct password → SES sends 6-digit code → submit code → user record updated; subsequent vault-email goes to new address
-- Wrong password on change request → 401
-- Wrong verification code → 400 `EMAIL_VERIFICATION_INVALID`
-- Expired verification code → 400 `EMAIL_VERIFICATION_INVALID`
-- Call either endpoint in dev → 400 `EMAIL_CHANGE_NOT_AVAILABLE`
+- Free user (default): first vault created on account creation; attempt to create second vault → 403 `VAULT_LIMIT_REACHED`
+- Pro user: can create up to 10 vaults; attempt to create 11th → 403
+- User cannot delete their last vault → 400 `CANNOT_DELETE_LAST_VAULT`
+
+### Vault Email (`POST /api/vault/:vaultId/email`)
+
+- User clicks "Email Encrypted Backup" → email arrives containing encrypted vault attachment
+- Call with `SENDER_EMAIL` unset → 503
 
 ---
 
@@ -292,11 +325,13 @@ Before promoting from dev → beta → prod, verify:
 - [ ] `npm run build` succeeds (shared → backend → frontend)
 - [ ] `ENVIRONMENT=<env> npx tsx scripts/smoke-test.ts --password <pw>` passes (all 9 tests)
 - [ ] Admin login and first-password-change flow works end-to-end
-- [ ] User creation, login, vault save/load, and backup download work
+- [ ] User creation (email as username), login, vault item creation/edit/delete work
+- [ ] Multi-vault: free users blocked from creating second vault; pro users can create up to 10
 - [ ] (Prod only) Passkey registration and login work correctly end-to-end
-- [ ] OTP expiry is enforced; expired OTPs return `OTP_EXPIRED`; Refresh OTP issues a working replacement
-- [ ] Delete pending user removes DynamoDB record and S3 vault file; deleted user cannot log in
-- [ ] (Beta/prod) Registration email delivered when email provided; admin UI always shows OTP
-- [ ] (Beta/prod) Vault email sends correct JSON backup to user's registered address
-- [ ] (Beta/prod) Email change flow: password confirmation → 6-digit code → address updated
+- [ ] OTP expiry enforced; expired OTPs return `OTP_EXPIRED`; Refresh OTP issues a working replacement
+- [ ] User lifecycle: lock → login blocked → unlock → login works; expire → read-only vault; retire → gone from list → email reusable
+- [ ] Delete pending user removes DynamoDB and S3 vault records; deleted user cannot log in
+- [ ] Warning codes: two logins with same password show ⚠ badge; fix one → warning clears on next save
+- [ ] (Prod) Email verification: new user receives link → click → OTP login works; unverified → OTP rejected
+- [ ] (Prod) Vault email sends correct encrypted attachment to user's email address
 - [ ] (Beta/prod) SES `SENDER_EMAIL` env var is set on auth, admin, and vault Lambdas; SES domain identity is verified

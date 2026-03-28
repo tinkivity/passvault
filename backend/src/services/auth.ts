@@ -8,12 +8,11 @@ import {
   type UserStatus,
 } from '@passvault/shared';
 import { getUserById, getUserByUsername, updateUser, recordLoginEvent } from '../utils/dynamodb.js';
-import { randomInt, randomUUID } from 'crypto';
+import { randomUUID } from 'crypto';
 import { hashPassword, verifyPassword } from '../utils/crypto.js';
 import { validatePassword } from '../utils/password.js';
 import { signToken } from '../utils/jwt.js';
 import { verifyPasskeyToken } from './passkey.js';
-import { sendEmail } from '../utils/ses.js';
 import { config } from '../config.js';
 
 export async function login(request: LoginRequest): Promise<{ response?: LoginResponse; error?: string; statusCode?: number }> {
@@ -39,8 +38,8 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
       return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
     }
   } else {
-    // dev/beta: traditional username + password
-    if (typeof request.username !== 'string' || request.username.length > LIMITS.USERNAME_MAX_LENGTH) {
+    // dev/beta: traditional username (email) + password
+    if (typeof request.username !== 'string' || request.username.length > LIMITS.EMAIL_MAX_LENGTH) {
       return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
     }
     user = await getUserByUsername(request.username);
@@ -49,7 +48,23 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
     }
   }
 
-  // H2: Check account lockout
+  // Retired users appear non-existent (username is renamed, so they'd return null above;
+  // but handle passkey path explicitly)
+  if (user.status === 'retired') {
+    return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
+  }
+
+  // Email verification required (prod)
+  if (user.status === 'pending_email_verification') {
+    return { error: 'Email verification required before first login', statusCode: 403 };
+  }
+
+  // Admin-suspended users
+  if (user.status === 'locked') {
+    return { error: ERRORS.ACCOUNT_SUSPENDED, statusCode: 403 };
+  }
+
+  // Check brute-force lockout
   const now = new Date();
   if (user.lockedUntil && new Date(user.lockedUntil) > now) {
     return { error: ERRORS.ACCOUNT_LOCKED, statusCode: 429 };
@@ -69,7 +84,7 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
       return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
     }
   } else {
-    // Normal login: verify against password hash
+    // Normal login (active, pending_passkey_setup, expired): verify against password hash
     const passwordValid = await verifyPassword(request.password, user.passwordHash);
     if (!passwordValid) {
       await recordFailedAttempt(user.userId, user.username, user.failedLoginAttempts ?? 0);
@@ -77,14 +92,12 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
     }
   }
 
-  // Update last login and reset lockout counter
   await updateUser(user.userId, {
     lastLoginAt: new Date().toISOString(),
     failedLoginAttempts: 0,
     lockedUntil: null,
   });
 
-  // Fire-and-forget: record login event for admin dashboard metrics
   const loginEventId = randomUUID();
   recordLoginEvent(loginEventId, user.userId, user.username, true).catch(err => {
     console.error('Failed to record login event:', err);
@@ -102,6 +115,7 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
     role: user.role,
     username: user.username,
     encryptionSalt: user.encryptionSalt,
+    plan: user.plan,
     loginEventId,
   };
 
@@ -140,81 +154,6 @@ export async function changePassword(
     status: nextStatus,
     oneTimePasswordHash: null,
     otpExpiresAt: null,
-    pendingEmail: null,
-    emailVerificationCode: null,
-    emailVerificationExpiresAt: null,
-  });
-
-  return { response: { success: true } };
-}
-
-export async function requestEmailChange(
-  userId: string,
-  newEmail: string,
-  password: string,
-): Promise<{ response?: { success: true }; error?: string; statusCode?: number }> {
-  if (!process.env.SENDER_EMAIL) {
-    return { error: 'Email change is not available in this environment', statusCode: 503 };
-  }
-
-  if (!newEmail || newEmail.length > LIMITS.EMAIL_MAX_LENGTH || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) {
-    return { error: 'Invalid email address', statusCode: 400 };
-  }
-
-  const user = await getUserById(userId);
-  if (!user) return { error: ERRORS.NOT_FOUND, statusCode: 404 };
-  if (user.status !== 'active') return { error: ERRORS.FORBIDDEN, statusCode: 403 };
-
-  const passwordValid = await verifyPassword(password, user.passwordHash);
-  if (!passwordValid) return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
-
-  const code = randomInt(0, 1_000_000).toString().padStart(6, '0');
-  const expiresAt = new Date(Date.now() + config.session.otpExpiryMinutes * 60_000).toISOString();
-
-  await updateUser(userId, {
-    pendingEmail: newEmail,
-    emailVerificationCode: code,
-    emailVerificationExpiresAt: expiresAt,
-  });
-
-  await sendEmail(
-    newEmail,
-    'Confirm your new PassVault email address',
-    [
-      `Your verification code: ${code}`,
-      `This code expires in ${config.session.otpExpiryMinutes} minutes.`,
-      'If you did not request this change, you can ignore this email.',
-    ].join('\n'),
-  );
-
-  return { response: { success: true } };
-}
-
-export async function confirmEmailChange(
-  userId: string,
-  code: string,
-): Promise<{ response?: { success: true }; error?: string; statusCode?: number }> {
-  const user = await getUserById(userId);
-  if (!user) return { error: ERRORS.NOT_FOUND, statusCode: 404 };
-  if (user.status !== 'active') return { error: ERRORS.FORBIDDEN, statusCode: 403 };
-
-  if (!user.pendingEmail || !user.emailVerificationCode) {
-    return { error: ERRORS.EMAIL_VERIFICATION_INVALID, statusCode: 400 };
-  }
-
-  if (!user.emailVerificationExpiresAt || new Date(user.emailVerificationExpiresAt) < new Date()) {
-    return { error: ERRORS.EMAIL_VERIFICATION_INVALID, statusCode: 400 };
-  }
-
-  if (code !== user.emailVerificationCode) {
-    return { error: ERRORS.EMAIL_VERIFICATION_INVALID, statusCode: 400 };
-  }
-
-  await updateUser(userId, {
-    email: user.pendingEmail,
-    pendingEmail: null,
-    emailVerificationCode: null,
-    emailVerificationExpiresAt: null,
   });
 
   return { response: { success: true } };

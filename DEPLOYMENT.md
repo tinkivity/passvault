@@ -55,7 +55,7 @@ See [SPECIFICATION.md Section 2.5](SPECIFICATION.md) for full environment compar
 - Sufficient service quotas for:
   - Lambda functions (minimum 10)
   - API Gateway (1 REST API)
-  - DynamoDB tables (1)
+  - DynamoDB tables (4: users, vaults, config, login-events)
   - S3 buckets (2-3)
   - CloudFront distributions (1)
 
@@ -108,16 +108,16 @@ passvault/
 ├── backend/                      # Lambda function code
 │   ├── src/
 │   │   ├── handlers/
-│   │   │   ├── auth.ts           # POST /auth/login, change-password, passkey/*, email/change, email/verify
-│   │   │   ├── admin.ts          # POST /admin/login, change-password, passkey/*, users, users/refresh-otp; GET /admin/users; DELETE /admin/users
-│   │   │   ├── vault.ts          # GET/PUT /vault, GET /vault/download, POST /vault/email
+│   │   │   ├── auth.ts           # POST /auth/login, change-password, logout; GET /auth/verify-email; passkey/*
+│   │   │   ├── admin.ts          # POST /admin/login, change-password, passkey/*; CRUD /admin/users; lock/unlock/expire/retire; stats; login-events
+│   │   │   ├── vault.ts          # GET/POST /vaults; GET/PUT/DELETE /vault/:id; download; email; GET /config/warning-codes
 │   │   │   ├── challenge.ts      # GET /challenge
 │   │   │   └── health.ts         # GET /health
 │   │   ├── services/
-│   │   │   ├── auth.ts           # login(), changePassword(), initiateEmailChange(), verifyEmailChange()
-│   │   │   ├── admin.ts          # adminLogin(), createUserInvitation(), listUsers(), refreshOtp(), deletePendingUser()
+│   │   │   ├── auth.ts           # login(), changePassword(), verifyEmailToken(); status checks (locked/expired/retired)
+│   │   │   ├── admin.ts          # adminLogin(), createUserInvitation(), listUsers(), lockUser(), unlockUser(), expireUser(), retireUser(), refreshOtp(), deletePendingUser(), getStats()
 │   │   │   ├── passkey.ts        # challenge JWTs, passkey tokens, WebAuthn verify/register
-│   │   │   ├── vault.ts          # getVault(), putVault(), downloadVault(), emailVault()
+│   │   │   ├── vault.ts          # getVault(), putVault(), downloadVault(), createVault() (plan limits), deleteVault(), sendVaultEmail()
 │   │   │   └── challenge.ts      # generateChallenge(), validateSolution()
 │   │   ├── middleware/
 │   │   │   ├── auth.ts           # JWT extraction + validation
@@ -127,19 +127,25 @@ passvault/
 │   │   │   ├── crypto.ts         # bcrypt hash/verify, OTP generation, salt generation
 │   │   │   ├── password.ts       # Password policy validation (calls shared)
 │   │   │   ├── jwt.ts            # signToken(), verifyToken()
-│   │   │   ├── s3.ts             # getVaultFile(), putVaultFile(), getAdminPassword()
-│   │   │   ├── dynamodb.ts       # getUserByUsername(), getUserById(), createUser(), updateUser()
+│   │   │   ├── s3.ts             # getVaultFile(), putVaultFile(), deleteVaultFile(), getLegacyVaultFile(), migrateLegacyVaultFile()
+│   │   │   ├── dynamodb.ts       # user CRUD; vault record CRUD (passvault-vaults); login events
 │   │   │   └── response.ts       # success(), error() Lambda response builders
 │   │   └── config.ts             # Loads EnvironmentConfig from ENVIRONMENT env var
 │   ├── build.mjs                 # esbuild bundling script
 │   ├── package.json
 │   └── tsconfig.json
-├── frontend/                     # React application (pending implementation)
+├── frontend/                     # React application
 │   ├── src/
-│   │   ├── services/             # crypto, api, pow-solver, honeypot
-│   │   ├── context/              # AuthContext, EncryptionContext
-│   │   ├── hooks/                # useAuth, useEncryption, useAutoLogout, useVault, useAdmin
-│   │   ├── components/           # auth/, vault/, admin/, layout/
+│   │   ├── services/             # crypto (+ verifyPassword), api, pow-solver, honeypot
+│   │   ├── lib/                  # password-gen.ts (generateSecurePassword)
+│   │   ├── context/              # AuthContext (token, role, status, plan), EncryptionContext
+│   │   ├── hooks/                # useAuth, useEncryption, useAutoLogout, useVault, useVaults, useWarningCatalog, useAdmin
+│   │   ├── components/
+│   │   │   ├── auth/             # LoginPage, PasswordChangePage, PasskeySetupPage
+│   │   │   ├── vault/            # VaultShell, VaultSidebar, VaultBreadcrumbs, VaultItemsPage, VaultItemDetailPage, VaultItemNewPage, SecretField, CountdownTimer, ConfirmDialog
+│   │   │   ├── admin/            # AdminShell, AdminSidebar, AdminBreadcrumbs, UserList, CreateUserForm, OtpDisplay; pages: DashboardPage, AdminPage, UserDetailPage, LoginsPage
+│   │   │   └── layout/           # EnvironmentBanner, Layout
+│   │   ├── router.tsx
 │   │   ├── App.tsx
 │   │   └── index.tsx
 │   ├── package.json
@@ -231,9 +237,9 @@ FrontendConstruct   MonitoringConstruct
 
 ## 5. Infrastructure Components
 
-### 5.1 DynamoDB Table
+### 5.1 DynamoDB Tables
 
-**Table Name:** `passvault-users-{environment}`
+**Users Table:** `passvault-users-{environment}`
 
 **Schema:**
 ```typescript
@@ -252,10 +258,62 @@ FrontendConstruct   MonitoringConstruct
 }
 ```
 
+**Vaults Table:** `passvault-vaults-{environment}`
+
+Stores vault metadata (display name, owner). Vault *content* is encrypted and stored in S3.
+
+```typescript
+{
+  partitionKey: { name: 'vaultId', type: AttributeType.STRING },
+  globalSecondaryIndexes: [
+    {
+      indexName: 'byUser',
+      partitionKey: { name: 'userId', type: AttributeType.STRING }
+    }
+  ],
+  billingMode: BillingMode.PAY_PER_REQUEST,
+  encryption: TableEncryption.AWS_MANAGED,
+  pointInTimeRecovery: true,                 // Prod only
+  removalPolicy: RemovalPolicy.RETAIN
+}
+```
+
+**Config Table:** `passvault-config-{environment}`
+
+Read-only reference data seeded at deploy time.
+
+```typescript
+{
+  partitionKey: { name: 'configKey', type: AttributeType.STRING },
+  sortKey:      { name: 'configId',  type: AttributeType.STRING },
+  billingMode: BillingMode.PAY_PER_REQUEST,
+  encryption: TableEncryption.AWS_MANAGED,
+  removalPolicy: RemovalPolicy.DESTROY      // Safe to recreate; seeded by CDK
+}
+```
+
+Initial rows seeded by CDK: warning code definitions (`configKey = 'warning_code'`).
+
+**Login Events Table:** `passvault-login-events-{environment}`
+
+Audit log with 90-day TTL. Used by the Logins page in the admin console.
+
+```typescript
+{
+  partitionKey: { name: 'loginEventId', type: AttributeType.STRING },
+  timeToLiveAttribute: 'ttl',
+  billingMode: BillingMode.PAY_PER_REQUEST,
+  encryption: TableEncryption.AWS_MANAGED,
+  removalPolicy: RemovalPolicy.DESTROY
+}
+```
+
 ### 5.2 S3 Buckets
 
 **User Files Bucket:** `passvault-files-{environment}-{random}`
-- Encrypted user vault files (`.enc` objects, one per user)
+- Encrypted vault files (`.enc` objects), keyed as `vault-{vaultId}.enc`
+- One S3 object per vault record; multiple vaults per user are supported
+- Legacy migration: if `user-{userId}.enc` exists on first vault load, it is auto-migrated to the new key format
 - Versioning enabled (prod only; disabled in dev/beta)
 - Block all public access
 
@@ -349,31 +407,41 @@ All Lambda functions use **ARM_64 (Graviton)** architecture for ~20% cost saving
 GET  /api/challenge          → Challenge Lambda
 GET  /api/health             → Health check Lambda
 
-POST /api/auth/login         → Auth Lambda
-POST /api/auth/change-password → Auth Lambda
+POST /api/auth/login                      → Auth Lambda
+POST /api/auth/change-password            → Auth Lambda
+POST /api/auth/logout                     → Auth Lambda
+GET  /api/auth/verify-email               → Auth Lambda (prod: email verification link)
 GET  /api/auth/passkey/challenge          → Auth Lambda
 POST /api/auth/passkey/verify             → Auth Lambda
 GET  /api/auth/passkey/register/challenge → Auth Lambda
 POST /api/auth/passkey/register           → Auth Lambda
 
-POST /api/admin/login        → Admin Lambda
-POST /api/admin/change-password → Admin Lambda
-GET  /api/admin/passkey/challenge          → Admin Lambda
-POST /api/admin/passkey/verify             → Admin Lambda
-GET  /api/admin/passkey/register/challenge → Admin Lambda
-POST /api/admin/passkey/register           → Admin Lambda
-POST   /api/admin/users                  → Admin Lambda
-GET    /api/admin/users                  → Admin Lambda
-POST   /api/admin/users/refresh-otp     → Admin Lambda
-DELETE /api/admin/users                 → Admin Lambda
+POST   /api/admin/login                           → Admin Lambda
+POST   /api/admin/change-password                 → Admin Lambda
+GET    /api/admin/passkey/challenge               → Admin Lambda
+POST   /api/admin/passkey/verify                  → Admin Lambda
+GET    /api/admin/passkey/register/challenge      → Admin Lambda
+POST   /api/admin/passkey/register                → Admin Lambda
+POST   /api/admin/users                           → Admin Lambda (create user)
+GET    /api/admin/users                           → Admin Lambda (list users)
+GET    /api/admin/users/:userId                   → Admin Lambda (user detail)
+POST   /api/admin/users/lock                      → Admin Lambda
+POST   /api/admin/users/unlock                    → Admin Lambda
+POST   /api/admin/users/expire                    → Admin Lambda
+POST   /api/admin/users/retire                    → Admin Lambda
+POST   /api/admin/users/refresh-otp               → Admin Lambda
+DELETE /api/admin/users                           → Admin Lambda (delete pending user)
+GET    /api/admin/stats                           → Admin Lambda
+GET    /api/admin/login-events                    → Admin Lambda
 
-POST /api/auth/email/change   → Auth Lambda
-POST /api/auth/email/verify   → Auth Lambda
-
-GET  /api/vault              → Vault Lambda
-PUT  /api/vault              → Vault Lambda
-GET  /api/vault/download     → Vault Lambda
-POST /api/vault/email        → Vault Lambda
+GET    /api/vaults                        → Vault Lambda (list vaults)
+POST   /api/vaults                        → Vault Lambda (create vault)
+DELETE /api/vaults/:vaultId               → Vault Lambda (delete vault)
+GET    /api/vault/:vaultId                → Vault Lambda (get encrypted content)
+PUT    /api/vault/:vaultId                → Vault Lambda (save encrypted content)
+GET    /api/vault/:vaultId/download       → Vault Lambda (offline backup)
+POST   /api/vault/:vaultId/email          → Vault Lambda (email backup)
+GET    /api/config/warning-codes          → Vault Lambda (warning code catalog, no auth)
 ```
 
 ### 5.5 CloudFront Flat-Rate Plan (Bot Protection)

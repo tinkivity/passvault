@@ -49,8 +49,6 @@ import { OtpDisplay } from './OtpDisplay.js';
 import { DateRangeFilter } from './DateRangeFilter.js';
 import { DataTable } from './DataTable.js';
 
-const isEmailEnv = import.meta.env.VITE_ENVIRONMENT !== 'dev';
-
 function formatBytes(bytes: number | null): string {
   if (bytes === null || bytes === 0) return 'empty';
   if (bytes < 1024) return `${bytes} B`;
@@ -67,24 +65,39 @@ interface UserListProps {
   onRowClick?: (user: UserSummary) => void;
 }
 
-const ALL_STATUSES: UserStatus[] = ['active', 'pending_first_login', 'pending_passkey_setup'];
+const ALL_STATUSES: UserStatus[] = [
+  'active', 'expired', 'locked',
+  'pending_first_login', 'pending_passkey_setup', 'pending_email_verification',
+];
 
 const statusLabel: Record<UserStatus, string> = {
+  pending_email_verification: 'Awaiting email verification',
   pending_first_login: 'Awaiting first login',
   pending_passkey_setup: 'Awaiting passkey setup',
   active: 'Active',
+  locked: 'Locked',
+  expired: 'Expired',
+  retired: 'Retired',
 };
 
 const statusDot: Record<UserStatus, string> = {
+  pending_email_verification: 'bg-gray-400',
   pending_first_login: 'bg-amber-500',
   pending_passkey_setup: 'bg-blue-500',
   active: 'bg-green-600',
+  locked: 'bg-red-500',
+  expired: 'bg-orange-500',
+  retired: 'bg-gray-300',
 };
 
 const statusPill: Record<UserStatus, string> = {
+  pending_email_verification: 'bg-gray-400/15 text-gray-500',
   pending_first_login: 'bg-amber-500/15 text-amber-600',
   pending_passkey_setup: 'bg-blue-500/15 text-blue-500',
   active: 'bg-green-600/15 text-green-600',
+  locked: 'bg-red-500/15 text-red-600',
+  expired: 'bg-orange-500/15 text-orange-600',
+  retired: 'bg-gray-400/15 text-gray-500',
 };
 
 // Null-last sort for lastLoginAt
@@ -151,16 +164,6 @@ function getUserColumns(
       ),
     },
   ];
-
-  if (isEmailEnv) {
-    cols.push({
-      accessorKey: 'email',
-      header: 'Email',
-      cell: ({ row }) => (
-        <span className="text-muted-foreground">{row.original.email ?? '—'}</span>
-      ),
-    });
-  }
 
   cols.push(
     {

@@ -7,6 +7,8 @@ import type { EnvironmentConfig } from '@passvault/shared';
 export class StorageConstruct extends Construct {
   public readonly usersTable: dynamodb.Table;
   public readonly loginEventsTable: dynamodb.Table;
+  public readonly vaultsTable: dynamodb.Table;
+  public readonly configTable: dynamodb.Table;
   public readonly filesBucket: s3.Bucket;
   public readonly frontendBucket: s3.Bucket;
 
@@ -36,6 +38,27 @@ export class StorageConstruct extends Construct {
       partitionKey: { name: 'eventId', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       timeToLiveAttribute: 'expiresAt',
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    // DynamoDB vaults table (multi-vault support)
+    this.vaultsTable = new dynamodb.Table(this, 'VaultsTable', {
+      tableName: `passvault-vaults-${env}`,
+      partitionKey: { name: 'vaultId', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+    this.vaultsTable.addGlobalSecondaryIndex({
+      indexName: 'byUser',
+      partitionKey: { name: 'userId', type: dynamodb.AttributeType.STRING },
+    });
+
+    // DynamoDB config table (warning code catalog, etc.)
+    this.configTable = new dynamodb.Table(this, 'ConfigTable', {
+      tableName: `passvault-config-${env}`,
+      partitionKey: { name: 'configKey', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'configId', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 

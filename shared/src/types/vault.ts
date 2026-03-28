@@ -1,3 +1,13 @@
+export interface VaultSummary {
+  vaultId: string;
+  displayName: string;
+  createdAt: string;
+}
+
+export interface CreateVaultRequest {
+  displayName: string;
+}
+
 export interface VaultGetResponse {
   encryptedContent: string;
   lastModified: string;

@@ -7,15 +7,23 @@ import { OtpDisplay } from '../OtpDisplay.js';
 import { Button } from '@/components/ui/button';
 
 const statusLabel: Record<UserStatus, string> = {
+  pending_email_verification: 'Awaiting email verification',
   pending_first_login: 'Awaiting first login',
   pending_passkey_setup: 'Awaiting passkey setup',
   active: 'Active',
+  locked: 'Locked',
+  expired: 'Expired',
+  retired: 'Retired',
 };
 
 const statusClass: Record<UserStatus, string> = {
+  pending_email_verification: 'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-gray-500/15 text-gray-500 border-gray-500/20',
   pending_first_login: 'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-amber-500/15 text-amber-600 border-amber-500/20',
   pending_passkey_setup: 'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-blue-500/15 text-blue-500 border-blue-500/20',
   active: 'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-green-600/15 text-green-600 border-green-600/20',
+  locked: 'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-red-500/15 text-red-600 border-red-500/20',
+  expired: 'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-orange-500/15 text-orange-600 border-orange-500/20',
+  retired: 'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-gray-400/15 text-gray-500 border-gray-400/20',
 };
 
 function formatBytes(bytes: number | null): string {
@@ -32,9 +40,11 @@ export function UserDetailPage() {
   const { token } = useAuth();
   const admin = useAdmin(token);
   const [refreshedOtp, setRefreshedOtp] = useState<{ username: string; oneTimePassword: string } | null>(null);
+  const [user, setUser] = useState<UserSummary | null>(
+    (location.state as { user?: UserSummary } | null)?.user ?? null,
+  );
+  const [retireConfirm, setRetireConfirm] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
-
-  const user = (location.state as { user?: UserSummary } | null)?.user;
 
   const handleBack = () => navigate('/admin/users');
 
@@ -80,6 +90,26 @@ export function UserDetailPage() {
     navigate('/admin/users', { replace: true });
   };
 
+  const handleLock = async () => {
+    await admin.lockUser(user.userId);
+    setUser(u => u ? { ...u, status: 'locked' } : u);
+  };
+
+  const handleUnlock = async () => {
+    await admin.unlockUser(user.userId);
+    setUser(u => u ? { ...u, status: 'active' } : u);
+  };
+
+  const handleExpire = async () => {
+    await admin.expireUser(user.userId);
+    setUser(u => u ? { ...u, status: 'expired' } : u);
+  };
+
+  const handleRetire = async () => {
+    await admin.retireUser(user.userId);
+    navigate('/admin/users', { replace: true });
+  };
+
   return (
     <div className="max-w-xl">
       <Button variant="ghost" size="sm" className="mb-6" onClick={handleBack}>
@@ -97,8 +127,8 @@ export function UserDetailPage() {
         </div>
 
         <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-3 text-sm mb-6">
-          <dt className="text-muted-foreground">Email</dt>
-          <dd>{user.email ?? '—'}</dd>
+          <dt className="text-muted-foreground">Plan</dt>
+          <dd className="capitalize">{user.plan}</dd>
           <dt className="text-muted-foreground">Created</dt>
           <dd>{new Date(user.createdAt).toISOString().slice(0, 10)}</dd>
           <dt className="text-muted-foreground">Last Login</dt>
@@ -126,45 +156,72 @@ export function UserDetailPage() {
           </Button>
 
           {user.status === 'pending_first_login' && (
-            <>
+            <Button variant="ghost" size="sm" onClick={handleRefreshOtp} disabled={admin.loading}>
+              Refresh OTP
+            </Button>
+          )}
+
+          {(user.status === 'active' || user.status === 'expired') && (
+            <Button variant="outline" size="sm" onClick={handleLock} disabled={admin.loading}>
+              Lock
+            </Button>
+          )}
+
+          {user.status === 'locked' && (
+            <Button variant="outline" size="sm" onClick={handleUnlock} disabled={admin.loading}>
+              Unlock
+            </Button>
+          )}
+
+          {user.status === 'active' && (
+            <Button variant="outline" size="sm" onClick={handleExpire} disabled={admin.loading}>
+              Mark Expired
+            </Button>
+          )}
+
+          {user.status !== 'retired' && (
+            retireConfirm ? (
+              <>
+                <Button variant="destructive" size="sm" onClick={handleRetire} disabled={admin.loading}>
+                  Confirm Retire
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setRetireConfirm(false)}>
+                  Cancel
+                </Button>
+              </>
+            ) : (
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={handleRefreshOtp}
+                className="text-destructive hover:text-destructive"
+                onClick={() => setRetireConfirm(true)}
                 disabled={admin.loading}
               >
-                Refresh OTP
+                Retire User
               </Button>
+            )
+          )}
 
-              {deleteConfirm ? (
-                <>
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={handleDelete}
-                    disabled={admin.loading}
-                  >
-                    Confirm Delete
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setDeleteConfirm(false)}
-                  >
-                    Cancel
-                  </Button>
-                </>
-              ) : (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-destructive hover:text-destructive"
-                  onClick={() => setDeleteConfirm(true)}
-                >
-                  Delete User
+          {user.status === 'pending_first_login' && (
+            deleteConfirm ? (
+              <>
+                <Button variant="destructive" size="sm" onClick={handleDelete} disabled={admin.loading}>
+                  Confirm Delete
                 </Button>
-              )}
-            </>
+                <Button variant="ghost" size="sm" onClick={() => setDeleteConfirm(false)}>
+                  Cancel
+                </Button>
+              </>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-destructive hover:text-destructive"
+                onClick={() => setDeleteConfirm(true)}
+              >
+                Delete User
+              </Button>
+            )
           )}
         </div>
       </div>

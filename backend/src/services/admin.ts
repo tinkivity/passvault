@@ -15,13 +15,14 @@ import {
   type User,
   type UserStatus,
 } from '@passvault/shared';
-import { getUserById, getUserByUsername, createUser, updateUser, listAllUsers, deleteUser, recordLoginEvent, getLoginCountSince, getLoginEvents } from '../utils/dynamodb.js';
+import { getUserById, getUserByUsername, createUser, updateUser, listAllUsers, deleteUser, recordLoginEvent, getLoginCountSince, getLoginEvents, listVaultsByUser, getVaultRecord, deleteVaultRecord } from '../utils/dynamodb.js';
 import { hashPassword, verifyPassword, generateOtp, generateSalt } from '../utils/crypto.js';
 import { validatePassword } from '../utils/password.js';
 import { signToken } from '../utils/jwt.js';
-import { putVaultFile, getVaultFileSize, deleteVaultFile } from '../utils/s3.js';
+import { deleteLegacyVaultFile, deleteVaultFile } from '../utils/s3.js';
 import { sendEmail } from '../utils/ses.js';
 import { verifyPasskeyToken } from './passkey.js';
+import { createFirstVault, deleteVault } from './vault.js';
 import { config } from '../config.js';
 
 export async function adminLogin(request: LoginRequest): Promise<{ response?: LoginResponse; error?: string; statusCode?: number }> {
@@ -46,7 +47,7 @@ export async function adminLogin(request: LoginRequest): Promise<{ response?: Lo
       return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
     }
   } else {
-    if (typeof request.username !== 'string' || request.username.length > LIMITS.USERNAME_MAX_LENGTH) {
+    if (typeof request.username !== 'string' || request.username.length > LIMITS.EMAIL_MAX_LENGTH) {
       return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
     }
     user = await getUserByUsername(request.username);
@@ -55,35 +56,24 @@ export async function adminLogin(request: LoginRequest): Promise<{ response?: Lo
     }
   }
 
-  // H2: Check account lockout
+  // Check brute-force lockout
   const now = new Date();
   if (user.lockedUntil && new Date(user.lockedUntil) > now) {
     return { error: ERRORS.ACCOUNT_LOCKED, statusCode: 429 };
   }
 
-  // First-time login: verify against password hash (set during init)
-  if (user.status === 'pending_first_login') {
-    const valid = await verifyPassword(request.password, user.passwordHash);
-    if (!valid) {
-      await recordFailedAttempt(user.userId, user.username, user.failedLoginAttempts ?? 0);
-      return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
-    }
-  } else {
-    const passwordValid = await verifyPassword(request.password, user.passwordHash);
-    if (!passwordValid) {
-      await recordFailedAttempt(user.userId, user.username, user.failedLoginAttempts ?? 0);
-      return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
-    }
+  const valid = await verifyPassword(request.password, user.passwordHash);
+  if (!valid) {
+    await recordFailedAttempt(user.userId, user.username, user.failedLoginAttempts ?? 0);
+    return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
   }
 
-  // Reset lockout counter on success
   await updateUser(user.userId, {
     lastLoginAt: new Date().toISOString(),
     failedLoginAttempts: 0,
     lockedUntil: null,
   });
 
-  // Fire-and-forget: record login event for admin dashboard metrics
   const loginEventId = randomUUID();
   recordLoginEvent(loginEventId, user.userId, user.username, true).catch(err => {
     console.error('Failed to record admin login event:', err);
@@ -146,23 +136,12 @@ export async function createUserInvitation(
   request: CreateUserRequest,
   adminUserId: string,
 ): Promise<{ response?: CreateUserResponse; error?: string; statusCode?: number }> {
-  // Validate username
-  if (
-    request.username.length < LIMITS.USERNAME_MIN_LENGTH ||
-    request.username.length > LIMITS.USERNAME_MAX_LENGTH ||
-    !LIMITS.USERNAME_PATTERN.test(request.username)
-  ) {
-    return { error: ERRORS.INVALID_USERNAME, statusCode: 400 };
+  // Validate username as email
+  if (!request.username || !LIMITS.EMAIL_PATTERN.test(request.username) || request.username.length > LIMITS.EMAIL_MAX_LENGTH) {
+    return { error: ERRORS.INVALID_EMAIL, statusCode: 400 };
   }
 
-  // Validate email if provided
-  if (request.email !== undefined && request.email !== '') {
-    if (request.email.length > LIMITS.EMAIL_MAX_LENGTH || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(request.email)) {
-      return { error: 'Invalid email address', statusCode: 400 };
-    }
-  }
-
-  // Check if username already exists
+  // Check if username already exists (excluding retired users — their usernames are renamed)
   const existing = await getUserByUsername(request.username);
   if (existing) {
     return { error: ERRORS.USER_EXISTS, statusCode: 409 };
@@ -173,14 +152,25 @@ export async function createUserInvitation(
   const otpHash = await hashPassword(otp);
   const salt = generateSalt();
   const otpExpiresAt = new Date(Date.now() + config.session.otpExpiryMinutes * 60_000).toISOString();
-  const email = request.email || null;
+
+  // Prod: send verification email and set pending_email_verification status
+  let userStatus: UserStatus = 'pending_first_login';
+  let registrationToken: string | undefined;
+  let registrationTokenExpiresAt: string | undefined;
+
+  if (config.environment === 'prod' && process.env.SENDER_EMAIL) {
+    registrationToken = uuidv4();
+    registrationTokenExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(); // 7 days
+    userStatus = 'pending_email_verification';
+  }
 
   const user: User = {
     userId,
     username: request.username,
     passwordHash: otpHash,
     role: 'user',
-    status: 'pending_first_login',
+    status: userStatus,
+    plan: 'free',
     oneTimePasswordHash: otpHash,
     passkeyCredentialId: null,
     passkeyPublicKey: null,
@@ -193,38 +183,38 @@ export async function createUserInvitation(
     createdBy: adminUserId,
     failedLoginAttempts: 0,
     lockedUntil: null,
-    email,
     otpExpiresAt,
-    pendingEmail: null,
-    emailVerificationCode: null,
-    emailVerificationExpiresAt: null,
+    ...(registrationToken && { registrationToken, registrationTokenExpiresAt }),
   };
 
   await createUser(user);
 
-  // Create empty vault file for user
-  await putVaultFile(userId, '');
+  // Create first vault (Personal Vault)
+  await createFirstVault(userId);
 
-  // Send OTP email if configured and email was provided
-  if (process.env.SENDER_EMAIL && email) {
-    console.log(`Sending OTP email to ${email} for user ${request.username}`);
+  // Send invitation email if configured
+  if (process.env.SENDER_EMAIL) {
+    console.log(`Sending invitation email to ${request.username}`);
     try {
-      await sendEmail(
-        email,
-        'Your PassVault account',
-        [
-          `Username: ${request.username}`,
-          `One-time password: ${otp}`,
-          `This password expires in ${config.session.otpExpiryMinutes} minutes.`,
-          'Please log in and change your password immediately.',
-        ].join('\n'),
-      );
-      console.log(`OTP email sent to ${email}`);
+      const lines: string[] = [
+        `Username: ${request.username}`,
+        `One-time password: ${otp}`,
+        `This password expires in ${config.session.otpExpiryMinutes} minutes.`,
+      ];
+      if (registrationToken) {
+        // Prod: include verification link
+        const baseUrl = process.env.FRONTEND_URL || '';
+        lines.push(``, `Please verify your email address before logging in:`);
+        lines.push(`${baseUrl}/verify-email?token=${registrationToken}`);
+        lines.push(`This link expires in 7 days.`);
+      } else {
+        lines.push('Please log in and change your password immediately.');
+      }
+      await sendEmail(request.username, 'Your PassVault account', lines.join('\n'));
+      console.log(`Invitation email sent to ${request.username}`);
     } catch (err) {
-      console.error(`Failed to send OTP email to ${email}:`, err);
+      console.error(`Failed to send invitation email to ${request.username}:`, err);
     }
-  } else {
-    console.log(`OTP email skipped: SENDER_EMAIL=${!!process.env.SENDER_EMAIL} email=${!!email}`);
   }
 
   return {
@@ -239,17 +229,30 @@ export async function createUserInvitation(
 
 export async function listUsers(): Promise<ListUsersResponse> {
   const users = await listAllUsers();
-  const regularUsers = users.filter((u) => u.role === 'user');
-  const sizes = await Promise.all(regularUsers.map((u) => getVaultFileSize(u.userId)));
+  // Filter out admin users and retired users
+  const regularUsers = users.filter((u) => u.role === 'user' && u.status !== 'retired');
+
+  const vaultSizes = await Promise.all(
+    regularUsers.map(async (u) => {
+      const vaults = await listVaultsByUser(u.userId);
+      if (vaults.length === 0) return null;
+      // Sum sizes across all vaults (for now return first vault size as proxy)
+      // In a future enhancement, sum all vault sizes
+      const { getVaultFileSize } = await import('../utils/s3.js');
+      const sizes = await Promise.all(vaults.map((v) => getVaultFileSize(v.vaultId)));
+      return sizes.reduce<number>((sum, s) => sum + (s ?? 0), 0);
+    }),
+  );
+
   return {
     users: regularUsers.map((u, i) => ({
       userId: u.userId,
       username: u.username,
       status: u.status,
+      plan: u.plan,
       createdAt: u.createdAt,
       lastLoginAt: u.lastLoginAt,
-      vaultSizeBytes: sizes[i],
-      email: u.email ?? null,
+      vaultSizeBytes: vaultSizes[i],
     })),
   };
 }
@@ -273,11 +276,10 @@ export async function refreshOtp(
     lockedUntil: null,
   });
 
-  if (process.env.SENDER_EMAIL && user.email) {
-    console.log(`Sending refreshed OTP email to ${user.email} for user ${user.username}`);
+  if (process.env.SENDER_EMAIL && user.username.includes('@')) {
     try {
       await sendEmail(
-        user.email,
+        user.username,
         'Your PassVault account - new one-time password',
         [
           `Username: ${user.username}`,
@@ -286,9 +288,8 @@ export async function refreshOtp(
           'Please log in and change your password immediately.',
         ].join('\n'),
       );
-      console.log(`Refreshed OTP email sent to ${user.email}`);
     } catch (err) {
-      console.error(`Failed to send refreshed OTP email to ${user.email}:`, err);
+      console.error(`Failed to send refreshed OTP email to ${user.username}:`, err);
     }
   }
 
@@ -307,10 +308,97 @@ export async function deleteNewUser(
 ): Promise<{ response?: { success: true }; error?: string; statusCode?: number }> {
   const user = await getUserById(userId);
   if (!user) return { error: ERRORS.NOT_FOUND, statusCode: 404 };
-  if (user.status !== 'pending_first_login') return { error: ERRORS.FORBIDDEN, statusCode: 403 };
+  if (user.status !== 'pending_first_login' && user.status !== 'pending_email_verification') {
+    return { error: ERRORS.FORBIDDEN, statusCode: 403 };
+  }
 
-  await deleteVaultFile(userId);
+  // Delete all user's vaults from S3 and DynamoDB
+  const vaults = await listVaultsByUser(userId);
+  for (const vault of vaults) {
+    await deleteVaultFile(vault.vaultId);
+    await deleteVaultRecord(vault.vaultId);
+  }
+  // Also clean up legacy key if it exists
+  await deleteLegacyVaultFile(userId);
   await deleteUser(userId);
+
+  return { response: { success: true } };
+}
+
+export async function lockUser(
+  userId: string,
+): Promise<{ response?: { success: true }; error?: string; statusCode?: number }> {
+  const user = await getUserById(userId);
+  if (!user) return { error: ERRORS.NOT_FOUND, statusCode: 404 };
+  if (user.role === 'admin') return { error: ERRORS.FORBIDDEN, statusCode: 403 };
+  if (user.status === 'locked') return { error: 'User is already locked', statusCode: 400 };
+  if (user.status === 'retired') return { error: ERRORS.NOT_FOUND, statusCode: 404 };
+
+  await updateUser(userId, { status: 'locked' });
+  return { response: { success: true } };
+}
+
+export async function unlockUser(
+  userId: string,
+): Promise<{ response?: { success: true }; error?: string; statusCode?: number }> {
+  const user = await getUserById(userId);
+  if (!user) return { error: ERRORS.NOT_FOUND, statusCode: 404 };
+  if (user.role === 'admin') return { error: ERRORS.FORBIDDEN, statusCode: 403 };
+  if (user.status !== 'locked') return { error: 'User is not locked', statusCode: 400 };
+
+  await updateUser(userId, { status: 'active' });
+  return { response: { success: true } };
+}
+
+export async function expireUser(
+  userId: string,
+): Promise<{ response?: { success: true }; error?: string; statusCode?: number }> {
+  const user = await getUserById(userId);
+  if (!user) return { error: ERRORS.NOT_FOUND, statusCode: 404 };
+  if (user.role === 'admin') return { error: ERRORS.FORBIDDEN, statusCode: 403 };
+  if (user.status === 'retired') return { error: ERRORS.NOT_FOUND, statusCode: 404 };
+  if (user.status === 'expired') return { error: 'User is already expired', statusCode: 400 };
+
+  await updateUser(userId, { status: 'expired' });
+  return { response: { success: true } };
+}
+
+export async function retireUser(
+  userId: string,
+): Promise<{ response?: { success: true }; error?: string; statusCode?: number }> {
+  const user = await getUserById(userId);
+  if (!user) return { error: ERRORS.NOT_FOUND, statusCode: 404 };
+  if (user.role === 'admin') return { error: ERRORS.FORBIDDEN, statusCode: 403 };
+  if (user.status === 'retired') return { error: ERRORS.NOT_FOUND, statusCode: 404 };
+
+  // Rename username to free the email for reuse
+  const retiredUsername = `_retired_${userId}_${user.username}`;
+  await updateUser(userId, { status: 'retired', username: retiredUsername });
+  return { response: { success: true } };
+}
+
+export async function verifyEmailToken(
+  token: string,
+): Promise<{ response?: { success: true }; error?: string; statusCode?: number }> {
+  // Scan for user with this registration token
+  const users = await listAllUsers();
+  const user = users.find(
+    (u) =>
+      u.registrationToken === token &&
+      u.status === 'pending_email_verification' &&
+      u.registrationTokenExpiresAt &&
+      new Date(u.registrationTokenExpiresAt) > new Date(),
+  );
+
+  if (!user) {
+    return { error: ERRORS.EMAIL_VERIFICATION_INVALID, statusCode: 400 };
+  }
+
+  await updateUser(user.userId, {
+    status: 'pending_first_login',
+    registrationToken: undefined,
+    registrationTokenExpiresAt: undefined,
+  });
 
   return { response: { success: true } };
 }
@@ -322,9 +410,19 @@ export async function listLoginEvents(): Promise<ListLoginEventsResponse> {
 
 export async function getStats(): Promise<AdminStats> {
   const users = await listAllUsers();
-  const regularUsers = users.filter((u) => u.role === 'user');
-  const sizes = await Promise.all(regularUsers.map((u) => getVaultFileSize(u.userId)));
-  const totalVaultSizeBytes = sizes.reduce<number>((sum, s) => sum + (s ?? 0), 0);
+  const regularUsers = users.filter((u) => u.role === 'user' && u.status !== 'retired');
+
+  // Sum vault sizes across all vaults
+  const { getVaultFileSize } = await import('../utils/s3.js');
+  let totalVaultSizeBytes = 0;
+  for (const u of regularUsers) {
+    const vaults = await listVaultsByUser(u.userId);
+    for (const v of vaults) {
+      const size = await getVaultFileSize(v.vaultId);
+      totalVaultSizeBytes += size ?? 0;
+    }
+  }
+
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const loginsLast7Days = await getLoginCountSince(sevenDaysAgo);
   return {

@@ -284,6 +284,7 @@ describe('POST /auth/passkey/verify', () => {
       passkeyTransports: null, passkeyAaguid: null,
       role: 'user', status: 'active', passwordHash: '', oneTimePasswordHash: null,
       createdAt: '', lastLoginAt: null, createdBy: null, failedLoginAttempts: 0, lockedUntil: null,
+      plan: 'free' as const, otpExpiresAt: null,
     });
     mockVerifyPasskeyAssertion.mockResolvedValue({ verified: true, newCounter: 1 });
     const res = await handler(makeEvent(API_PATHS.AUTH_PASSKEY_VERIFY, 'POST', {

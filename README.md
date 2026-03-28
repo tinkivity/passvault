@@ -11,8 +11,9 @@
 ## 🔐 Overview
 
 PassVault is a privacy-focused, serverless password vault where:
-- **Each user gets exactly ONE encrypted text file** stored in AWS S3
-- **Client-side encryption** ensures the server never sees your data
+- **Structured vault with multiple item types** (logins, credit cards, notes, identities, WiFi, SSH keys, email accounts) stored encrypted in AWS S3
+- **Multiple vaults per user** (1 for free plan, up to 10 for pro) with plan-based limits enforced server-side
+- **Client-side encryption** ensures the server never sees your data — not even warning codes
 - **Post-quantum cryptography** (Argon2id + AES-256-GCM) protects against future threats
 - **Multi-layer bot protection** prevents AWS cost abuse
 - **Passkey-based 2FA** (WebAuthn/FIDO2) for all accounts (prod; disabled in dev/beta)
@@ -36,8 +37,11 @@ PassVault is a privacy-focused, serverless password vault where:
 ### User Experience
 - ⏱️ **View mode** - Read-only with auto-logout (60s prod, 5min dev/beta)
 - ✏️ **Edit mode** - Explicit activation with auto-logout (120s prod, 10min dev/beta)
-- 📋 **Copy to clipboard** - One-click copy functionality
+- 📋 **Copy to clipboard** - One-click copy with reveal/hide toggle on secret fields
 - 💾 **Download encrypted backup** - Full recovery package with metadata
+- 🔑 **Password generator** - Cryptographically random strong passwords inline in forms
+- ⚠️ **Password warnings** - Duplicate and weak password detection stored inside the encrypted vault (zero-knowledge)
+- 👤 **User lifecycle** - Admin can lock, unlock, expire, or retire accounts; email-as-username with optional verification (prod)
 
 ### Infrastructure
 - 🚀 **Serverless** - AWS Lambda + API Gateway + S3 + DynamoDB
@@ -192,25 +196,26 @@ See [BOTPROTECTION.md](BOTPROTECTION.md) for the full threat model and worst-cas
 2. Run `ENVIRONMENT=prod npx tsx scripts/init-admin.ts` — prints the one-time admin password to console
 3. Log in and change password
 4. Register passkey (biometric/PIN) — *prod only, skipped in dev/beta*
-5. Create user accounts (system generates OTPs)
-6. Share credentials with users securely
+5. Create user accounts using email address as username (system generates OTPs and sends invitation emails in prod)
+6. Manage users: lock/unlock/expire/retire accounts from the User Detail page
 
 ### User Workflow
-1. Receive username + OTP from admin
-2. Log in with OTP
+1. Receive email invitation (prod) or OTP directly (dev/beta) from admin
+2. Click email verification link if required (prod), then log in with OTP
 3. Change password (must meet security policy)
 4. Register passkey (biometric/PIN) — *prod only, skipped in dev/beta*
-5. Access vault in view mode (auto-logout)
-6. Click "Edit" to modify (extended auto-logout)
-7. Save changes (immediate logout)
+5. Browse vault items in the sidebar; view details in read-only mode
+6. Add/edit items using structured forms with password generator
+7. Warning badges appear automatically for duplicate or weak passwords
 
-### File Encryption
+### Vault Encryption
 1. User enters password at login
 2. Client derives encryption key: `Argon2id(password, salt)`
 3. Key held in memory (never persisted)
-4. On save: `AES-256-GCM(plaintext, key, IV)` → S3
-5. On load: `AES-256-GCM-decrypt(ciphertext, key, IV)` → display
-6. On logout: Clear key from memory
+4. On save: `JSON.stringify(VaultFile)` → `AES-256-GCM(plaintext, key, IV)` → S3
+5. On load: GET from S3 → `AES-256-GCM-decrypt` → `JSON.parse()` → structured item list
+6. Warning codes recomputed on every save and stored inside the encrypted blob
+7. On logout: Clear key from memory
 
 ---
 

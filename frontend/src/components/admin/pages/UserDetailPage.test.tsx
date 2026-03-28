@@ -23,24 +23,28 @@ const mockAdmin = {
   downloadUserVault: vi.fn(),
   refreshOtp: vi.fn(),
   deleteUser: vi.fn().mockResolvedValue(undefined),
+  lockUser: vi.fn().mockResolvedValue(undefined),
+  unlockUser: vi.fn().mockResolvedValue(undefined),
+  expireUser: vi.fn().mockResolvedValue(undefined),
+  retireUser: vi.fn().mockResolvedValue(undefined),
   loading: false,
   error: null as string | null,
 };
 
 const pendingUser: UserSummary = {
   userId: 'u1',
-  username: 'bob',
+  username: 'bob@example.com',
   status: 'pending_first_login',
+  plan: 'free',
   createdAt: '2024-01-15T00:00:00Z',
   lastLoginAt: null,
   vaultSizeBytes: 2048,
-  email: 'bob@example.com',
 };
 
 const activeUser: UserSummary = {
   ...pendingUser,
   userId: 'u2',
-  username: 'alice',
+  username: 'alice@example.com',
   status: 'active',
   lastLoginAt: '2024-03-01T00:00:00Z',
 };
@@ -72,7 +76,7 @@ describe('UserDetailPage', () => {
 
   it('renders username as heading', () => {
     renderDetail(pendingUser);
-    expect(screen.getByText('bob')).toBeInTheDocument();
+    expect(screen.getByText('bob@example.com')).toBeInTheDocument();
   });
 
   it('renders email', () => {
@@ -121,7 +125,7 @@ describe('UserDetailPage', () => {
   it('calls downloadUserVault when Download Vault is clicked', async () => {
     renderDetail(pendingUser);
     await userEvent.click(screen.getByText('Download Vault'));
-    expect(mockAdmin.downloadUserVault).toHaveBeenCalledWith('u1', 'bob');
+    expect(mockAdmin.downloadUserVault).toHaveBeenCalledWith('u1', 'bob@example.com');
   });
 
   it('shows Confirm Delete / Cancel buttons before deleting', async () => {

@@ -91,6 +91,7 @@ async function main() {
     passwordHash,
     role: 'admin',
     status: 'pending_first_login',
+    plan: 'free',
     oneTimePasswordHash: passwordHash,
     passkeyCredentialId: null,
     passkeyPublicKey: null,
@@ -101,6 +102,9 @@ async function main() {
     createdAt: now,
     lastLoginAt: null,
     createdBy: null,
+    failedLoginAttempts: 0,
+    lockedUntil: null,
+    otpExpiresAt: null,
   };
 
   await dynamo.send(

@@ -5,7 +5,8 @@ import { success, error } from '../utils/response.js';
 import { validatePow } from '../middleware/pow.js';
 import { validateHoneypot } from '../middleware/honeypot.js';
 import { requireAuth } from '../middleware/auth.js';
-import { login, changePassword, requestEmailChange, confirmEmailChange } from '../services/auth.js';
+import { login, changePassword } from '../services/auth.js';
+import { verifyEmailToken } from '../services/admin.js';
 import { updateLoginEventLogout } from '../utils/dynamodb.js';
 import {
   generateChallengeJwt,
@@ -58,13 +59,9 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     if (path === API_PATHS.AUTH_PASSKEY_REGISTER && method === 'POST') {
       return await handlePasskeyRegister(event);
     }
-    // POST /auth/email/change
-    if (path === API_PATHS.AUTH_EMAIL_CHANGE && method === 'POST') {
-      return await handleRequestEmailChange(event);
-    }
-    // POST /auth/email/verify
-    if (path === API_PATHS.AUTH_EMAIL_VERIFY && method === 'POST') {
-      return await handleConfirmEmailChange(event);
+    // GET /auth/verify-email?token=...
+    if (path === API_PATHS.AUTH_VERIFY_EMAIL && method === 'GET') {
+      return await handleVerifyEmail(event);
     }
     // POST /auth/logout
     if (path === API_PATHS.AUTH_LOGOUT && method === 'POST') {
@@ -79,17 +76,15 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 }
 
 async function handleLogin(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
-  // Validate PoW
   const pow = validatePow(event, POW_CONFIG.DIFFICULTY.MEDIUM);
   if (pow.errorResponse) return pow.errorResponse;
 
-  // Validate honeypot
   const honeypot = validateHoneypot(event);
   if (honeypot.errorResponse) return honeypot.errorResponse;
 
   const parsed = parseBody(event);
   if ('parseError' in parsed) return parsed.parseError;
-  const result = await login(parsed.body);
+  const result = await login(parsed.body as unknown as import('@passvault/shared').LoginRequest);
 
   if (result.error) {
     return error(result.error, result.statusCode || 401);
@@ -110,7 +105,7 @@ async function handleChangePassword(event: APIGatewayProxyEvent): Promise<APIGat
 
   const parsed = parseBody(event);
   if ('parseError' in parsed) return parsed.parseError;
-  const result = await changePassword(user!.userId, user!.username, parsed.body);
+  const result = await changePassword(user!.userId, user!.username, parsed.body as unknown as import('@passvault/shared').ChangePasswordRequest);
 
   if (result.error) {
     return error(result.error, result.statusCode || 400, result.details);
@@ -231,22 +226,12 @@ async function handlePasskeyRegister(event: APIGatewayProxyEvent): Promise<APIGa
   return success({ success: true });
 }
 
-async function handleRequestEmailChange(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
-  const pow = validatePow(event, POW_CONFIG.DIFFICULTY.MEDIUM);
-  if (pow.errorResponse) return pow.errorResponse;
-
-  const { user, errorResponse } = await requireAuth(event);
-  if (errorResponse) return errorResponse;
-
-  if (user!.status !== 'active') {
-    return error(ERRORS.FORBIDDEN, 403);
+async function handleVerifyEmail(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  const token = event.queryStringParameters?.token;
+  if (!token) {
+    return error(ERRORS.EMAIL_VERIFICATION_INVALID, 400);
   }
-
-  const parsed = parseBody(event);
-  if ('parseError' in parsed) return parsed.parseError;
-  const { newEmail, password } = parsed.body as { newEmail: string; password: string };
-
-  const result = await requestEmailChange(user!.userId, newEmail, password);
+  const result = await verifyEmailToken(token);
   if (result.error) {
     return error(result.error, result.statusCode || 400);
   }
@@ -264,32 +249,9 @@ async function handleLogout(event: APIGatewayProxyEvent): Promise<APIGatewayProx
     return error('Missing eventId', 400);
   }
 
-  // Fire-and-forget: record logout time — don't block the response
   updateLoginEventLogout(eventId, new Date().toISOString()).catch(err => {
     console.error('Failed to record logout event:', err, 'userId:', user!.userId);
   });
 
   return success({ success: true });
-}
-
-async function handleConfirmEmailChange(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
-  const pow = validatePow(event, POW_CONFIG.DIFFICULTY.MEDIUM);
-  if (pow.errorResponse) return pow.errorResponse;
-
-  const { user, errorResponse } = await requireAuth(event);
-  if (errorResponse) return errorResponse;
-
-  if (user!.status !== 'active') {
-    return error(ERRORS.FORBIDDEN, 403);
-  }
-
-  const parsed = parseBody(event);
-  if ('parseError' in parsed) return parsed.parseError;
-  const { code } = parsed.body as { code: string };
-
-  const result = await confirmEmailChange(user!.userId, code);
-  if (result.error) {
-    return error(result.error, result.statusCode || 400);
-  }
-  return success(result.response);
 }

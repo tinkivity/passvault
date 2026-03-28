@@ -96,8 +96,8 @@ describe('verifyPasskeyAssertion', () => {
   it('returns verified=true and newCounter on success', async () => {
     vi.mocked(verifyAuthenticationResponse).mockResolvedValue({
       verified: true,
-      authenticationInfo: { newCounter: 5 } as ReturnType<typeof verifyAuthenticationResponse> extends Promise<infer T> ? T['authenticationInfo'] : never,
-    } as Awaited<ReturnType<typeof verifyAuthenticationResponse>>);
+      authenticationInfo: { newCounter: 5 },
+    } as unknown as Awaited<ReturnType<typeof verifyAuthenticationResponse>>);
 
     const result = await verifyPasskeyAssertion(
       {} as AuthenticationResponseJSON,
@@ -159,7 +159,7 @@ describe('verifyPasskeyAttestation', () => {
         },
         aaguid: 'aaguid-uuid',
       },
-    } as Awaited<ReturnType<typeof verifyRegistrationResponse>>);
+    } as unknown as Awaited<ReturnType<typeof verifyRegistrationResponse>>);
 
     const attestation = {
       response: { transports: ['internal'] },

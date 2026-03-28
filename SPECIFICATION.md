@@ -2,7 +2,7 @@
 
 ## 1. Overview
 
-PassVault is an invitation-only, personal secure text storage application where each user has exactly one private text file stored encrypted in AWS S3. Each file is encrypted client-side using a key derived from the user's password, providing end-to-end encryption with post-quantum cryptographic protection. Administrators create user invitations with one-time passwords. Users login with their assigned username and one-time password, then must set a secure password on first login. The application features a React frontend with serverless backend using AWS Lambda and API Gateway. Each user's file is automatically created when the admin creates the invitation and is only accessible by that user.
+PassVault is an invitation-only, personal password manager and secure vault with end-to-end encryption and post-quantum cryptographic protection. Each user can have one or more encrypted vaults stored in AWS S3, where each vault holds structured items (logins, credit cards, notes, identities, WiFi, SSH keys, email accounts). All vault content is encrypted client-side using a key derived from the user's password — the server stores only encrypted blobs. Administrators create user invitations using the user's email address as their username. Users login with their assigned email and one-time password, then must set a secure password on first login. The application features a React frontend with serverless backend using AWS Lambda and API Gateway. The first vault is automatically created when the admin creates the invitation and is only accessible by that user.
 
 **Critical Privacy Feature**: The admin has **zero access** to user file content. Files are encrypted with keys derived from each user's personal password (not the admin password), ensuring complete user privacy. Even with full system access, the admin cannot decrypt user files without knowing the individual user's password.
 
@@ -27,18 +27,22 @@ PassVault is an invitation-only, personal secure text storage application where 
   - Password (step 2 — derives the encryption key)
   - > **Environment Note**: In dev and beta environments where passkeys are disabled, the status transitions directly from "pending_first_login" to "active" after password change. The passkey setup step is skipped entirely. Login requires only username + password.
 - **Create User Invitation**: Admin creates new users by:
-  - Specifying a username
-  - Optionally providing an email address (beta/prod only)
-  - System generates a secure one-time password (OTP) with an expiry time
-  - If an email is provided, SES sends the OTP and expiry notice to the user's inbox
-  - Empty S3 file is automatically created for the user
-  - User account is marked as "pending_first_login"
-  - Admin dashboard accessible only after admin has completed passkey setup
+  - Specifying the user's email address (used as the username / login identity)
+  - System generates a secure one-time password (OTP) with a per-environment expiry time
+  - In prod: SES sends a combined invitation email containing the OTP and an email verification link; user status is set to `pending_email_verification` until the link is clicked
+  - In dev/beta: no verification email; user status starts at `pending_first_login` directly
+  - First vault record (`Personal Vault`) is automatically created alongside the user record
   - Admin always sees the OTP in the UI regardless of email delivery
   - **Important**: Admin does NOT set user passwords - users set their own passwords
-- **View User Invitations**: Admin can view list of created users and their status (pending_first_login / pending_passkey_setup / active), including email address where provided
-- **Refresh OTP**: Admin can generate a new OTP for a user that is still in `pending_first_login` state (e.g. OTP expired or was lost); sends email if the user has one on record
-- **Delete Pending User**: Admin can delete a user that has not yet completed first login; removes the DynamoDB record and the S3 vault file
+- **View User Invitations**: Admin can view a list of all non-retired users and their status, including vault size
+- **User Lifecycle Management**: Admin can change a user's status from the User Detail page:
+  - **Lock** (`active` or `expired` → `locked`): User cannot log in; returns `ACCOUNT_SUSPENDED` (403)
+  - **Unlock** (`locked` → `active`): Restores login access
+  - **Expire** (`active` → `expired`): User can log in and read but cannot create/update/delete vault items; returns `ACCOUNT_EXPIRED` (403) on write attempts
+  - **Retire** (any non-retired status → `retired`): Username is renamed to `_retired_{userId}_{original}` freeing the email for reuse; user disappears from the admin list; login returns `INVALID_CREDENTIALS` (indistinguishable from wrong password)
+  - Admin cannot lock/unlock/expire/retire another admin account (returns 403)
+- **Refresh OTP**: Admin can generate a new OTP for a user that is still in `pending_first_login` state (e.g. OTP expired or was lost); sends email if the user is in a beta/prod environment
+- **Delete Pending User**: Admin can delete a user that has not yet completed first login; removes the DynamoDB record and all associated S3 vault files
 - **Admin Limitations - Zero Access to User Data**:
   - **Admin CANNOT access user file content** unless they know the user's password
   - User files are encrypted with keys derived from user passwords (not admin password)
@@ -47,8 +51,9 @@ PassVault is an invitation-only, personal secure text storage application where 
   - This ensures complete user privacy and zero-knowledge architecture
 
 #### User Functions
-- **First-Time Login**: Users receive username and one-time password from admin (via secure channel or email)
-  - Authenticate with username and OTP
+- **First-Time Login**: Users receive an invitation email (prod) or OTP from admin (dev/beta)
+  - **Prod**: Click the email verification link first; status transitions `pending_email_verification` → `pending_first_login`; then log in with the OTP
+  - **Dev/beta**: Log in with the OTP directly (no verification required)
   - OTPs have a per-environment expiry: dev=60 min, beta=10 min, prod=120 min
   - Expired OTPs return 401 `OTP_EXPIRED`; admin must use Refresh OTP to issue a new one
   - System forces immediate password change
@@ -65,39 +70,68 @@ PassVault is an invitation-only, personal secure text storage application where 
 - **Session Management**: Maintain authenticated state during user session
 - **Logout**: Users can end their session
 
-### 2.2 File Management
+### 2.2 Vault Management
 
-#### View Mode (Default)
-- **Read-Only Access**: Upon login, users can only view their file content (not edit)
-- **Copy to Clipboard**: Users can copy text from their file to clipboard
-- **Download Encrypted File**: Users can download their encrypted file with all recovery metadata
-  - Downloads as JSON file: `{encryptedContent, salt, parameters, metadata}`
-  - Allows offline decryption using password and recovery tools
-  - File contains everything needed for independent recovery
-- **Auto-Logout**: Automatic logout after 60 seconds of inactivity
-- **Visible Countdown**: Display countdown timer showing remaining seconds until auto-logout
+#### Vault Structure
 
-#### Edit Mode (Explicit Activation)
-- **Enter Edit Mode**: User must explicitly click "Edit" button to enable editing
-- **Timer Extension**: Upon entering edit mode, countdown timer resets and extends to 120 seconds
-- **Edit Content**: User can now modify file content in text editor
-- **No Auto-Save**: Changes are NOT automatically saved
-- **Explicit Save**: User must click "Save" button to persist changes
-- **Post-Save Logout**: After successful save, user is immediately logged out
-- **Cancel Edit**: User can cancel edit mode, which immediately logs them out without saving changes
+Each vault holds a `VaultFile` JSON object (encrypted before storage):
+
+```typescript
+interface VaultFile {
+  version: 1;
+  items: VaultItem[];
+}
+```
+
+**Item categories:** `login`, `email`, `credit_card`, `identity`, `wifi`, `private_key`, `note`
+
+Each item has a common base (`id`, `name`, `category`, `createdAt`, `updatedAt`, `warningCodes`) plus category-specific fields (e.g. `login` has `username`, `password`, optional `url`/`totp`/`notes`).
+
+**`warningCodes`** are zero-knowledge metadata computed entirely client-side and stored inside the encrypted vault. The backend never sees or processes them. Current codes:
+- `duplicate_password` — password appears in more than one login/email/wifi item
+- `too_simple_password` — password fails the shared password policy
+
+#### Multiple Vaults
+
+| Plan | Max vaults |
+|------|------------|
+| `free` (default) | 1 |
+| `pro` | 10 |
+
+Plan is set by the admin on the user record and enforced server-side on vault creation.
+
+#### Vault Operations
+
+- **Browse items**: Vault item list with Name, Category, display field (e.g. username for login), and ⚠ warning badge
+- **View item**: Detail page with all fields; secret fields (password, CVV, etc.) are masked by default with reveal/copy controls
+- **Add item**: Category selector → dynamic form; password fields include a one-click password generator
+- **Edit item**: Same form; recomputes all `warningCodes` across the vault before saving
+- **Delete item**: Confirmation dialog with password verification
+- **Download encrypted backup**: Downloads vault as a JSON file containing the encrypted blob + recovery metadata
+- **Email encrypted backup**: Sends backup to the user's registered email (beta/prod only)
+- **Create vault**: Adds a new named vault (blocked if at plan limit)
+- **Delete vault**: Removes vault and its S3 file (blocked if it is the last vault)
 
 #### Encryption
-- **Client-Side Encryption**: All file content is encrypted on the client (browser) before being sent to the server
+- **Client-Side Encryption**: All vault content is encrypted on the client (browser) before being sent to the server
 - **Password-Based Key Derivation**: Encryption key is derived from user's password using Argon2id (quantum-resistant KDF)
 - **Post-Quantum Safe**: Uses AES-256-GCM for symmetric encryption (quantum-resistant with 256-bit keys)
 - **End-to-End Encryption**: Server never sees plaintext content, only encrypted blobs
-- **Automatic Encryption/Decryption**: Transparent to user - encryption on save, decryption on load
-- **Password Change Re-encryption**: When password changes, file is automatically re-encrypted with new key
+- **Zero-Knowledge Warning Codes**: `warningCodes` arrays are stored inside the encrypted blob — backend is completely blind to their values
+- **Password Change Re-encryption**: When password changes, all vaults are automatically re-encrypted with the new key
 
-#### General
-- Users have no access to file deletion or creation (one file per user, created automatically)
-- Users cannot see or access other users' files
-- Server stores only encrypted file content, cannot decrypt without user's password
+#### Session Timeouts
+
+Auto-logout fires after configurable inactivity; a countdown timer is always visible.
+
+| Environment | View mode | Edit mode |
+|-------------|-----------|-----------|
+| Dev / Beta  | 5 min     | 10 min    |
+| Prod        | 60 sec    | 120 sec   |
+
+#### Expired Accounts
+
+If an admin marks a user as `expired`, the user can still log in and view vault items but all create/edit/delete operations return 403 `ACCOUNT_EXPIRED`. A read-only banner is shown in the UI.
 
 ### 2.3 Bot Protection & Cost Mitigation
 
@@ -273,29 +307,30 @@ For a detailed bot attack cost analysis including worst-case calculations and de
   - "Register passkey" button triggers browser WebAuthn dialog (biometric / PIN prompt)
   - Explains that the passkey will be required to sign in going forward
   - Cannot proceed to vault until passkey is registered
-- **Vault Page**: Interface with two distinct modes:
+- **Vault Shell** (full-viewport layout after login):
+  - **Sidebar**: vault list (one entry per vault, active vault highlighted); "New Vault" option if under plan limit; username + Logout footer
+  - **Top bar**: breadcrumb trail showing current vault + page; session countdown timer; theme toggle
+  - **Expired-account banner**: shown when `status === 'expired'`; all write actions hidden
 
-  **View Mode (Default):**
-  - Read-only text display/viewer showing file content
-  - Countdown timer prominently displayed (e.g., "Auto-logout in: 45 seconds")
-  - "Edit" button to enter edit mode
-  - "Copy to Clipboard" button (copies entire file content or selected text)
-  - "Download Encrypted Backup" button (downloads encrypted file + recovery metadata as JSON)
-  - "Email Encrypted Backup" button — sends encrypted vault JSON to the user's registered email (beta/prod only; hidden if no email is set)
-  - Manual "Logout" button
-  - Loading indicator while fetching content
+- **Vault Items Page** (`/vault/:vaultId/items`):
+  - Table: Name (sortable), Category badge (sortable), display field per category, ⚠ badge if `warningCodes.length > 0`
+  - Filter bar: name text search + category multi-select
+  - "+ New Item" button (hidden when `expired`)
+  - Clicking a row navigates to item detail
 
-  **Edit Mode (After clicking Edit):**
-  - Editable text area displaying file content
-  - Countdown timer showing extended time (e.g., "Auto-logout in: 115 seconds")
-  - "Save" button to persist changes and logout
-  - "Cancel" button to discard changes and logout immediately
-  - Visual indicator that edit mode is active (e.g., different background color, "EDIT MODE" label)
-  - Warning message: "Changes are not saved automatically. Click Save to persist changes."
-  - Confirmation dialog when clicking Cancel: "Are you sure? Unsaved changes will be lost and you will be logged out."
-  - Success/error message feedback after save operation
+- **Vault Item Detail Page** (`/vault/:vaultId/items/:itemId`):
+  - All fields shown in a definition list
+  - Secret fields (password, CVV, private key, etc.) masked by default; Eye/EyeOff toggle; Copy button with 1.5 s check feedback
+  - Note items rendered as plain text (raw) or markdown
+  - "[Edit]" / "[Delete]" buttons (hidden when `expired`)
+  - Delete opens confirmation dialog with password re-entry
 
-- No file naming, listing, or deletion UI required
+- **Vault Item New Page** (`/vault/:vaultId/items/new`):
+  - Category selector → dynamic fields rendered based on category
+  - Password fields include `[Generate]` button (cryptographically random, mixed character classes)
+  - Note items include format toggle (raw / markdown)
+
+- No longer a single text-area vault editor — vault is always structured items
 
 ### 2.5 Environment Modes
 
@@ -506,32 +541,55 @@ Protection Layers:
 > **Passkey endpoints (dev/beta)**: When `passkeyRequired=false`, the passkey challenge/verify/register endpoints are still deployed but will not be exercised by the UI. POST /admin/login accepts `username` + `password` directly.
 
 - **POST /api/admin/users** (Requires admin auth, blocked if admin status is not "active")
-  - Request: `{ "username": "string", "email"?: "string" }` — `email` is optional; beta/prod only (ignored in dev)
+  - Request: `{ "username": "string" }` — username must be a valid email address
   - Response: `{ "success": true, "username": "string", "oneTimePassword": "string", "userId": "string" }`
-  - Creates new user invitation
+  - Creates new user invitation; also creates the first vault record (`Personal Vault`) for the user
   - Generates secure random one-time password (min 16 characters) with per-environment expiry (dev=60min, beta=10min, prod=120min)
-  - Generates unique encryption salt for user (256-bit random, base64)
-  - Creates empty encrypted S3 file for user (encrypted with temporary key or empty blob)
-  - User status set to "pending_first_login"
-  - If `email` is provided and SES is configured, sends OTP + expiry notice to the user's inbox
+  - **Prod**: generates a `registrationToken` (UUID); SES sends a combined invitation email containing both the OTP and an email verification link (`/api/auth/verify-email?token=...`); user status set to `pending_email_verification`
+  - **Dev/beta**: no email sent; user status set to `pending_first_login` directly
   - Returns OTP to display to admin in the UI (always, regardless of email delivery)
 
 - **GET /api/admin/users** (Requires admin auth, blocked if admin status is not "active")
-  - Response: `{ "users": [{ "userId": "string", "username": "string", "email": "string | null", "status": "string", "createdAt": "timestamp", "lastLoginAt": "timestamp", "vaultSizeBytes": number | null }] }`
-  - Returns list of all users with their status (pending_first_login / pending_passkey_setup / active), email, and current vault file size
+  - Response: `{ "users": [{ "userId": "string", "username": "string", "status": "string", "plan": "free" | "pro", "createdAt": "timestamp", "lastLoginAt": "timestamp", "vaultSizeBytes": number | null }] }`
+  - Returns list of all non-retired users with their status and current vault file size
+
+- **GET /api/admin/users/:userId** (Requires admin auth)
+  - Response: full user record (same fields as list + additional detail)
+
+- **POST /api/admin/users/lock** (Requires admin auth)
+  - Request: `{ "userId": "string" }`
+  - Response: `{ "success": true }`
+  - Sets user status to `locked`; returns 403 if target is an admin account
+
+- **POST /api/admin/users/unlock** (Requires admin auth)
+  - Request: `{ "userId": "string" }`
+  - Response: `{ "success": true }`
+  - Restores user status to `active`; returns 403 if target is an admin account
+
+- **POST /api/admin/users/expire** (Requires admin auth)
+  - Request: `{ "userId": "string" }`
+  - Response: `{ "success": true }`
+  - Sets user status to `expired`; user retains read access but write operations return 403 `ACCOUNT_EXPIRED`
+
+- **POST /api/admin/users/retire** (Requires admin auth)
+  - Request: `{ "userId": "string" }`
+  - Response: `{ "success": true }`
+  - Renames username to `_retired_{userId}_{originalUsername}` (freeing the email address for reuse)
+  - Sets user status to `retired`; user disappears from admin list; login returns `INVALID_CREDENTIALS`
+  - Returns 403 if target is an admin account
 
 - **POST /api/admin/users/refresh-otp** (Requires admin auth, blocked if admin status is not "active")
   - Request: `{ "userId": "string" }`
   - Response: `{ "success": true, "oneTimePassword": "string" }`
-  - Generates a new OTP for a user whose status is `pending_first_login` (e.g. OTP expired or was lost)
+  - Generates a new OTP for a user whose status is `pending_first_login`
   - Returns 400 if user is not in `pending_first_login` state
-  - If the user has an email address and SES is configured, sends new OTP + expiry notice by email
+  - In beta/prod, sends new OTP by email if the environment supports it
   - Returns new OTP to admin in the UI (always)
 
 - **DELETE /api/admin/users?userId=** (Requires admin auth, blocked if admin status is not "active")
-  - Deletes a user whose status is `pending_first_login`
-  - Returns 400 if user is not in `pending_first_login` state
-  - Removes the DynamoDB user record and the S3 vault file (`user-{userId}.enc`)
+  - Deletes a user whose status is `pending_first_login` or `pending_email_verification`
+  - Returns 400 if user is in any other status
+  - Removes the DynamoDB user record and all associated S3 vault files
   - Response: `{ "success": true }`
 
 - **GET /api/admin/stats** (Requires admin auth, PoW HIGH)
@@ -556,15 +614,24 @@ Protection Layers:
   - Request: `{ "challengeJwt": "string", "assertion": PasskeyAssertionJSON }`
   - Response: `{ "passkeyToken": "string", "username": "string", "encryptionSalt": "string" }`
 
+- **GET /api/auth/verify-email?token=** (no auth, no PoW — prod only)
+  - Validates the `registrationToken` from the invitation email
+  - On success: sets user status to `pending_first_login`; returns `{ "success": true }`
+  - Returns 400 `EMAIL_VERIFICATION_INVALID` if token is unknown or expired (> 7 days)
+  - Returns 200 with `{ "alreadyVerified": true }` if status is already past `pending_email_verification`
+
 - **POST /api/auth/login** (PoW MEDIUM + honeypot)
   - Request (prod): `{ "passkeyToken": "string", "password": "string" }` — passkeyToken from verify step
   - Request (dev/beta): `{ "username": "string", "password": "string" }` — direct
   - Response:
-    - First-time login (with OTP): `{ "token": "string", "requirePasswordChange": true, "username": "string", "encryptionSalt": "string (base64)", "loginEventId": "string (UUID)" }`
-    - After password change (prod): `{ "token": "string", "requirePasskeySetup": true, "username": "string", "encryptionSalt": "string (base64)", "loginEventId": "string (UUID)" }`
-    - Active login: `{ "token": "string", "username": "string", "encryptionSalt": "string (base64)", "loginEventId": "string (UUID)" }`
-  - Returns JWT token with user ID and role, plus encryption salt for key derivation
+    - First-time login (with OTP): `{ "token": "string", "requirePasswordChange": true, "username": "string", "encryptionSalt": "string (base64)", "plan": "free" | "pro", "loginEventId": "string (UUID)" }`
+    - After password change (prod): `{ "token": "string", "requirePasskeySetup": true, "username": "string", "encryptionSalt": "string (base64)", "plan": "free" | "pro", "loginEventId": "string (UUID)" }`
+    - Active login: `{ "token": "string", "username": "string", "encryptionSalt": "string (base64)", "plan": "free" | "pro", "loginEventId": "string (UUID)" }`
+  - Returns JWT token with user ID and role, plus encryption salt for key derivation and `plan` for vault limit enforcement
   - `loginEventId` uniquely identifies this login event; sent with `POST /api/auth/logout` to record session duration
+  - Returns 403 `ACCOUNT_SUSPENDED` if `status === 'locked'`
+  - Returns 401 `INVALID_CREDENTIALS` if `status === 'retired'` (indistinguishable from wrong password)
+  - Returns 403 `EMAIL_NOT_VERIFIED` if `status === 'pending_email_verification'` (prod only)
 
 - **POST /api/auth/change-password** (Requires user auth)
   - Request: `{ "newPassword": "string" }`
@@ -589,81 +656,89 @@ Protection Layers:
   - Used to calculate session duration on the Logins admin screen
   - If `eventId` is unknown or already has a `logoutAt`, the call is silently ignored
 
-- **POST /api/auth/email/change** (Requires user auth; beta/prod only)
-  - Request: `{ "newEmail": "string", "password": "string" }` — password confirmation is required to initiate the change
-  - Response: `{ "success": true }` — SES sends a 6-digit verification code to `newEmail`
-  - Returns 400 `EMAIL_CHANGE_NOT_AVAILABLE` in dev (feature disabled)
-  - Returns 503 if `SENDER_EMAIL` env var is not set
-
-- **POST /api/auth/email/verify** (Requires user auth; beta/prod only)
-  - Request: `{ "code": "string" }` — the 6-digit code sent to the new address
-  - Response: `{ "success": true }` — updates the `email` field on the user record
-  - Returns 400 `EMAIL_VERIFICATION_INVALID` if the code is wrong or expired
-  - Returns 400 `EMAIL_CHANGE_NOT_AVAILABLE` in dev
-
-### 4.4 File Operations (Protected Endpoints)
+### 4.4 Vault Operations (Protected Endpoints)
 All endpoints require user authentication via Authorization header (Bearer token).
 
-- **GET /vault**
-  - Response: `{ "encryptedContent": "string (base64)", "lastModified": "timestamp" }`
-  - Returns the authenticated user's **encrypted** file content
-  - Content is encrypted by client before storage, server returns encrypted blob
-  - Client decrypts content using key derived from user's password
-  - User ID extracted from auth token
-  - Blocked if user status is not "active" (must complete password change and passkey setup)
+> **Note:** The email-change feature (`POST /api/auth/email/change` + `POST /api/auth/email/verify`) is **suspended**. Changing email = changing login identity = invalidating the registered passkey. These endpoints are not implemented.
 
-- **PUT /vault**
+- **GET /api/vaults** (Requires user auth)
+  - Response: `{ "vaults": [{ "vaultId": "string", "displayName": "string", "createdAt": "string" }] }`
+  - Returns the authenticated user's vault records (display names + IDs only; no encrypted content)
+
+- **POST /api/vaults** (Requires user auth)
+  - Request: `{ "displayName": "string" }`
+  - Response: `{ "vaultId": "string", "displayName": "string", "createdAt": "string" }`
+  - Creates a new vault; returns 403 `VAULT_LIMIT_REACHED` if user is at their plan limit
+
+- **DELETE /api/vaults/:vaultId** (Requires user auth)
+  - Deletes the vault record and its S3 file
+  - Returns 400 `CANNOT_DELETE_LAST_VAULT` if it is the user's only vault
+  - Returns 404 if vault does not belong to the authenticated user
+
+- **GET /api/vault/:vaultId** (Requires user auth)
+  - Response: `{ "encryptedContent": "string (base64)", "lastModified": "timestamp" }`
+  - Returns the vault's **encrypted** content blob
+  - Auto-migrates legacy `user-{userId}.enc` S3 key to `vault-{vaultId}.enc` on first access
+  - Blocked if user status is not "active" or "expired"
+
+- **PUT /api/vault/:vaultId** (Requires user auth)
   - Request: `{ "encryptedContent": "string (base64)" }`
   - Response: `{ "success": true, "lastModified": "timestamp" }`
-  - Stores the authenticated user's **encrypted** file content
-  - Client encrypts content using key derived from user's password before sending
-  - Server stores encrypted blob without decryption
-  - User ID extracted from auth token ensures users can only update their own file
-  - Blocked if user status is not "active" (must complete password change and passkey setup)
+  - Stores the vault's **encrypted** content blob
+  - Returns 403 `ACCOUNT_EXPIRED` if user status is `expired`
+  - Blocked if user status is not "active" or "expired" (write blocked for expired)
 
-- **GET /api/vault/download**
+- **GET /api/vault/:vaultId/download** (Requires user auth)
   - Response: `{ "encryptedContent": "string (base64)", "encryptionSalt": "string (base64)", "algorithm": "argon2id+aes-256-gcm", "parameters": { "argon2": { "memory": 65536, "iterations": 3, "parallelism": 4, "hashLength": 32 }, "aes": { "keySize": 256, "ivSize": 96, "tagSize": 128 } }, "lastModified": "timestamp", "username": "string" }`
-  - Returns complete recovery package with encrypted file and all metadata needed for offline decryption
-  - Includes: encrypted content, salt, algorithm details, Argon2id + AES parameters (nested)
-  - User ID extracted from auth token
-  - Blocked if user status is not "active"
+  - Returns complete recovery package with encrypted blob and all metadata needed for offline decryption
 
-- **POST /api/vault/email** (Requires user auth; beta/prod only)
-  - Request: none (no body required)
-  - Response: `{ "success": true }` — sends the encrypted vault JSON (same payload as `/vault/download`) to the user's registered email address
-  - Returns 400 `NO_EMAIL_ADDRESS` if the user has no email on record
+- **POST /api/vault/:vaultId/email** (Requires user auth; beta/prod only)
+  - Response: `{ "success": true }` — sends the encrypted vault JSON (same payload as `/download`) to the user's username (email address)
   - Returns 503 if `SENDER_EMAIL` env var is not set
-  - Returns 400 `EMAIL_CHANGE_NOT_AVAILABLE` in dev (feature disabled)
-  - Blocked if user status is not "active"
+  - Returns 400 if called in dev (feature disabled)
+
+- **GET /api/config/warning-codes** (no auth, no PoW)
+  - Response: `{ "codes": [{ "code": "string", "label": "string", "description": "string", "severity": "info" | "warning" | "critical" }] }`
+  - Returns the warning code catalog from the config DynamoDB table
+  - Used by the frontend to display human-readable labels on ⚠ badges
 
 ## 5. Data Model
 
 ### 5.1 DynamoDB Users Table
 ```
-Table: passvault-users
+Table: passvault-users-{env}
 Primary Key: userId (String)
 
 Attributes:
-- userId: unique identifier (UUID)
-- username: unique username (String, GSI)
-- passwordHash: bcrypt hashed password (String) - initially stores OTP hash, replaced after first login
-- role: user role (String) - "admin" or "user"
-- status: account status (String) - "pending_first_login", "pending_passkey_setup", or "active"
-- oneTimePasswordHash: bcrypt hash of OTP (String, nullable) - cleared after first successful password change
-- passkeyCredentialId: WebAuthn credential ID (String, base64url, nullable) - set during passkey registration
-- passkeyPublicKey: COSE-encoded public key (String, base64url, nullable) - set during passkey registration
-- passkeyCounter: signature counter for replay protection (Number) - updated on every login
-- passkeyTransports: list of transport hints (List of Strings, nullable) - e.g. ["internal"]
-- passkeyAaguid: authenticator attestation GUID (String, nullable) - for auditing only
-- encryptionSalt: salt for password-based key derivation (String, base64) - unique per user, generated at user creation
-- createdAt: timestamp (String/Number)
-- lastLoginAt: timestamp (String/Number)
-- createdBy: userId of admin who created this user (String, nullable)
-- email: optional email address for the user (String, nullable) - provided by admin at user creation; used for OTP delivery and vault email
-- otpExpiresAt: ISO timestamp when the one-time password expires (String, nullable) - set at user creation; cleared after first password change
-- failedLoginAttempts: count of consecutive failed logins (Number) - reset to 0 on successful login
-- lockedUntil: ISO timestamp until which the account is locked (String, nullable) - set after 5 consecutive failures
+- userId:                   unique identifier (UUID)
+- username:                 email address used as login identity (String, GSI)
+                            Retired users have username renamed to _retired_{userId}_{original}
+- passwordHash:             bcrypt hashed password (String)
+- role:                     "admin" or "user" (String)
+- status:                   "pending_email_verification" | "pending_first_login" |
+                            "pending_passkey_setup" | "active" | "locked" | "expired" | "retired"
+- plan:                     "free" | "pro" (String) — default "free"
+- oneTimePasswordHash:      bcrypt hash of OTP (String, nullable) - cleared after first password change
+- otpExpiresAt:             ISO timestamp when the one-time password expires (String, nullable)
+- registrationToken:        UUID for email verification link (String, nullable) — prod only
+- registrationTokenExpiresAt: ISO timestamp (String, nullable) — 7 days after user creation
+- passkeyCredentialId:      WebAuthn credential ID (String, base64url, nullable)
+- passkeyPublicKey:         COSE-encoded public key (String, base64url, nullable)
+- passkeyCounter:           signature counter for replay protection (Number)
+- passkeyTransports:        list of transport hints (List of Strings, nullable)
+- passkeyAaguid:            authenticator attestation GUID (String, nullable) — audit only
+- encryptionSalt:           salt for password-based key derivation (String, base64)
+- createdAt:                ISO timestamp (String)
+- lastLoginAt:              ISO timestamp (String, nullable)
+- createdBy:                userId of admin who created this user (String, nullable)
+- failedLoginAttempts:      count of consecutive failed logins (Number) — reset on success
+- lockedUntil:              ISO timestamp for brute-force lockout (String, nullable)
+                            Distinct from status=locked (admin-set); this is auto-set after 5 failures
 ```
+
+> **Two distinct lockout mechanisms:**
+> - `status === 'locked'` — set by admin via `/api/admin/users/lock`; returns 403 `ACCOUNT_SUSPENDED`
+> - `lockedUntil` — set automatically after 5 consecutive failed logins; returns 429 `ACCOUNT_LOCKED`
 
 Global Secondary Index (GSI):
 - Index Name: username-index
@@ -673,16 +748,11 @@ Global Secondary Index (GSI):
 **Admin User Initialization:**
 - Exactly one admin user is created during deployment/initialization
 - Admin user attributes:
-  - username: "admin" (or configurable)
+  - username: admin email (set by `scripts/init-admin.ts`)
   - passwordHash: bcrypt hash of initial password
   - role: "admin"
   - status: "pending_first_login"
-  - oneTimePasswordHash: null (or same as passwordHash)
-  - passkeyCredentialId: null (set during passkey registration)
-  - passkeyPublicKey: null (set during passkey registration)
-  - passkeyCounter: 0
-  - passkeyTransports: null
-  - passkeyAaguid: null
+  - plan: "free" (not meaningful for admin)
   - encryptionSalt: randomly generated 256-bit salt (base64)
 - Initial admin password is generated by `scripts/init-admin.ts` and printed to console only
   - The OTP is never stored at rest — save it from the console output during initialization
@@ -709,20 +779,39 @@ Attributes:
 - Auth Lambda: `dynamodb:PutItem` + `dynamodb:UpdateItem` on this table
 - Admin Lambda: `dynamodb:Scan` on this table
 
-### 5.3 S3 Storage Structure
+### 5.3 DynamoDB Vaults Table
 ```
-s3://passvault-files/
-  ├── user-{userId-1}.enc
-  ├── user-{userId-2}.enc
-  └── user-{userId-3}.enc
+Table: passvault-vaults-{env}
+Primary Key: vaultId (String)
+
+Attributes:
+- vaultId:     UUID (String) — PK
+- userId:      owner's userId (String) — GSI PK (byUser index)
+- displayName: human-readable vault name (String)
+- createdAt:   ISO timestamp (String)
 ```
 
-- Files stored with naming pattern: `user-{userId}.enc`
-- Each file corresponds to exactly one user
+Global Secondary Index (GSI):
+- Index Name: byUser
+- Partition Key: userId
+- Used to list all vaults for a user
+
+The first vault (`Personal Vault`) is created automatically by `createUserInvitation` in the admin service. Plan limits (free=1, pro=10) are enforced by `createVault`.
+
+### 5.4 S3 Storage Structure
+```
+s3://passvault-files-{env}/
+  ├── vault-{vaultId-1}.enc
+  ├── vault-{vaultId-2}.enc
+  └── vault-{vaultId-3}.enc
+```
+
+- Files stored with naming pattern: `vault-{vaultId}.enc` (one S3 object per vault record)
+- Multiple vaults per user are supported; each has its own encrypted object
 - **Files contain encrypted content only** - server cannot decrypt without user's password
-- File created automatically when admin creates user invitation (empty encrypted blob)
-- File metadata (lastModified) retrieved from S3 object metadata
-- Filename is never exposed to users
+- File created (as empty blob) when a vault record is first written
+- Auto-migration: if `user-{userId}.enc` exists on first `GET /api/vault/:vaultId`, it is copied to `vault-{vaultId}.enc` and the old key is deleted
+- File metadata (`lastModified`) retrieved from S3 object metadata
 - Extension `.enc` indicates encrypted content
 
 ### 5.4 Password Policy
@@ -885,9 +974,9 @@ PassVault implements **complete separation** between admin privileges and user d
   - User ID extracted from JWT token, never from request body
   - Vault operations blocked if user status is not "active"
   - User must complete both password change and passkey setup before accessing vault
-  - **Critical**: Users can ONLY access files matching their user ID
-    - GET /vault → reads `user-{tokenUserId}.enc`
-    - PUT /vault → writes `user-{tokenUserId}.enc`
+  - **Critical**: Users can ONLY access vault records whose `userId` matches their token's userId
+    - GET /api/vault/:vaultId → verified: `vault.userId === tokenUserId`
+    - PUT /api/vault/:vaultId → verified: `vault.userId === tokenUserId`
 
 - **Admin Authorization**:
   - All /api/admin/* endpoints (except login, passkey/challenge, passkey/verify, change-password, passkey/register/*) require valid admin authentication

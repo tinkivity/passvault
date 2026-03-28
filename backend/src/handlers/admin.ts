@@ -4,8 +4,8 @@ import { success, error } from '../utils/response.js';
 import { validatePow } from '../middleware/pow.js';
 import { validateHoneypot } from '../middleware/honeypot.js';
 import { requireAuth } from '../middleware/auth.js';
-import { adminLogin, adminChangePassword, createUserInvitation, listUsers, refreshOtp, deleteNewUser, getStats, listLoginEvents } from '../services/admin.js';
-import { downloadVault } from '../services/vault.js';
+import { adminLogin, adminChangePassword, createUserInvitation, listUsers, refreshOtp, deleteNewUser, lockUser, unlockUser, expireUser, retireUser, getStats, listLoginEvents } from '../services/admin.js';
+import { downloadVault, listVaults } from '../services/vault.js';
 import {
   generateChallengeJwt,
   verifyChallengeJwt,
@@ -70,6 +70,22 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     if (path === API_PATHS.ADMIN_USER_REFRESH_OTP && method === 'POST') {
       return await handleRefreshOtp(event);
     }
+    // POST /admin/users/lock
+    if (path === API_PATHS.ADMIN_USERS_LOCK && method === 'POST') {
+      return await handleLockUser(event);
+    }
+    // POST /admin/users/unlock
+    if (path === API_PATHS.ADMIN_USERS_UNLOCK && method === 'POST') {
+      return await handleUnlockUser(event);
+    }
+    // POST /admin/users/expire
+    if (path === API_PATHS.ADMIN_USERS_EXPIRE && method === 'POST') {
+      return await handleExpireUser(event);
+    }
+    // POST /admin/users/retire
+    if (path === API_PATHS.ADMIN_USERS_RETIRE && method === 'POST') {
+      return await handleRetireUser(event);
+    }
     // DELETE /admin/users?userId=...
     if (path === API_PATHS.ADMIN_USERS && method === 'DELETE') {
       return await handleDeleteUser(event);
@@ -103,7 +119,7 @@ async function handleLogin(event: APIGatewayProxyEvent): Promise<APIGatewayProxy
 
   const parsed = parseBody(event);
   if ('parseError' in parsed) return parsed.parseError;
-  const result = await adminLogin(parsed.body);
+  const result = await adminLogin(parsed.body as unknown as import('@passvault/shared').LoginRequest);
 
   if (result.error) {
     return error(result.error, result.statusCode || 401);
@@ -127,7 +143,7 @@ async function handleChangePassword(event: APIGatewayProxyEvent): Promise<APIGat
 
   const parsed = parseBody(event);
   if ('parseError' in parsed) return parsed.parseError;
-  const result = await adminChangePassword(user!.userId, user!.username, parsed.body);
+  const result = await adminChangePassword(user!.userId, user!.username, parsed.body as unknown as import('@passvault/shared').ChangePasswordRequest);
 
   if (result.error) {
     return error(result.error, result.statusCode || 400, result.details);
@@ -270,7 +286,7 @@ async function handleCreateUser(event: APIGatewayProxyEvent): Promise<APIGateway
 
   const parsed = parseBody(event);
   if ('parseError' in parsed) return parsed.parseError;
-  const result = await createUserInvitation(parsed.body, user!.userId);
+  const result = await createUserInvitation(parsed.body as unknown as import('@passvault/shared').CreateUserRequest, user!.userId);
 
   if (result.error) {
     return error(result.error, result.statusCode || 400);
@@ -315,7 +331,16 @@ async function handleDownloadUserVault(event: APIGatewayProxyEvent): Promise<API
     return error('Missing userId query parameter', 400);
   }
 
-  const result = await downloadVault(userId);
+  // Get user's first vault
+  const vaultsResult = await listVaults(userId);
+  if (vaultsResult.error) {
+    return error(vaultsResult.error, vaultsResult.statusCode || 500);
+  }
+  const vaults = vaultsResult.response ?? [];
+  if (vaults.length === 0) {
+    return error(ERRORS.VAULT_NOT_FOUND, 404);
+  }
+  const result = await downloadVault(userId, vaults[0].vaultId);
   if (result.error) {
     return error(result.error, result.statusCode || 500);
   }
@@ -410,4 +435,84 @@ async function handleGetStats(event: APIGatewayProxyEvent): Promise<APIGatewayPr
 
   const stats = await getStats();
   return success(stats);
+}
+
+async function handleLockUser(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
+  if (pow.errorResponse) return pow.errorResponse;
+
+  const { user, errorResponse } = await requireAuth(event);
+  if (errorResponse) return errorResponse;
+  if (user!.role !== 'admin' || user!.status !== 'active') {
+    return error(ERRORS.FORBIDDEN, 403);
+  }
+
+  const parsed = parseBody(event);
+  if ('parseError' in parsed) return parsed.parseError;
+  const { userId } = parsed.body as { userId: string };
+  if (!userId) return error('Missing userId', 400);
+
+  const result = await lockUser(userId);
+  if (result.error) return error(result.error, result.statusCode || 400);
+  return success(result.response);
+}
+
+async function handleUnlockUser(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
+  if (pow.errorResponse) return pow.errorResponse;
+
+  const { user, errorResponse } = await requireAuth(event);
+  if (errorResponse) return errorResponse;
+  if (user!.role !== 'admin' || user!.status !== 'active') {
+    return error(ERRORS.FORBIDDEN, 403);
+  }
+
+  const parsed = parseBody(event);
+  if ('parseError' in parsed) return parsed.parseError;
+  const { userId } = parsed.body as { userId: string };
+  if (!userId) return error('Missing userId', 400);
+
+  const result = await unlockUser(userId);
+  if (result.error) return error(result.error, result.statusCode || 400);
+  return success(result.response);
+}
+
+async function handleExpireUser(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
+  if (pow.errorResponse) return pow.errorResponse;
+
+  const { user, errorResponse } = await requireAuth(event);
+  if (errorResponse) return errorResponse;
+  if (user!.role !== 'admin' || user!.status !== 'active') {
+    return error(ERRORS.FORBIDDEN, 403);
+  }
+
+  const parsed = parseBody(event);
+  if ('parseError' in parsed) return parsed.parseError;
+  const { userId } = parsed.body as { userId: string };
+  if (!userId) return error('Missing userId', 400);
+
+  const result = await expireUser(userId);
+  if (result.error) return error(result.error, result.statusCode || 400);
+  return success(result.response);
+}
+
+async function handleRetireUser(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
+  if (pow.errorResponse) return pow.errorResponse;
+
+  const { user, errorResponse } = await requireAuth(event);
+  if (errorResponse) return errorResponse;
+  if (user!.role !== 'admin' || user!.status !== 'active') {
+    return error(ERRORS.FORBIDDEN, 403);
+  }
+
+  const parsed = parseBody(event);
+  if ('parseError' in parsed) return parsed.parseError;
+  const { userId } = parsed.body as { userId: string };
+  if (!userId) return error('Missing userId', 400);
+
+  const result = await retireUser(userId);
+  if (result.error) return error(result.error, result.statusCode || 400);
+  return success(result.response);
 }

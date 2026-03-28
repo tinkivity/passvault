@@ -45,7 +45,7 @@ vi.mock('../utils/ses.js', () => ({
   sendEmail: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { login, changePassword, requestEmailChange, confirmEmailChange } from './auth.js';
+import { login, changePassword } from './auth.js';
 import { getUserByUsername, getUserById, updateUser } from '../utils/dynamodb.js';
 import { verifyPassword, hashPassword } from '../utils/crypto.js';
 import { verifyPasskeyToken } from './passkey.js';
@@ -80,11 +80,8 @@ function makeUser(overrides: Partial<User> = {}): User {
     createdBy: 'admin-1',
     failedLoginAttempts: 0,
     lockedUntil: null,
-    email: null,
+    plan: 'free' as const,
     otpExpiresAt: null,
-    pendingEmail: null,
-    emailVerificationCode: null,
-    emailVerificationExpiresAt: null,
     ...overrides,
   };
 }
@@ -281,7 +278,7 @@ describe('login — input validation (dev/beta)', () => {
   });
 
   it('returns 401 for oversized username without hitting DynamoDB', async () => {
-    const result = await login({ username: 'a'.repeat(31), password: 'Password1!' });
+    const result = await login({ username: 'a'.repeat(255), password: 'Password1!' });
     expect(result.statusCode).toBe(401);
     expect(mockGetUserByUsername).not.toHaveBeenCalled();
   });
@@ -412,92 +409,34 @@ describe('login — OTP expiry', () => {
   });
 });
 
-// ── requestEmailChange() ──────────────────────────────────────────────────────
+// ── login() — user status checks ─────────────────────────────────────────────
 
-describe('requestEmailChange', () => {
+describe('login — user status checks (dev/beta)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    config.features.passkeyRequired = false;
   });
 
-  it('returns 503 when SENDER_EMAIL is not set', async () => {
-    delete process.env.SENDER_EMAIL;
-    const result = await requestEmailChange('user-1', 'new@example.com', 'pass');
-    expect(result.statusCode).toBe(503);
-  });
-
-  it('returns 404 when user not found', async () => {
-    process.env.SENDER_EMAIL = 'noreply@example.com';
-    mockGetUserById.mockResolvedValue(null);
-    const result = await requestEmailChange('user-1', 'new@example.com', 'pass');
-    expect(result.statusCode).toBe(404);
-  });
-
-  it('returns 403 when user is not active', async () => {
-    process.env.SENDER_EMAIL = 'noreply@example.com';
-    mockGetUserById.mockResolvedValue(makeUser({ status: 'pending_first_login' }));
-    const result = await requestEmailChange('user-1', 'new@example.com', 'pass');
+  it('returns 403 ACCOUNT_SUSPENDED when admin has set status to locked', async () => {
+    mockGetUserByUsername.mockResolvedValue(makeUser({ status: 'locked' }));
+    const result = await login({ username: 'alice', password: 'correct' });
+    expect(result.error).toBe(ERRORS.ACCOUNT_SUSPENDED);
     expect(result.statusCode).toBe(403);
   });
 
-  it('returns 401 on wrong password', async () => {
-    process.env.SENDER_EMAIL = 'noreply@example.com';
-    mockGetUserById.mockResolvedValue(makeUser({ status: 'active' }));
-    mockVerifyPw.mockResolvedValue(false);
-    const result = await requestEmailChange('user-1', 'new@example.com', 'wrong');
+  it('returns 401 INVALID_CREDENTIALS for retired users (indistinguishable from wrong password)', async () => {
+    mockGetUserByUsername.mockResolvedValue(makeUser({ status: 'retired' }));
+    const result = await login({ username: 'alice', password: 'correct' });
+    expect(result.error).toBe(ERRORS.INVALID_CREDENTIALS);
     expect(result.statusCode).toBe(401);
   });
 
-  it('saves pendingEmail and sends email on success', async () => {
-    process.env.SENDER_EMAIL = 'noreply@example.com';
-    mockGetUserById.mockResolvedValue(makeUser({ status: 'active' }));
+  it('allows login for expired users (read-only; write blocked at vault layer)', async () => {
+    mockGetUserByUsername.mockResolvedValue(makeUser({ status: 'expired' }));
     mockVerifyPw.mockResolvedValue(true);
-    const result = await requestEmailChange('user-1', 'new@example.com', 'correct');
-    expect(result.response?.success).toBe(true);
-    expect(mockUpdateUser).toHaveBeenCalledWith('user-1', expect.objectContaining({
-      pendingEmail: 'new@example.com',
-    }));
+    const result = await login({ username: 'alice', password: 'correct' });
+    expect(result.error).toBeUndefined();
+    expect(result.response?.token).toBe('signed.jwt.token');
   });
 });
 
-// ── confirmEmailChange() ──────────────────────────────────────────────────────
-
-describe('confirmEmailChange', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it('returns 400 when no change is pending', async () => {
-    mockGetUserById.mockResolvedValue(makeUser({ status: 'active' }));
-    const result = await confirmEmailChange('user-1', '123456');
-    expect(result.statusCode).toBe(400);
-  });
-
-  it('returns 400 on wrong code', async () => {
-    const future = new Date(Date.now() + 60_000).toISOString();
-    mockGetUserById.mockResolvedValue(makeUser({
-      status: 'active',
-      pendingEmail: 'new@example.com',
-      emailVerificationCode: '123456',
-      emailVerificationExpiresAt: future,
-    }));
-    const result = await confirmEmailChange('user-1', '999999');
-    expect(result.statusCode).toBe(400);
-    expect(result.error).toBe(ERRORS.EMAIL_VERIFICATION_INVALID);
-  });
-
-  it('updates email on correct code', async () => {
-    const future = new Date(Date.now() + 60_000).toISOString();
-    mockGetUserById.mockResolvedValue(makeUser({
-      status: 'active',
-      pendingEmail: 'new@example.com',
-      emailVerificationCode: '123456',
-      emailVerificationExpiresAt: future,
-    }));
-    const result = await confirmEmailChange('user-1', '123456');
-    expect(result.response?.success).toBe(true);
-    expect(mockUpdateUser).toHaveBeenCalledWith('user-1', expect.objectContaining({
-      email: 'new@example.com',
-      pendingEmail: null,
-    }));
-  });
-});

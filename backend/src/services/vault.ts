@@ -1,3 +1,4 @@
+import { v4 as uuidv4 } from 'uuid';
 import {
   ERRORS,
   LIMITS,
@@ -8,41 +9,127 @@ import {
   type VaultPutRequest,
   type VaultPutResponse,
   type VaultDownloadResponse,
+  type VaultSummary,
+  type CreateVaultRequest,
+  type WarningCodeDefinition,
 } from '@passvault/shared';
 
-import { getVaultFile, putVaultFile } from '../utils/s3.js';
-import { getUserById } from '../utils/dynamodb.js';
+import { getVaultFile, putVaultFile, deleteVaultFile, getLegacyVaultFile, migrateLegacyVaultFile } from '../utils/s3.js';
+import { getUserById, createVaultRecord, getVaultRecord, listVaultsByUser, deleteVaultRecord } from '../utils/dynamodb.js';
 import { sendEmailWithAttachment } from '../utils/ses.js';
 
-export async function getVault(userId: string): Promise<{ response?: VaultGetResponse; error?: string; statusCode?: number }> {
-  const file = await getVaultFile(userId);
-  if (!file) {
-    return {
-      response: {
-        encryptedContent: '',
-        lastModified: new Date().toISOString(),
-      },
-    };
+// Hardcoded warning code catalog — returned by GET /api/config/warning-codes.
+// Stored in DynamoDB only if extended; for now served statically.
+const WARNING_CODE_CATALOG: WarningCodeDefinition[] = [
+  {
+    code: 'duplicate_password',
+    label: 'Duplicate Password',
+    description: 'This password is used by another item in your vault.',
+    severity: 'warning',
+  },
+  {
+    code: 'too_simple_password',
+    label: 'Password Too Simple',
+    description: 'This password does not meet the minimum security requirements.',
+    severity: 'warning',
+  },
+];
+
+async function ensureMigrated(userId: string, vault: { vaultId: string; userId: string; displayName: string; createdAt: string }): Promise<void> {
+  // If new key already exists, nothing to do.
+  const existing = await getVaultFile(vault.vaultId);
+  if (existing !== null) return;
+
+  // Check for legacy key.
+  const legacy = await getLegacyVaultFile(userId);
+  if (legacy !== null) {
+    await migrateLegacyVaultFile(userId, vault.vaultId);
   }
+}
+
+export async function listVaults(userId: string): Promise<{ response?: VaultSummary[]; error?: string; statusCode?: number }> {
+  const vaults = await listVaultsByUser(userId);
+  return { response: vaults };
+}
+
+export async function createVault(
+  userId: string,
+  request: CreateVaultRequest,
+): Promise<{ response?: VaultSummary; error?: string; statusCode?: number }> {
+  const user = await getUserById(userId);
+  if (!user) return { error: ERRORS.NOT_FOUND, statusCode: 404 };
+
+  const planLimit = LIMITS.VAULT_LIMITS[user.plan] ?? 1;
+  const existing = await listVaultsByUser(userId);
+  if (existing.length >= planLimit) {
+    return { error: ERRORS.VAULT_LIMIT_REACHED, statusCode: 403 };
+  }
+
+  const vaultId = uuidv4();
+  await createVaultRecord(vaultId, userId, request.displayName);
+  await putVaultFile(vaultId, '');
+
+  const vault: VaultSummary = {
+    vaultId,
+    displayName: request.displayName,
+    createdAt: new Date().toISOString(),
+  };
+  return { response: vault };
+}
+
+export async function deleteVault(
+  userId: string,
+  vaultId: string,
+): Promise<{ response?: { success: true }; error?: string; statusCode?: number }> {
+  const vault = await getVaultRecord(vaultId);
+  if (!vault || vault.userId !== userId) {
+    return { error: ERRORS.VAULT_NOT_FOUND, statusCode: 404 };
+  }
+
+  const existing = await listVaultsByUser(userId);
+  if (existing.length <= 1) {
+    return { error: ERRORS.CANNOT_DELETE_LAST_VAULT, statusCode: 400 };
+  }
+
+  await deleteVaultFile(vaultId);
+  await deleteVaultRecord(vaultId);
+  return { response: { success: true } };
+}
+
+export async function getVault(userId: string, vaultId: string): Promise<{ response?: VaultGetResponse; error?: string; statusCode?: number }> {
+  const vault = await getVaultRecord(vaultId);
+  if (!vault || vault.userId !== userId) {
+    return { error: ERRORS.VAULT_NOT_FOUND, statusCode: 404 };
+  }
+
+  // Auto-migrate legacy S3 key if needed
+  await ensureMigrated(userId, vault);
+
+  const file = await getVaultFile(vaultId);
   return {
     response: {
-      encryptedContent: file.content,
-      lastModified: file.lastModified,
+      encryptedContent: file?.content || '',
+      lastModified: file?.lastModified || new Date().toISOString(),
     },
   };
 }
 
 export async function putVault(
   userId: string,
+  vaultId: string,
   request: VaultPutRequest,
 ): Promise<{ response?: VaultPutResponse; error?: string; statusCode?: number }> {
-  // Validate file size
+  const vault = await getVaultRecord(vaultId);
+  if (!vault || vault.userId !== userId) {
+    return { error: ERRORS.VAULT_NOT_FOUND, statusCode: 404 };
+  }
+
   const contentSize = Buffer.byteLength(request.encryptedContent, 'utf-8');
   if (contentSize > LIMITS.MAX_FILE_SIZE_BYTES) {
     return { error: ERRORS.FILE_TOO_LARGE, statusCode: 400 };
   }
 
-  const lastModified = await putVaultFile(userId, request.encryptedContent);
+  const lastModified = await putVaultFile(vaultId, request.encryptedContent);
   return {
     response: {
       success: true,
@@ -53,13 +140,20 @@ export async function putVault(
 
 export async function downloadVault(
   userId: string,
+  vaultId: string,
 ): Promise<{ response?: VaultDownloadResponse; error?: string; statusCode?: number }> {
   const user = await getUserById(userId);
   if (!user) {
     return { error: ERRORS.NOT_FOUND, statusCode: 404 };
   }
 
-  const file = await getVaultFile(userId);
+  const vault = await getVaultRecord(vaultId);
+  if (!vault || vault.userId !== userId) {
+    return { error: ERRORS.VAULT_NOT_FOUND, statusCode: 404 };
+  }
+
+  await ensureMigrated(userId, vault);
+  const file = await getVaultFile(vaultId);
 
   return {
     response: {
@@ -75,7 +169,7 @@ export async function downloadVault(
         },
         aes: {
           keySize: AES_PARAMS.keyLength,
-          ivSize: AES_PARAMS.ivLength * 8, // bytes to bits
+          ivSize: AES_PARAMS.ivLength * 8,
           tagSize: AES_PARAMS.tagLength,
         },
       },
@@ -87,6 +181,7 @@ export async function downloadVault(
 
 export async function sendVaultEmail(
   userId: string,
+  vaultId: string,
 ): Promise<{ response?: { success: true }; error?: string; statusCode?: number }> {
   if (!process.env.SENDER_EMAIL) {
     return { error: 'Email sending is not available in this environment', statusCode: 503 };
@@ -94,11 +189,14 @@ export async function sendVaultEmail(
 
   const user = await getUserById(userId);
   if (!user) return { error: ERRORS.NOT_FOUND, statusCode: 404 };
-  if (!user.email) return { error: ERRORS.NO_EMAIL_ADDRESS, statusCode: 400 };
+  // username IS the email
+  if (!user.username || !user.username.includes('@')) {
+    return { error: ERRORS.NO_EMAIL_ADDRESS, statusCode: 400 };
+  }
 
-  const vaultResult = await downloadVault(userId);
-  if (vaultResult.error || !vaultResult.response) {
-    return { error: vaultResult.error || 'Failed to retrieve vault', statusCode: vaultResult.statusCode || 500 };
+  const downloadResult = await downloadVault(userId, vaultId);
+  if (downloadResult.error || !downloadResult.response) {
+    return { error: downloadResult.error || 'Failed to retrieve vault', statusCode: downloadResult.statusCode || 500 };
   }
 
   const now = new Date().toISOString();
@@ -106,7 +204,7 @@ export async function sendVaultEmail(
   const filename = `passvault-${user.username}-${date}.vault`;
 
   await sendEmailWithAttachment(
-    user.email,
+    user.username,
     'Your PassVault encrypted vault export',
     [
       `Your encrypted vault is attached as ${filename}.`,
@@ -116,10 +214,22 @@ export async function sendVaultEmail(
     ].join('\n'),
     {
       filename,
-      content: JSON.stringify(vaultResult.response, null, 2),
+      content: JSON.stringify(downloadResult.response, null, 2),
       contentType: 'application/octet-stream',
     },
   );
 
   return { response: { success: true } };
+}
+
+export async function getWarningCodes(): Promise<{ response?: WarningCodeDefinition[]; error?: string; statusCode?: number }> {
+  return { response: WARNING_CODE_CATALOG };
+}
+
+/** Create the first vault for a newly invited user. Called from admin service. */
+export async function createFirstVault(userId: string): Promise<string> {
+  const vaultId = uuidv4();
+  await createVaultRecord(vaultId, userId, 'Personal Vault');
+  await putVaultFile(vaultId, '');
+  return vaultId;
 }

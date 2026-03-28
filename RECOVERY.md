@@ -30,7 +30,7 @@ This manual explains how to decrypt your PassVault encrypted file **independentl
 **From the PassVault Application:**
 
 1. Log in to PassVault with your passkey and password
-2. You will see your vault in **View Mode**
+2. Navigate to any vault and open the vault menu
 3. Click the **"Download Encrypted Backup"** button
 4. Save the file as `passvault-backup.json`
 
@@ -53,7 +53,7 @@ This manual explains how to decrypt your PassVault encrypted file **independentl
       "tagSize": 128
     }
   },
-  "username": "your-username",
+  "username": "your-email@example.com",
   "lastModified": "2026-02-14T12:34:56Z"
 }
 ```
@@ -64,19 +64,56 @@ This manual explains how to decrypt your PassVault encrypted file **independentl
 
 Your backup file contains:
 
-- **`encryptedContent`**: Your encrypted file data in base64 format
+- **`encryptedContent`**: Your encrypted vault data in base64 format
   - Format: `[IV (12 bytes) || Ciphertext || Authentication Tag (16 bytes)]`
 - **`encryptionSalt`**: Unique salt used to derive your encryption key from your password
 - **`algorithm`**: Encryption algorithms used (Argon2id for key derivation, AES-256-GCM for encryption)
 - **`parameters`**: Exact parameters needed for decryption
-- **`username`**: Your username (for reference)
-- **`lastModified`**: When the file was last updated
+- **`username`**: Your email address (login identity, for reference)
+- **`lastModified`**: When the vault was last updated
 
 **Decryption Process:**
 1. Derive encryption key from password using Argon2id + salt
 2. Decode encrypted content from base64
 3. Extract IV (first 12 bytes), ciphertext, and tag (last 16 bytes)
 4. Decrypt ciphertext using AES-256-GCM with derived key and IV
+
+### Decrypted Content Format
+
+After successful decryption you will have a JSON string. Parse it to get a **`VaultFile`** object:
+
+```json
+{
+  "version": 1,
+  "items": [
+    {
+      "id": "uuid-v4",
+      "name": "GitHub",
+      "category": "login",
+      "username": "alice@example.com",
+      "password": "correct-horse-battery-staple",
+      "url": "https://github.com",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-15T10:30:00.000Z",
+      "warningCodes": []
+    },
+    {
+      "id": "uuid-v4",
+      "name": "Personal Notes",
+      "category": "note",
+      "format": "raw",
+      "text": "your notes here",
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z",
+      "warningCodes": []
+    }
+  ]
+}
+```
+
+**Item categories:** `login`, `email`, `credit_card`, `identity`, `wifi`, `private_key`, `note`
+
+**`warningCodes`** on each item is metadata computed client-side and stored in the encrypted blob. It is for display purposes only (e.g. `"duplicate_password"`, `"too_simple_password"`). The backend never sees these values.
 
 ---
 
@@ -146,7 +183,15 @@ def decrypt_passvault_file(backup_file_path, password):
         print("✓ Decryption successful!\n")
 
         # Return decrypted text
-        return plaintext.decode('utf-8')
+        plaintext = plaintext.decode('utf-8')
+
+        # Parse and pretty-print the VaultFile JSON
+        try:
+            vault = json.loads(plaintext)
+            return json.dumps(vault, indent=2)
+        except json.JSONDecodeError:
+            # Legacy: plain text content
+            return plaintext
 
     except Exception as e:
         print(f"✗ Decryption failed: {e}")
@@ -177,15 +222,17 @@ def main():
 
     if plaintext:
         print("-" * 60)
-        print("DECRYPTED CONTENT:")
+        print("DECRYPTED VAULT (JSON):")
         print("-" * 60)
         print(plaintext)
         print("-" * 60)
+        print("\nTip: items[].category tells you the type of each entry.")
+        print("     items[].warningCodes is client-side metadata — safe to ignore.")
 
         # Optionally save to file
         save = input("\nSave decrypted content to file? (y/n): ").strip().lower()
         if save == 'y':
-            output_file = input("Output filename (decrypted.txt): ").strip() or "decrypted.txt"
+            output_file = input("Output filename (decrypted.json): ").strip() or "decrypted.json"
             with open(output_file, 'w') as f:
                 f.write(plaintext)
             print(f"✓ Saved to {output_file}")
@@ -285,7 +332,15 @@ async function decryptPassVaultFile(backupFilePath, password) {
         plaintext += decipher.final('utf8');
 
         console.log('✓ Decryption successful!\n');
-        return plaintext;
+
+        // Parse and pretty-print the VaultFile JSON
+        try {
+            const vault = JSON.parse(plaintext);
+            return JSON.stringify(vault, null, 2);
+        } catch {
+            // Legacy: plain text content
+            return plaintext;
+        }
     } catch (e) {
         console.log(`✗ Decryption failed: ${e.message}`);
         console.log('\nPossible reasons:');
@@ -318,14 +373,16 @@ async function main() {
 
     if (plaintext) {
         console.log('-'.repeat(60));
-        console.log('DECRYPTED CONTENT:');
+        console.log('DECRYPTED VAULT (JSON):');
         console.log('-'.repeat(60));
         console.log(plaintext);
         console.log('-'.repeat(60));
+        console.log('\nTip: items[].category tells you the type of each entry.');
+        console.log('     items[].warningCodes is client-side metadata — safe to ignore.');
 
         const save = await question('\nSave decrypted content to file? (y/n): ');
         if (save.toLowerCase() === 'y') {
-            const outputFile = await question('Output filename (decrypted.txt): ') || 'decrypted.txt';
+            const outputFile = await question('Output filename (decrypted.json): ') || 'decrypted.json';
             fs.writeFileSync(outputFile, plaintext);
             console.log(`✓ Saved to ${outputFile}`);
         }

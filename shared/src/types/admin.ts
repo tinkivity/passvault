@@ -1,8 +1,7 @@
-import type { UserStatus } from './user.js';
+import type { UserStatus, UserPlan } from './user.js';
 
 export interface CreateUserRequest {
-  username: string;
-  email?: string;
+  username: string;  // must be valid email address
 }
 
 export interface CreateUserResponse {
@@ -16,10 +15,10 @@ export interface UserSummary {
   userId: string;
   username: string;
   status: UserStatus;
+  plan: UserPlan;
   createdAt: string;
   lastLoginAt: string | null;
   vaultSizeBytes: number | null;
-  email: string | null;
 }
 
 export interface ListUsersResponse {

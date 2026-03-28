@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { API_PATHS, ERRORS } from '@passvault/shared';
+import { ERRORS } from '@passvault/shared';
 
 vi.mock('../config.js', () => ({
   config: {
@@ -24,6 +24,11 @@ vi.mock('../services/vault.js', () => ({
   getVault: vi.fn(),
   putVault: vi.fn(),
   downloadVault: vi.fn(),
+  listVaults: vi.fn(),
+  createVault: vi.fn(),
+  deleteVault: vi.fn(),
+  sendVaultEmail: vi.fn(),
+  getWarningCodes: vi.fn(),
 }));
 
 import { handler } from './vault.js';
@@ -104,20 +109,20 @@ describe('GET /vault', () => {
       valid: false,
       errorResponse: { statusCode: 403, body: '{"error":"PoW"}', headers: {} },
     });
-    const res = await handler(makeEvent(API_PATHS.VAULT, 'GET'));
+    const res = await handler(makeEvent('/api/vault/vault-1', 'GET'));
     expect(res.statusCode).toBe(403);
     expect(mockGetVault).not.toHaveBeenCalled();
   });
 
   it('returns 401 when unauthenticated', async () => {
     authFail();
-    const res = await handler(makeEvent(API_PATHS.VAULT, 'GET'));
+    const res = await handler(makeEvent('/api/vault/vault-1', 'GET'));
     expect(res.statusCode).toBe(401);
   });
 
   it('returns 403 when user status is not active', async () => {
     authOk(inactiveUser);
-    const res = await handler(makeEvent(API_PATHS.VAULT, 'GET'));
+    const res = await handler(makeEvent('/api/vault/vault-1', 'GET'));
     expect(res.statusCode).toBe(403);
   });
 
@@ -126,7 +131,7 @@ describe('GET /vault', () => {
     mockGetVault.mockResolvedValue({
       response: { encryptedContent: 'blob', lastModified: '2024-01-01T00:00:00.000Z' },
     });
-    const res = await handler(makeEvent(API_PATHS.VAULT, 'GET'));
+    const res = await handler(makeEvent('/api/vault/vault-1', 'GET'));
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.body).data.encryptedContent).toBe('blob');
   });
@@ -142,20 +147,20 @@ describe('PUT /vault', () => {
 
   it('returns 401 when unauthenticated', async () => {
     authFail();
-    const res = await handler(makeEvent(API_PATHS.VAULT, 'PUT', { encryptedContent: 'x' }));
+    const res = await handler(makeEvent('/api/vault/vault-1', 'PUT', { encryptedContent: 'x' }));
     expect(res.statusCode).toBe(401);
   });
 
   it('returns 403 when user is not active', async () => {
     authOk(inactiveUser);
-    const res = await handler(makeEvent(API_PATHS.VAULT, 'PUT', { encryptedContent: 'x' }));
+    const res = await handler(makeEvent('/api/vault/vault-1', 'PUT', { encryptedContent: 'x' }));
     expect(res.statusCode).toBe(403);
   });
 
   it('returns 400 when content is too large', async () => {
     authOk();
     mockPutVault.mockResolvedValue({ error: ERRORS.FILE_TOO_LARGE, statusCode: 400 });
-    const res = await handler(makeEvent(API_PATHS.VAULT, 'PUT', { encryptedContent: 'huge' }));
+    const res = await handler(makeEvent('/api/vault/vault-1', 'PUT', { encryptedContent: 'huge' }));
     expect(res.statusCode).toBe(400);
   });
 
@@ -164,21 +169,21 @@ describe('PUT /vault', () => {
     mockPutVault.mockResolvedValue({
       response: { success: true, lastModified: '2024-06-01T12:00:00.000Z' },
     });
-    const res = await handler(makeEvent(API_PATHS.VAULT, 'PUT', { encryptedContent: 'data' }));
+    const res = await handler(makeEvent('/api/vault/vault-1', 'PUT', { encryptedContent: 'data' }));
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.body).data.success).toBe(true);
   });
 
   it('returns 400 for invalid JSON body', async () => {
     authOk();
-    const res = await handler(makeEvent(API_PATHS.VAULT, 'PUT', 'not valid json'));
+    const res = await handler(makeEvent('/api/vault/vault-1', 'PUT', 'not valid json'));
     expect(res.statusCode).toBe(400);
     expect(mockPutVault).not.toHaveBeenCalled();
   });
 
   it('returns 400 for non-object body (array)', async () => {
     authOk();
-    const res = await handler(makeEvent(API_PATHS.VAULT, 'PUT', '[1,2,3]'));
+    const res = await handler(makeEvent('/api/vault/vault-1', 'PUT', '[1,2,3]'));
     expect(res.statusCode).toBe(400);
     expect(mockPutVault).not.toHaveBeenCalled();
   });
@@ -194,7 +199,7 @@ describe('GET /vault/download', () => {
 
   it('returns 401 when unauthenticated', async () => {
     authFail();
-    const res = await handler(makeEvent(API_PATHS.VAULT_DOWNLOAD, 'GET'));
+    const res = await handler(makeEvent('/api/vault/vault-1/download', 'GET'));
     expect(res.statusCode).toBe(401);
   });
 
@@ -210,7 +215,7 @@ describe('GET /vault/download', () => {
         username: 'alice',
       },
     });
-    const res = await handler(makeEvent(API_PATHS.VAULT_DOWNLOAD, 'GET'));
+    const res = await handler(makeEvent('/api/vault/vault-1/download', 'GET'));
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.body).data.username).toBe('alice');
   });

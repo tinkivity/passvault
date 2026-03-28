@@ -275,8 +275,8 @@ async function main() {
     assert(r.error === ERRORS.INVALID_CREDENTIALS, `expected "${ERRORS.INVALID_CREDENTIALS}", got "${r.error}"`);
   });
 
-  await test('GET /api/vault without token → 401', async () => {
-    const r = await apiRequest(baseUrl, API_PATHS.VAULT, {
+  await test('GET /api/vaults without token → 401', async () => {
+    const r = await apiRequest(baseUrl, API_PATHS.VAULTS, {
       powDifficulty: pow(POW_CONFIG.DIFFICULTY.HIGH),
     });
     assert(r.status === 401, `expected 401, got ${r.status}`);

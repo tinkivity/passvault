@@ -7,30 +7,30 @@ import { UserList } from './UserList';
 const mockUsers: UserSummary[] = [
   {
     userId: 'u1',
-    username: 'charlie',
+    username: 'charlie@example.com',
     status: 'active',
+    plan: 'free',
     createdAt: '2024-01-15T00:00:00Z',
     lastLoginAt: '2024-03-01T00:00:00Z',
     vaultSizeBytes: 1024,
-    email: 'charlie@example.com',
   },
   {
     userId: 'u2',
-    username: 'alice',
+    username: 'alice@example.com',
     status: 'pending_first_login',
+    plan: 'free',
     createdAt: '2024-02-01T00:00:00Z',
     lastLoginAt: null,
     vaultSizeBytes: null,
-    email: null,
   },
   {
     userId: 'u3',
-    username: 'bob',
+    username: 'bob@example.com',
     status: 'pending_passkey_setup',
+    plan: 'free',
     createdAt: '2024-01-20T00:00:00Z',
     lastLoginAt: '2024-02-15T00:00:00Z',
     vaultSizeBytes: 512,
-    email: 'bob@example.com',
   },
 ];
 
@@ -57,9 +57,9 @@ describe('UserList', () => {
   it('renders a row for each user', () => {
     renderList();
     const tbody = screen.getAllByRole('rowgroup')[1];
-    expect(within(tbody).getByText('alice')).toBeInTheDocument();
-    expect(within(tbody).getByText('bob')).toBeInTheDocument();
-    expect(within(tbody).getByText('charlie')).toBeInTheDocument();
+    expect(within(tbody).getByText('alice@example.com')).toBeInTheDocument();
+    expect(within(tbody).getByText('bob@example.com')).toBeInTheDocument();
+    expect(within(tbody).getByText('charlie@example.com')).toBeInTheDocument();
   });
 
   it('shows a loading skeleton while loading', () => {
@@ -127,9 +127,9 @@ describe('UserList', () => {
         onDeleteUser={vi.fn()}
       />,
     );
-    await userEvent.click(screen.getByRole('button', { name: "Actions for alice" }));
+    await userEvent.click(screen.getByRole('button', { name: "Actions for alice@example.com" }));
     await userEvent.click(await screen.findByText(/download vault/i));
-    expect(onDownload).toHaveBeenCalledWith('u2', 'alice');
+    expect(onDownload).toHaveBeenCalledWith('u2', 'alice@example.com');
   });
 
   it('shows the email column with user emails', () => {
@@ -143,13 +143,13 @@ describe('UserList', () => {
   it('shows Refresh OTP and Delete options only for pending_first_login users', async () => {
     renderList();
     // alice is pending_first_login — should have both options
-    await userEvent.click(screen.getByRole('button', { name: 'Actions for alice' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for alice@example.com' }));
     expect(await screen.findByText(/refresh otp/i)).toBeInTheDocument();
     expect(screen.getByText(/delete user/i)).toBeInTheDocument();
     // close menu
     await userEvent.keyboard('{Escape}');
     // bob is pending_passkey_setup — no refresh/delete
-    await userEvent.click(screen.getByRole('button', { name: 'Actions for bob' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for bob@example.com' }));
     await screen.findByText(/download vault/i);
     expect(screen.queryByText(/refresh otp/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/delete user/i)).not.toBeInTheDocument();
@@ -161,7 +161,7 @@ describe('UserList', () => {
       oneTimePassword: 'NEWOTP99',
     });
     renderList({ onRefreshOtp });
-    await userEvent.click(screen.getByRole('button', { name: 'Actions for alice' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for alice@example.com' }));
     await userEvent.click(await screen.findByText(/refresh otp/i));
     expect(onRefreshOtp).toHaveBeenCalledWith('u2');
     expect(await screen.findByText('NEWOTP99')).toBeInTheDocument();
@@ -169,22 +169,22 @@ describe('UserList', () => {
 
   it('"Done" on OtpDisplay returns to the user list', async () => {
     const onRefreshOtp = vi.fn().mockResolvedValue({
-      username: 'alice',
+      username: 'alice@example.com',
       oneTimePassword: 'NEWOTP99',
     });
     renderList({ onRefreshOtp });
-    await userEvent.click(screen.getByRole('button', { name: 'Actions for alice' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for alice@example.com' }));
     await userEvent.click(await screen.findByText(/refresh otp/i));
     await screen.findByText('NEWOTP99');
     await userEvent.click(screen.getByText('Done'));
     const tbody = screen.getAllByRole('rowgroup')[1];
-    expect(within(tbody).getByText('alice')).toBeInTheDocument();
+    expect(within(tbody).getByText('alice@example.com')).toBeInTheDocument();
   });
 
   it('shows confirm/cancel buttons before calling onDeleteUser', async () => {
     const onDeleteUser = vi.fn().mockResolvedValue(undefined);
     renderList({ onDeleteUser });
-    await userEvent.click(screen.getByRole('button', { name: 'Actions for alice' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for alice@example.com' }));
     await userEvent.click(await screen.findByText(/delete user/i));
     expect(await screen.findByRole('button', { name: /^delete$/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^cancel$/i })).toBeInTheDocument();
@@ -194,7 +194,7 @@ describe('UserList', () => {
   it('calls onDeleteUser when delete is confirmed', async () => {
     const onDeleteUser = vi.fn().mockResolvedValue(undefined);
     renderList({ onDeleteUser });
-    await userEvent.click(screen.getByRole('button', { name: 'Actions for alice' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for alice@example.com' }));
     await userEvent.click(await screen.findByText(/delete user/i));
     await userEvent.click(await screen.findByRole('button', { name: /^delete$/i }));
     expect(onDeleteUser).toHaveBeenCalledWith('u2');
@@ -203,25 +203,25 @@ describe('UserList', () => {
   it('cancels delete when Cancel is clicked', async () => {
     const onDeleteUser = vi.fn();
     renderList({ onDeleteUser });
-    await userEvent.click(screen.getByRole('button', { name: 'Actions for alice' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for alice@example.com' }));
     await userEvent.click(await screen.findByText(/delete user/i));
     await userEvent.click(await screen.findByRole('button', { name: /^cancel$/i }));
     expect(onDeleteUser).not.toHaveBeenCalled();
-    expect(screen.getByRole('button', { name: 'Actions for alice' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Actions for alice@example.com' })).toBeInTheDocument();
   });
 
   it('calls onRowClick with the user when a row is clicked', async () => {
     const onRowClick = vi.fn();
     renderList({ onRowClick });
     const tbody = screen.getAllByRole('rowgroup')[1];
-    await userEvent.click(within(tbody).getByText('charlie'));
-    expect(onRowClick).toHaveBeenCalledWith(mockUsers.find(u => u.username === 'charlie'));
+    await userEvent.click(within(tbody).getByText('charlie@example.com'));
+    expect(onRowClick).toHaveBeenCalledWith(mockUsers.find(u => u.username === 'charlie@example.com'));
   });
 
   it('does not call onRowClick when the actions dropdown trigger is clicked', async () => {
     const onRowClick = vi.fn();
     renderList({ onRowClick });
-    await userEvent.click(screen.getByRole('button', { name: 'Actions for alice' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for alice@example.com' }));
     expect(onRowClick).not.toHaveBeenCalled();
   });
 
@@ -254,18 +254,18 @@ describe('UserList', () => {
     await userEvent.click(await screen.findByRole('option', { name: /^active$/i }));
     await userEvent.keyboard('{Escape}');
     const tbody = screen.getAllByRole('rowgroup')[1];
-    expect(within(tbody).getByText('charlie')).toBeInTheDocument();
-    expect(within(tbody).queryByText('alice')).not.toBeInTheDocument();
-    expect(within(tbody).queryByText('bob')).not.toBeInTheDocument();
+    expect(within(tbody).getByText('charlie@example.com')).toBeInTheDocument();
+    expect(within(tbody).queryByText('alice@example.com')).not.toBeInTheDocument();
+    expect(within(tbody).queryByText('bob@example.com')).not.toBeInTheDocument();
   });
 
   it('username filter shows only matching users', async () => {
     renderList();
     await userEvent.type(screen.getByLabelText(/filter by username/i), 'ali');
     const tbody = screen.getAllByRole('rowgroup')[1];
-    expect(within(tbody).getByText('alice')).toBeInTheDocument();
-    expect(within(tbody).queryByText('bob')).not.toBeInTheDocument();
-    expect(within(tbody).queryByText('charlie')).not.toBeInTheDocument();
+    expect(within(tbody).getByText('alice@example.com')).toBeInTheDocument();
+    expect(within(tbody).queryByText('bob@example.com')).not.toBeInTheDocument();
+    expect(within(tbody).queryByText('charlie@example.com')).not.toBeInTheDocument();
   });
 
   it('shows filtered-empty state when no users match filters', async () => {
@@ -285,9 +285,9 @@ describe('UserList', () => {
     await userEvent.type(screen.getByLabelText(/filter by username/i), 'ali');
     await userEvent.click(screen.getByRole('button', { name: /reset/i }));
     const tbody = screen.getAllByRole('rowgroup')[1];
-    expect(within(tbody).getByText('alice')).toBeInTheDocument();
-    expect(within(tbody).getByText('bob')).toBeInTheDocument();
-    expect(within(tbody).getByText('charlie')).toBeInTheDocument();
+    expect(within(tbody).getByText('alice@example.com')).toBeInTheDocument();
+    expect(within(tbody).getByText('bob@example.com')).toBeInTheDocument();
+    expect(within(tbody).getByText('charlie@example.com')).toBeInTheDocument();
   });
 
   it('shows record count footer', () => {

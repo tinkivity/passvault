@@ -3,7 +3,10 @@ import { useAuthContext } from './context/AuthContext.js';
 import { LoginPage } from './components/auth/LoginPage.js';
 import { PasswordChangePage } from './components/auth/PasswordChangePage.js';
 import { PasskeySetupPage } from './components/auth/PasskeySetupPage.js';
-import { VaultPage } from './components/vault/VaultPage.js';
+import { VaultShell } from './components/vault/VaultShell.js';
+import { VaultItemsPage } from './components/vault/VaultItemsPage.js';
+import { VaultItemNewPage } from './components/vault/VaultItemNewPage.js';
+import { VaultItemDetailPage } from './components/vault/VaultItemDetailPage.js';
 import { AdminShell } from './components/admin/AdminShell.js';
 import { DashboardPage } from './components/admin/pages/DashboardPage.js';
 import { UsersPage } from './components/admin/pages/UsersPage.js';
@@ -68,7 +71,17 @@ export const router = createBrowserRouter([
   {
     path: '/vault',
     element: <RequireAuth requiredRole="user" />,
-    children: [{ index: true, element: <VaultPage /> }],
+    children: [
+      {
+        element: <VaultShell />,
+        children: [
+          { index: true, element: <></> },  // VaultShell auto-redirects to first vault on mount
+          { path: ':vaultId/items', element: <VaultItemsPage /> },
+          { path: ':vaultId/items/new', element: <VaultItemNewPage /> },
+          { path: ':vaultId/items/:itemId', element: <VaultItemDetailPage /> },
+        ],
+      },
+    ],
   },
 
   // Admin onboarding

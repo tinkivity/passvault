@@ -10,6 +10,7 @@ export interface LoginResponse {
   role: 'admin' | 'user';
   username: string;
   encryptionSalt: string;
+  plan?: import('./user.js').UserPlan;
   requirePasswordChange?: boolean;
   requirePasskeySetup?: boolean;
   loginEventId?: string;

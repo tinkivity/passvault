@@ -6,8 +6,9 @@
 2. [End Users](#2-end-users)
    - [2.1 First-Time Login](#21-first-time-login)
    - [2.2 Normal Login](#22-normal-login)
-   - [2.3 Vault — View Mode](#23-vault--view-mode)
-   - [2.4 Vault — Edit Mode](#24-vault--edit-mode)
+   - [2.3 Vault — Items List](#23-vault--items-list)
+   - [2.4 Vault — Item Detail](#24-vault--item-detail)
+   - [2.5 Adding and Editing Items](#25-adding-and-editing-items)
 3. [Administrators](#3-administrators)
    - [3.1 First-Time Admin Login](#31-first-time-admin-login)
    - [3.2 Normal Admin Login](#32-normal-admin-login)
@@ -20,7 +21,7 @@
 
 ## 1. Overview
 
-PassVault is an invitation-only secure text vault. Each user has exactly one private text file stored with end-to-end encryption. The server never sees the plaintext; only the user can decrypt their content using their password.
+PassVault is an invitation-only password manager and secure vault with end-to-end encryption. Each user's vaults hold structured items — logins, credit cards, notes, identities, WiFi credentials, SSH keys, and email accounts. The server stores only encrypted blobs; only the user can decrypt their content using their password.
 
 The admin manages user accounts via a dedicated admin console. Regular users access their vault directly through the main login page.
 
@@ -30,13 +31,23 @@ The admin manages user accounts via a dedicated admin console. Regular users acc
 
 ### 2.1 First-Time Login
 
-When the admin creates your account you receive a username and a one-time password (OTP). Enter them on the login page.
+When the admin creates your account you receive an invitation (prod) or a direct OTP (dev/beta). Your email address is your login username.
+
+#### Production (email verification required)
+
+1. Check your inbox for the invitation email. It contains both an OTP and a verification link.
+2. Click the **email verification link** in the email. You will see a confirmation page.
+3. Go to the PassVault login page and enter your email address and the OTP from the email.
+
+#### Dev / Beta (no verification required)
+
+Your admin will give you the OTP directly. Log in with your email address and the OTP.
 
 ```
 ┌─────────────────────────────────────────────────┐
 │                   PassVault                     │
 │                                                 │
-│  Username  [ alice                            ] │
+│  Email     [ alice@example.com                ] │
 │  Password  [ ••••••••••••••••                 ] │
 │                                                 │
 │                    [ Log In ]                   │
@@ -48,7 +59,7 @@ When the admin creates your account you receive a username and a one-time passwo
 ```
 
 **Steps:**
-1. Enter the username and OTP provided by your admin.
+1. Enter your email address and the OTP provided by your admin.
 2. Click **Log In**.
 3. You are immediately taken to the **Change Password** screen.
 
@@ -126,27 +137,27 @@ On subsequent visits the login process has two steps (production) or one step (d
 └─────────────────────────────────────────────────┘
 ```
 
-After the passkey is verified the username is pre-filled and you enter your password:
+After the passkey is verified the email address is pre-filled and you enter your password:
 
 ```
 ┌─────────────────────────────────────────────────┐
 │                   PassVault                     │
 │                                                 │
 │  Step 2 of 2                                    │
-│  Username  [ alice                  (locked) ]  │
+│  Email     [ alice@example.com      (locked) ]  │
 │  Password  [ ••••••••••••••••                 ] │
 │                                                 │
 │                    [ Log In ]                   │
 └─────────────────────────────────────────────────┘
 ```
 
-#### Dev / Beta (username + password only)
+#### Dev / Beta (email + password only)
 
 ```
 ┌─────────────────────────────────────────────────┐
 │             PassVault  [BETA ENVIRONMENT]       │
 │                                                 │
-│  Username  [ alice                            ] │
+│  Email     [ alice@example.com                ] │
 │  Password  [ ••••••••••••••••                 ] │
 │                                                 │
 │                    [ Log In ]                   │
@@ -155,63 +166,77 @@ After the passkey is verified the username is pre-filled and you enter your pass
 
 ---
 
-### 2.3 Vault — View Mode
+### 2.3 Vault — Items List
 
-After login you land in view mode. Your decrypted text is displayed read-only.
+After login you land on the items list for your active vault. The layout has a sidebar on the left listing your vaults and a main content area showing the items.
 
 ```
-┌─────────────────────────────────────────────────┐
-│  PassVault                Auto-logout in: 47s   │
-│─────────────────────────────────────────────────│
-│                                                 │
-│  My secrets are here...                         │
-│  Line two of my vault content.                  │
-│  ...                                            │
-│                                                 │
-│─────────────────────────────────────────────────│
-│  [ Edit ]  [ Copy ]  [ Download ]  [ Logout ]   │
-└─────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  [logo] PassVault  │ Personal Vault › Items   Auto-logout: 47s│
+│────────────────────│──────────────────────────────────────────│
+│                    │  Personal Vault          [+ New Item]    │
+│  Personal Vault ◄  │                                          │
+│  Work Vault        │  Name▲   Category    Display     ⚠       │
+│  [+ New Vault]     │  ───────────────────────────────────     │
+│                    │  GitHub  Login       alice@…             │
+│────────────────────│  Amex    Credit card ·· 1234    ⚠       │
+│  alice@example.com │  Notes   Note        —                   │
+│  [Logout]          │                                          │
+└────────────────────┴──────────────────────────────────────────┘
 ```
 
-| Button | Action |
-|--------|--------|
-| **Edit** | Enter edit mode (timer resets to 120 s) |
-| **Copy** | Copy all vault text to clipboard |
-| **Download** | Download encrypted backup as JSON (for offline recovery) |
-| **Email** | Send encrypted backup to your registered email (beta/prod) |
-| **Logout** | End session immediately |
+| Column | Description |
+|--------|-------------|
+| **Name** | Item name (sortable) |
+| **Category** | Colored badge: Login, Credit card, Note, Identity, WiFi, SSH key, Email |
+| **Display field** | Username for logins, last-4 for credit cards, email for email accounts, etc. |
+| **⚠** | Warning badge — hover to see details (e.g. duplicate or weak password) |
+
+Click any row to view the item's details.
 
 > The countdown timer in the top-right shows remaining session time. When it reaches zero you are logged out automatically.
 
 ---
 
-### 2.4 Vault — Edit Mode
+### 2.4 Vault — Item Detail
 
-Click **Edit** to switch to edit mode. The background changes to indicate you are editing.
+Click any item in the list to open the detail view.
 
 ```
-┌─────────────────────────────────────────────────┐
-│  PassVault  [EDIT MODE]       Auto-logout in: 2m│
-│─────────────────────────────────────────────────│
-│  ! Changes are not saved automatically.         │
-│    Click Save to persist changes.               │
-│─────────────────────────────────────────────────│
-│ ┌─────────────────────────────────────────────┐ │
-│ │ My secrets are here...                      │ │
-│ │ Line two of my vault content.               │ │
-│ │ |                                           │ │
-│ └─────────────────────────────────────────────┘ │
-│─────────────────────────────────────────────────│
-│            [ Save ]        [ Cancel ]           │
-└─────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│ Personal Vault › Items › GitHub         Auto-logout: 47s     │
+│──────────────────────────────────────────────────────────────│
+│                                                              │
+│  GitHub                                  Login              │
+│  ────────────────────────────────────────────────────────   │
+│  Username    alice@example.com                              │
+│  Password    ••••••••••••   [ 👁 ]  [ 📋 ]                  │
+│  URL         https://github.com                             │
+│  Created     2026-01-01                                      │
+│                                                              │
+│                    [ Edit ]  [ Delete ]                      │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-| Button | Action |
-|--------|--------|
-| **Save** | Encrypt and save your changes, then log you out |
-| **Cancel** | Discard all changes and log you out (confirmation dialog shown) |
+- Secret fields (password, CVV, private key, etc.) are **masked by default**.
+- Click the **eye icon** to reveal; click again to hide.
+- Click the **clipboard icon** to copy — a checkmark confirms the copy.
+- **[Edit]** opens the edit form for this item.
+- **[Delete]** opens a confirmation dialog that requires your password.
 
-> After a successful save you are automatically logged out. This ensures the encryption key is cleared from memory.
+---
+
+### 2.5 Adding and Editing Items
+
+Click **+ New Item** on the items list to add a new item.
+
+1. Select a **category** from the dropdown.
+2. Fill in the fields. Required fields are marked.
+3. Password fields include a **[Generate]** button — click it to fill the field with a cryptographically random strong password.
+4. Note items have a **format** toggle (plain text or Markdown).
+5. Click **Save** — warnings are recomputed across all items before saving.
+
+> **Warning badges** (`⚠`) appear automatically when a password is shared across multiple items (`duplicate_password`) or fails the password policy (`too_simple_password`). They clear as soon as you fix the issue and save.
 
 ---
 
@@ -262,7 +287,7 @@ After the passkey is verified, the username is pre-filled and you enter your pas
 └─────────────────────────────────────────────────┘
 ```
 
-After login the admin is redirected to `/admin/dashboard`; a regular user is redirected to `/vault`.
+After login the admin is redirected to `/admin/dashboard`; a regular user is redirected to `/vault/:vaultId/items`.
 
 ---
 
@@ -328,13 +353,13 @@ Navigate to `/admin/users` via the sidebar.
 │───────────────────│──────────────────────────────────────────────────│
 │                   │  Users                            [+ Create User] │
 │  Dashboard        │                                                  │
-│                   │  ┌────────┬─────────┬──────────┬──────────┬──────────┐ │
-│  Management       │  │ User   │ Status  │ Created  │ Last Login│Vault Size│ │
-│    Users  ◄       │  ├────────┼─────────┼──────────┼──────────┼──────────┤ │
-│    Admin          │  │ alice  │ active  │ 2024-01  │ 2024-03  │  4.2 KB  │ │
-│                   │  │ bob    │ pending │ 2024-02  │ —        │  empty   │ │
-│  Logs             │  │ carol  │ active  │ 2024-02  │ 2024-03  │  1.8 KB  │ │
-│    Logins         │  └────────┴─────────┴──────────┴──────────┴──────────┘ │
+│                   │  ┌───────────────┬─────────┬──────────┬──────────┬──────────┐ │
+│  Management       │  │ Email         │ Status  │ Created  │Last Login│Vault Size│ │
+│    Users  ◄       │  ├───────────────┼─────────┼──────────┼──────────┼──────────┤ │
+│    Admin          │  │ alice@…       │ active  │ 2024-01  │ 2024-03  │  4.2 KB  │ │
+│                   │  │ bob@…         │ pending │ 2024-02  │ —        │  empty   │ │
+│  Logs             │  │ carol@…  🔒  │ locked  │ 2024-02  │ 2024-03  │  1.8 KB  │ │
+│    Logins         │  └───────────────┴─────────┴──────────┴──────────┴──────────┘ │
 │                   │  (click any row for details)                    │
 │───────────────────│                                                  │
 │  admin            │                                                  │
@@ -350,12 +375,13 @@ Click **+ Create User** to open the modal:
 ┌─────────────────────────────────────────────────┐
 │                  Create User                    │
 │                                                 │
-│  Username  [ newuser                          ] │
-│  Email     [ user@example.com       (optional)] │
+│  Email address  [ user@example.com            ] │
 │                                                 │
 │             [ Create ]         [ Cancel ]       │
 └─────────────────────────────────────────────────┘
 ```
+
+The email address is the user's login identity. In production, an invitation email containing the OTP and a verification link is sent automatically. In dev/beta, the OTP is shown in the admin UI only.
 
 After creation the OTP is shown:
 
@@ -363,18 +389,19 @@ After creation the OTP is shown:
 ┌─────────────────────────────────────────────────┐
 │               User Created                      │
 │                                                 │
-│  Username:           newuser                    │
+│  Email:              user@example.com           │
 │  One-Time Password:  X7kP#mQ2rZ!vLn9            │
 │                      [ Copy ]                   │
 │                                                 │
-│  Share this OTP securely with the user.         │
+│  In prod: invitation email sent automatically.  │
+│  In dev/beta: share this OTP with the user.     │
 │  It expires in 120 minutes.                     │
 │                                                 │
 │                     [ Done ]                    │
 └─────────────────────────────────────────────────┘
 ```
 
-Click **Done** to close the modal. If an email was provided, the OTP was also sent to the user's inbox.
+Click **Done** to close the modal.
 
 ---
 
@@ -384,31 +411,36 @@ Click any row on the Users screen to open the detail view (`/admin/users/:userId
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│ [logo] PassVault  │ [≡] Admin › Users › alice              7h 18m ☀ │
+│ [logo] PassVault  │ [≡] Admin › Users › alice@…            7h 18m ☀ │
 │───────────────────│──────────────────────────────────────────────────│
 │                   │  ← Users                                         │
 │  Dashboard        │                                                  │
-│                   │  alice                                           │
+│                   │  alice@example.com                               │
 │  Management       │  ──────────────────────────────────────────────  │
 │    Users  ◄       │  Status:       active                            │
-│    Admin          │  Email:        alice@example.com                 │
+│    Admin          │  Plan:         free                              │
 │                   │  Created:      2024-01-15 09:00 UTC              │
 │  Logs             │  Last Login:   2024-03-10 08:00 UTC              │
 │    Logins         │  Vault Size:   4.2 KB                            │
 │                   │                                                  │
 │───────────────────│  [ Download Vault ]                              │
-│  admin            │  [ Refresh OTP ]    (pending users only)         │
-│  [Logout]         │  [ Delete User ]    (pending users only)         │
+│  admin            │  [ Lock ]   [ Expire ]   [ Retire ]              │
+│  [Logout]         │  [ Refresh OTP ]    (pending users only)         │
+│                   │  [ Delete User ]    (pending/unverified only)    │
 └───────────────────┴──────────────────────────────────────────────────┘
 ```
 
 | Button | Available when | Action |
 |--------|---------------|--------|
 | **Download Vault** | Always | Downloads the user's encrypted vault file |
-| **Refresh OTP** | Status = `pending_first_login` | Generates and displays a new OTP; sends email if address is on file |
-| **Delete User** | Status = `pending_first_login` | Permanently removes the user record and vault file |
+| **Lock** | Status = `active` or `expired` | Prevents login; user gets `ACCOUNT_SUSPENDED` error |
+| **Unlock** | Status = `locked` | Restores login access (status → `active`) |
+| **Expire** | Status = `active` | User can still read vault but write operations are blocked |
+| **Retire** | Any non-retired status | Permanently disables account; frees email for reuse (shows confirmation dialog) |
+| **Refresh OTP** | Status = `pending_first_login` | Generates and displays a new OTP; sends email if environment supports it |
+| **Delete User** | Status = `pending_first_login` or `pending_email_verification` | Permanently removes the user record and all vault files |
 
-> Active users cannot be deleted. Only users who have never completed their first login can be removed.
+> Retired users are removed from the admin list. Their original email address can be used to create a new account immediately.
 
 ---
 

@@ -5,41 +5,38 @@ import { CreateUserForm } from './CreateUserForm';
 
 function makeOnCreate(overrides?: Partial<{ username: string; oneTimePassword: string }>) {
   return vi.fn().mockResolvedValue({
-    username: overrides?.username ?? 'bob',
+    username: overrides?.username ?? 'bob@example.com',
     oneTimePassword: overrides?.oneTimePassword ?? 'abc123XY',
   });
 }
 
 describe('CreateUserForm', () => {
-  it('shows a validation error for a whitespace-only username', async () => {
-    // jsdom enforces the `required` attribute (blocks empty submit), but not
-    // `minLength` or `pattern`. A space satisfies `required` yet fails the
-    // JS pattern check, so handleSubmit runs and shows the error.
+  it('shows a validation error for a whitespace-only email', async () => {
     render(<CreateUserForm onCreateUser={vi.fn()} loading={false} />);
-    await userEvent.type(screen.getByLabelText('Username'), ' ');
+    await userEvent.type(screen.getByLabelText('Email address'), ' ');
     await userEvent.click(screen.getByText('Create user'));
-    expect(screen.getByRole('alert')).toHaveTextContent(/3-30 characters/);
+    expect(screen.getByRole('alert')).toHaveTextContent(/valid email/);
   });
 
-  it('shows a validation error for a username that fails the pattern', async () => {
+  it('shows a validation error for an invalid email', async () => {
     render(<CreateUserForm onCreateUser={vi.fn()} loading={false} />);
-    await userEvent.type(screen.getByLabelText('Username'), 'a!');
+    await userEvent.type(screen.getByLabelText('Email address'), 'notanemail');
     await userEvent.click(screen.getByText('Create user'));
-    expect(screen.getByRole('alert')).toHaveTextContent(/3-30 characters/);
+    expect(screen.getByRole('alert')).toHaveTextContent(/valid email/);
   });
 
-  it('calls onCreateUser with the entered username', async () => {
-    const onCreateUser = makeOnCreate({ username: 'alice' });
+  it('calls onCreateUser with the entered email', async () => {
+    const onCreateUser = makeOnCreate({ username: 'alice@example.com' });
     render(<CreateUserForm onCreateUser={onCreateUser} loading={false} />);
-    await userEvent.type(screen.getByLabelText('Username'), 'alice');
+    await userEvent.type(screen.getByLabelText('Email address'), 'alice@example.com');
     await userEvent.click(screen.getByText('Create user'));
-    expect(onCreateUser).toHaveBeenCalledWith('alice', undefined);
+    expect(onCreateUser).toHaveBeenCalledWith('alice@example.com');
   });
 
   it('shows OtpDisplay after a successful creation', async () => {
-    const onCreateUser = makeOnCreate({ username: 'bob', oneTimePassword: 'abc123XY' });
+    const onCreateUser = makeOnCreate({ username: 'bob@example.com', oneTimePassword: 'abc123XY' });
     render(<CreateUserForm onCreateUser={onCreateUser} loading={false} />);
-    await userEvent.type(screen.getByLabelText('Username'), 'bob');
+    await userEvent.type(screen.getByLabelText('Email address'), 'bob@example.com');
     await userEvent.click(screen.getByText('Create user'));
     expect(await screen.findByText('abc123XY')).toBeInTheDocument();
   });
@@ -47,7 +44,7 @@ describe('CreateUserForm', () => {
   it('shows an error if onCreateUser rejects', async () => {
     const onCreateUser = vi.fn().mockRejectedValue(new Error('Username taken'));
     render(<CreateUserForm onCreateUser={onCreateUser} loading={false} />);
-    await userEvent.type(screen.getByLabelText('Username'), 'alice');
+    await userEvent.type(screen.getByLabelText('Email address'), 'alice@example.com');
     await userEvent.click(screen.getByText('Create user'));
     expect(await screen.findByRole('alert')).toHaveTextContent('Username taken');
   });
@@ -55,11 +52,11 @@ describe('CreateUserForm', () => {
   it('"Done" resets back to the form', async () => {
     const onCreateUser = makeOnCreate();
     render(<CreateUserForm onCreateUser={onCreateUser} loading={false} />);
-    await userEvent.type(screen.getByLabelText('Username'), 'bob');
+    await userEvent.type(screen.getByLabelText('Email address'), 'bob@example.com');
     await userEvent.click(screen.getByText('Create user'));
     await screen.findByText('abc123XY');
     await userEvent.click(screen.getByText('Done'));
-    expect(screen.getByLabelText('Username')).toBeInTheDocument();
+    expect(screen.getByLabelText('Email address')).toBeInTheDocument();
   });
 
   it('disables the button while loading', () => {
