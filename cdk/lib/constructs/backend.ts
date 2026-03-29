@@ -41,7 +41,7 @@ export class BackendConstruct extends Construct {
       DYNAMODB_TABLE: storage.usersTable.tableName,
       FILES_BUCKET: storage.filesBucket.bucketName,
       VAULTS_TABLE_NAME: storage.vaultsTable.tableName,
-      CONFIG_TABLE_NAME: storage.configTable.tableName,
+
     };
 
     const runtime = lambda.Runtime.NODEJS_22_X;
@@ -190,8 +190,7 @@ export class BackendConstruct extends Construct {
     storage.vaultsTable.grantReadWriteData(this.vaultFn);
     storage.vaultsTable.grantReadWriteData(this.adminFn);
 
-    // IAM: grant config table read access to vault Lambda (warning codes endpoint)
-    storage.configTable.grantReadData(this.vaultFn);
+
 
     // IAM: grant S3 file access to vault
     storage.filesBucket.grantReadWrite(this.vaultFn);

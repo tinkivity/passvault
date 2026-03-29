@@ -8,7 +8,6 @@ export class StorageConstruct extends Construct {
   public readonly usersTable: dynamodb.Table;
   public readonly loginEventsTable: dynamodb.Table;
   public readonly vaultsTable: dynamodb.Table;
-  public readonly configTable: dynamodb.Table;
   public readonly filesBucket: s3.Bucket;
   public readonly frontendBucket: s3.Bucket;
 
@@ -51,15 +50,6 @@ export class StorageConstruct extends Construct {
     this.vaultsTable.addGlobalSecondaryIndex({
       indexName: 'byUser',
       partitionKey: { name: 'userId', type: dynamodb.AttributeType.STRING },
-    });
-
-    // DynamoDB config table (warning code catalog, etc.)
-    this.configTable = new dynamodb.Table(this, 'ConfigTable', {
-      tableName: `passvault-config-${env}`,
-      partitionKey: { name: 'configKey', type: dynamodb.AttributeType.STRING },
-      sortKey: { name: 'configId', type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
     // S3: encrypted user vault files
