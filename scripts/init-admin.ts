@@ -118,7 +118,7 @@ async function main() {
   console.log(`✓ Admin user created successfully.\n`);
   console.log(`  Username          : ${adminUsername}`);
   console.log(`  One-time password : ${otp}\n`);
-  console.log(`Use these credentials to log in at /admin/login.`);
+  console.log(`Use these credentials to log in at /login.`);
   console.log(`You will be prompted to set a new password on first login.\n`);
 }
 

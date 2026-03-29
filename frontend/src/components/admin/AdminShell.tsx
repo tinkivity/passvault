@@ -41,7 +41,11 @@ export function AdminShell() {
       <div className="admin-area flex h-screen flex-col w-full">
         <EnvironmentBanner />
         <div className="flex flex-1 overflow-hidden">
-          <AdminSidebar username={username ?? ''} onLogout={handleLogout} />
+          <AdminSidebar
+            username={username ?? ''}
+            onLogout={handleLogout}
+            onCreateUser={() => navigate('/admin/users?create=1')}
+          />
           <SidebarInset className="flex flex-col overflow-hidden">
             <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b bg-background px-4">
               <SidebarTrigger className="-ml-1" />

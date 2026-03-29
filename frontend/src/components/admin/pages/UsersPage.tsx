@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import type { UserSummary } from '@passvault/shared';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import type { CreateUserRequest, UserSummary } from '@passvault/shared';
 import { ArrowPathIcon } from '@heroicons/react/24/outline';
 import { useAuth } from '../../../hooks/useAuth.js';
 import { useAdmin } from '../../../hooks/useAdmin.js';
@@ -11,11 +11,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 
 export function UsersPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { token } = useAuth();
   const admin = useAdmin(token);
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [usersLoaded, setUsersLoaded] = useState(false);
-  const [createOpen, setCreateOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(searchParams.get('create') === '1');
 
   const refreshUsers = useCallback(async () => {
     const list = await admin.listUsers();
@@ -28,14 +29,48 @@ export function UsersPage() {
     refreshUsers();
   }, [token, usersLoaded, refreshUsers]);
 
-  const handleCreateUser = async (username: string) => {
-    const result = await admin.createUser(username);
+  // Keep dialog open when ?create=1 is in the URL
+  useEffect(() => {
+    if (searchParams.get('create') === '1') {
+      setCreateOpen(true);
+    }
+  }, [searchParams]);
+
+  const handleDialogOpenChange = (open: boolean) => {
+    setCreateOpen(open);
+    if (!open && searchParams.has('create')) {
+      setSearchParams({}, { replace: true });
+    }
+  };
+
+  const handleCreateUser = async (req: CreateUserRequest) => {
+    const result = await admin.createUser(req);
     await refreshUsers();
     return result;
   };
 
   const handleDeleteUser = async (userId: string) => {
     await admin.deleteUser(userId);
+    await refreshUsers();
+  };
+
+  const handleLockUser = async (userId: string) => {
+    await admin.lockUser(userId);
+    await refreshUsers();
+  };
+
+  const handleUnlockUser = async (userId: string) => {
+    await admin.unlockUser(userId);
+    await refreshUsers();
+  };
+
+  const handleExpireUser = async (userId: string) => {
+    await admin.expireUser(userId);
+    await refreshUsers();
+  };
+
+  const handleReactivateUser = async (userId: string, expiresAt: string | null) => {
+    await admin.reactivateUser(userId, expiresAt);
     await refreshUsers();
   };
 
@@ -75,10 +110,15 @@ export function UsersPage() {
         onDownload={admin.downloadUserVault}
         onRefreshOtp={admin.refreshOtp}
         onDeleteUser={handleDeleteUser}
+        onLockUser={handleLockUser}
+        onUnlockUser={handleUnlockUser}
+        onExpireUser={handleExpireUser}
+        onReactivateUser={handleReactivateUser}
+        onEmailVault={admin.emailUserVault}
         onRowClick={handleRowClick}
       />
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+      <Dialog open={createOpen} onOpenChange={handleDialogOpenChange}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Create User</DialogTitle>
@@ -86,7 +126,7 @@ export function UsersPage() {
           <CreateUserForm
             onCreateUser={handleCreateUser}
             loading={admin.loading}
-            onDone={() => setCreateOpen(false)}
+            onDone={() => handleDialogOpenChange(false)}
           />
         </DialogContent>
       </Dialog>

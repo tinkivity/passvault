@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ERRORS } from '@passvault/shared';
 
 vi.mock('../config.js', () => ({
@@ -64,7 +64,7 @@ vi.mock('./passkey.js', () => ({
   verifyPasskeyToken: vi.fn(),
 }));
 
-import { adminLogin, adminChangePassword, createUserInvitation, listUsers, refreshOtp, deleteNewUser, getStats, lockUser, unlockUser, expireUser, retireUser, verifyEmailToken } from './admin.js';
+import { adminLogin, adminChangePassword, createUserInvitation, listUsers, refreshOtp, deleteNewUser, getStats, lockUser, unlockUser, expireUser, retireUser, verifyEmailToken, reactivateUser, updateUserProfile, adminEmailUserVault } from './admin.js';
 import { getUserByUsername, getUserById, updateUser, createUser, listAllUsers, deleteUser, getLoginCountSince, listVaultsByUser } from '../utils/dynamodb.js';
 import { verifyPassword } from '../utils/crypto.js';
 import { verifyPasskeyToken } from './passkey.js';
@@ -383,6 +383,46 @@ describe('createUserInvitation', () => {
     expect(vi.mocked(createUser)).toHaveBeenCalled();
   });
 
+  it('stores firstName, lastName, displayName when provided', async () => {
+    await createUserInvitation({
+      username: 'alice@example.com',
+      firstName: 'Alice',
+      lastName: 'Johnson',
+      displayName: 'AJ',
+    }, 'admin-1');
+    expect(vi.mocked(createUser)).toHaveBeenCalledWith(
+      expect.objectContaining({ firstName: 'Alice', lastName: 'Johnson', displayName: 'AJ' }),
+    );
+  });
+
+  it('stores plan when provided', async () => {
+    await createUserInvitation({ username: 'alice@example.com', plan: 'pro' }, 'admin-1');
+    expect(vi.mocked(createUser)).toHaveBeenCalledWith(
+      expect.objectContaining({ plan: 'pro' }),
+    );
+  });
+
+  it('defaults plan to free when not provided', async () => {
+    await createUserInvitation({ username: 'alice@example.com' }, 'admin-1');
+    expect(vi.mocked(createUser)).toHaveBeenCalledWith(
+      expect.objectContaining({ plan: 'free' }),
+    );
+  });
+
+  it('stores expiresAt when provided', async () => {
+    await createUserInvitation({ username: 'alice@example.com', expiresAt: '2026-12-31' }, 'admin-1');
+    expect(vi.mocked(createUser)).toHaveBeenCalledWith(
+      expect.objectContaining({ expiresAt: '2026-12-31' }),
+    );
+  });
+
+  it('stores null expiresAt for perpetual users', async () => {
+    await createUserInvitation({ username: 'alice@example.com', expiresAt: null }, 'admin-1');
+    expect(vi.mocked(createUser)).toHaveBeenCalledWith(
+      expect.objectContaining({ expiresAt: null }),
+    );
+  });
+
   it('returns 400 for invalid email format (username must be valid email)', async () => {
     const result = await createUserInvitation({ username: 'not-an-email' }, 'admin-1');
     expect(result.statusCode).toBe(400);
@@ -421,6 +461,152 @@ describe('listUsers', () => {
     ]);
     const result = await listUsers();
     expect(result.users[0].username).toBe('alice@example.com');
+  });
+
+  it('includes firstName, lastName, displayName, plan, expiresAt in the summary', async () => {
+    mockListAllUsers.mockResolvedValue([
+      makeAdmin({
+        userId: 'user-1', username: 'alice@example.com', role: 'user',
+        firstName: 'Alice', lastName: 'Johnson', displayName: 'AJ',
+        plan: 'pro', expiresAt: '2026-12-31',
+      }),
+    ]);
+    const result = await listUsers();
+    const u = result.users[0];
+    expect(u.firstName).toBe('Alice');
+    expect(u.lastName).toBe('Johnson');
+    expect(u.displayName).toBe('AJ');
+    expect(u.plan).toBe('pro');
+    expect(u.expiresAt).toBe('2026-12-31');
+  });
+});
+
+// ── reactivateUser() ──────────────────────────────────────────────────────────
+
+describe('reactivateUser', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('returns 404 when user not found', async () => {
+    mockGetUserById.mockResolvedValue(null);
+    const result = await reactivateUser('user-1', null);
+    expect(result.statusCode).toBe(404);
+  });
+
+  it('returns 403 when user is admin', async () => {
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'admin', status: 'expired' }));
+    const result = await reactivateUser('admin-1', null);
+    expect(result.statusCode).toBe(403);
+  });
+
+  it('returns 400 when user is not expired', async () => {
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', status: 'active' }));
+    const result = await reactivateUser('user-1', null);
+    expect(result.statusCode).toBe(400);
+  });
+
+  it('reactivates an expired user with a new expiration date', async () => {
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', status: 'expired', userId: 'user-1' }));
+    const result = await reactivateUser('user-1', '2027-01-01');
+    expect(result.response?.success).toBe(true);
+    expect(mockUpdateUser).toHaveBeenCalledWith('user-1', { status: 'active', expiresAt: '2027-01-01' });
+  });
+
+  it('reactivates with null expiresAt for perpetual users', async () => {
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', status: 'expired', userId: 'user-1' }));
+    const result = await reactivateUser('user-1', null);
+    expect(result.response?.success).toBe(true);
+    expect(mockUpdateUser).toHaveBeenCalledWith('user-1', { status: 'active', expiresAt: null });
+  });
+});
+
+// ── updateUserProfile() ───────────────────────────────────────────────────────
+
+describe('updateUserProfile', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('returns 404 when user not found', async () => {
+    mockGetUserById.mockResolvedValue(null);
+    const result = await updateUserProfile({ userId: 'user-1' });
+    expect(result.statusCode).toBe(404);
+  });
+
+  it('returns 403 when user is admin', async () => {
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'admin' }));
+    const result = await updateUserProfile({ userId: 'admin-1' });
+    expect(result.statusCode).toBe(403);
+  });
+
+  it('updates firstName, lastName, displayName', async () => {
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', userId: 'user-1' }));
+    const result = await updateUserProfile({
+      userId: 'user-1',
+      firstName: 'Alice',
+      lastName: 'Johnson',
+      displayName: 'AJ',
+    });
+    expect(result.response?.success).toBe(true);
+    expect(mockUpdateUser).toHaveBeenCalledWith('user-1', expect.objectContaining({
+      firstName: 'Alice',
+      lastName: 'Johnson',
+      displayName: 'AJ',
+    }));
+  });
+
+  it('updates plan', async () => {
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', userId: 'user-1' }));
+    await updateUserProfile({ userId: 'user-1', plan: 'pro' });
+    expect(mockUpdateUser).toHaveBeenCalledWith('user-1', expect.objectContaining({ plan: 'pro' }));
+  });
+
+  it('updates expiresAt to null for perpetual users', async () => {
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', userId: 'user-1' }));
+    await updateUserProfile({ userId: 'user-1', expiresAt: null });
+    expect(mockUpdateUser).toHaveBeenCalledWith('user-1', expect.objectContaining({ expiresAt: null }));
+  });
+
+  it('does not call updateUser when no fields are provided', async () => {
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', userId: 'user-1' }));
+    const result = await updateUserProfile({ userId: 'user-1' });
+    expect(result.response?.success).toBe(true);
+    expect(mockUpdateUser).not.toHaveBeenCalled();
+  });
+});
+
+// ── adminEmailUserVault() ─────────────────────────────────────────────────────
+
+describe('adminEmailUserVault', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.SENDER_EMAIL = 'noreply@example.com';
+  });
+
+  afterEach(() => {
+    delete process.env.SENDER_EMAIL;
+  });
+
+  it('returns 503 when SENDER_EMAIL is not set', async () => {
+    delete process.env.SENDER_EMAIL;
+    const result = await adminEmailUserVault('user-1');
+    expect(result.statusCode).toBe(503);
+  });
+
+  it('returns 404 when user not found', async () => {
+    mockGetUserById.mockResolvedValue(null);
+    const result = await adminEmailUserVault('user-1');
+    expect(result.statusCode).toBe(404);
+  });
+
+  it('returns 403 when user is admin', async () => {
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'admin' }));
+    const result = await adminEmailUserVault('admin-1');
+    expect(result.statusCode).toBe(403);
+  });
+
+  it('returns 404 when user has no vaults', async () => {
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', username: 'alice@example.com' }));
+    vi.mocked(listVaultsByUser).mockResolvedValue([]);
+    const result = await adminEmailUserVault('user-1');
+    expect(result.statusCode).toBe(404);
   });
 });
 

@@ -106,7 +106,11 @@ function makeItem(fields: Record<string, unknown>): Record<string, unknown> {
 interface SeedUser {
   email: string;
   password: string;
+  firstName: string;
+  lastName: string;
+  displayName?: string;
   plan: 'free' | 'pro';
+  expiresAt: string | null;
   vaults: Array<{ displayName: string; items: Record<string, unknown>[] }>;
 }
 
@@ -114,7 +118,10 @@ const SEED_USERS: SeedUser[] = [
   {
     email: 'alice@example.com',
     password: 'AliceTest1!',
+    firstName: 'Alice',
+    lastName: 'Johnson',
     plan: 'free',
+    expiresAt: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
     vaults: [
       {
         displayName: 'Personal Vault',
@@ -162,7 +169,10 @@ const SEED_USERS: SeedUser[] = [
   {
     email: 'bob@example.com',
     password: 'BobTest1!',
+    firstName: 'Bob',
+    lastName: 'Smith',
     plan: 'pro',
+    expiresAt: null,
     vaults: [
       {
         displayName: 'Personal Vault',
@@ -217,11 +227,12 @@ const SEED_USERS: SeedUser[] = [
 
 // ── Main ───────────────────────────────────────────────────────────────────────
 
-interface CreatedUser { email: string; password: string; plan: string; vaultCount: number; status: 'created' | 'skipped' }
+interface CreatedUser { email: string; name: string; password: string; plan: string; expiresAt: string | null; vaultCount: number; status: 'created' | 'skipped' }
 
 async function seedUser(user: SeedUser): Promise<CreatedUser> {
+  const name = [user.firstName, user.lastName].join(' ');
   if (await usernameExists(user.email)) {
-    return { email: user.email, password: user.password, plan: user.plan, vaultCount: user.vaults.length, status: 'skipped' };
+    return { email: user.email, name, password: user.password, plan: user.plan, expiresAt: user.expiresAt, vaultCount: user.vaults.length, status: 'skipped' };
   }
 
   const userId         = uuidv4();
@@ -236,10 +247,14 @@ async function seedUser(user: SeedUser): Promise<CreatedUser> {
       Item: {
         userId,
         username: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        ...(user.displayName ? { displayName: user.displayName } : {}),
         passwordHash,
         role: 'user',
         status: 'active',
         plan: user.plan,
+        expiresAt: user.expiresAt,
         oneTimePasswordHash: null,
         otpExpiresAt: null,
         registrationToken: null,
@@ -287,7 +302,7 @@ async function seedUser(user: SeedUser): Promise<CreatedUser> {
     );
   }
 
-  return { email: user.email, password: user.password, plan: user.plan, vaultCount: user.vaults.length, status: 'created' };
+  return { email: user.email, name, password: user.password, plan: user.plan, expiresAt: user.expiresAt, vaultCount: user.vaults.length, status: 'created' };
 }
 
 async function main() {
@@ -312,19 +327,20 @@ async function main() {
     console.log(`\n  All seed users already exist.`);
   }
 
-  console.log(`\n┌──────────────────────────────────────────────────────────────┐`);
-  console.log(`│  Dev seed credentials                                        │`);
-  console.log(`├─────────────────────────┬──────────────┬──────────┬──────────┤`);
-  console.log(`│  Email                  │  Password    │  Plan    │  Vaults  │`);
-  console.log(`├─────────────────────────┼──────────────┼──────────┼──────────┤`);
+  console.log(`\n┌──────────────────────────────────────────────────────────────────────────────────────┐`);
+  console.log(`│  Dev seed credentials                                                            │`);
+  console.log(`├─────────────────────────┬──────────────┬──────────────┬──────────┬──────────────┤`);
+  console.log(`│  Email                  │  Name        │  Password    │  Plan    │  Expires     │`);
+  console.log(`├─────────────────────────┼──────────────┼──────────────┼──────────┼──────────────┤`);
   for (const r of results) {
     const email    = r.email.padEnd(23);
+    const name     = r.name.padEnd(12);
     const password = r.password.padEnd(12);
     const plan     = r.plan.padEnd(8);
-    const vaults   = String(r.vaultCount).padEnd(8);
-    console.log(`│  ${email}  │  ${password}  │  ${plan}  │  ${vaults}  │`);
+    const expires  = (r.expiresAt ?? '♾ lifetime').padEnd(12);
+    console.log(`│  ${email}  │  ${name}  │  ${password}  │  ${plan}  │  ${expires}  │`);
   }
-  console.log(`└─────────────────────────┴──────────────┴──────────┴──────────┘`);
+  console.log(`└─────────────────────────┴──────────────┴──────────────┴──────────┴──────────────┘`);
   console.log(`\n  These accounts are ready to use — no password change needed.`);
   console.log(`  Log in at /login with the credentials above.\n`);
 }

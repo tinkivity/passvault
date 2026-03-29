@@ -353,13 +353,13 @@ Navigate to `/admin/users` via the sidebar.
 │───────────────────│──────────────────────────────────────────────────│
 │                   │  Users                            [+ Create User] │
 │  Dashboard        │                                                  │
-│                   │  ┌───────────────┬─────────┬──────────┬──────────┬──────────┐ │
-│  Management       │  │ Email         │ Status  │ Created  │Last Login│Vault Size│ │
-│    Users  ◄       │  ├───────────────┼─────────┼──────────┼──────────┼──────────┤ │
-│    Admin          │  │ alice@…       │ active  │ 2024-01  │ 2024-03  │  4.2 KB  │ │
-│                   │  │ bob@…         │ pending │ 2024-02  │ —        │  empty   │ │
-│  Logs             │  │ carol@…  🔒  │ locked  │ 2024-02  │ 2024-03  │  1.8 KB  │ │
-│    Logins         │  └───────────────┴─────────┴──────────┴──────────┴──────────┘ │
+│                   │  ┌───────────┬─────────┬──────┬──────────────┬──────────┐ │
+│  Management       │  │ Email     │ Status  │ Plan │ Expires      │Vault Size│ │
+│    Users  ◄       │  ├───────────┼─────────┼──────┼──────────────┼──────────┤ │
+│    Admin          │  │ alice@…   │ active  │ Free │ 2027-01-15   │  4.2 KB  │ │
+│                   │  │ bob@…     │ active  │ Pro  │ ♾ lifetime   │  2.1 KB  │ │
+│  Logs             │  │ carol@… 🔒│ locked  │ Free │ 2026-06-01   │  1.8 KB  │ │
+│    Logins         │  └───────────┴─────────┴──────┴──────────────┴──────────┘ │
 │                   │  (click any row for details)                    │
 │───────────────────│                                                  │
 │  admin            │                                                  │
@@ -367,21 +367,31 @@ Navigate to `/admin/users` via the sidebar.
 └───────────────────┴──────────────────────────────────────────────────┘
 ```
 
+The Users table displays: Email, Status, Plan (Free/Pro badge), Expires (date or "♾ lifetime"), Created, Last Login, and Vault Size. Use the **Status** and **Plan** filter dropdowns above the table to narrow the list.
+
 #### Create User
 
-Click **+ Create User** to open the modal:
+Click **+ Create User** to open the modal (also accessible via the 3-dot hover menu on the "Users" sidebar item):
 
 ```
 ┌─────────────────────────────────────────────────┐
 │                  Create User                    │
 │                                                 │
 │  Email address  [ user@example.com            ] │
+│  First name     [ Jane                        ] │
+│  Last name      [ Doe                         ] │
+│  Display name   [ Jane (optional)             ] │
+│                                                 │
+│  Plan           [ Free ]  [ Pro ]               │
+│                                                 │
+│  Expires        [ 2026-04-28          📅 ]      │
+│                 [ ♾ Lifetime ]                  │
 │                                                 │
 │             [ Create ]         [ Cancel ]       │
 └─────────────────────────────────────────────────┘
 ```
 
-The email address is the user's login identity. In production, an invitation email containing the OTP and a verification link is sent automatically. In dev/beta, the OTP is shown in the admin UI only.
+The email address is the user's login identity. `firstName`, `lastName`, `displayName`, `plan`, and `expiresAt` are optional — `plan` defaults to Free and `expiresAt` defaults to 30 days from today. Check **♾ Lifetime** to grant permanent access with no expiry date. In production, an invitation email containing the OTP and a verification link is sent automatically. In dev/beta, the OTP is shown in the admin UI only.
 
 After creation the OTP is shown:
 
@@ -417,25 +427,32 @@ Click any row on the Users screen to open the detail view (`/admin/users/:userId
 │  Dashboard        │                                                  │
 │                   │  alice@example.com                               │
 │  Management       │  ──────────────────────────────────────────────  │
-│    Users  ◄       │  Status:       active                            │
-│    Admin          │  Plan:         free                              │
-│                   │  Created:      2024-01-15 09:00 UTC              │
-│  Logs             │  Last Login:   2024-03-10 08:00 UTC              │
-│    Logins         │  Vault Size:   4.2 KB                            │
+│    Users  ◄       │  First name:   Alice             [ Edit ]        │
+│    Admin          │  Last name:    Johnson                           │
+│                   │  Display name: Alice J.                          │
+│  Logs             │  Status:       active                            │
+│    Logins         │  Plan:         Free                              │
+│                   │  Expires:      2027-01-15                        │
+│───────────────────│  Created:      2024-01-15 09:00 UTC              │
+│  admin            │  Last Login:   2024-03-10 08:00 UTC              │
+│  [Logout]         │  Vault Size:   4.2 KB                            │
 │                   │                                                  │
-│───────────────────│  [ Download Vault ]                              │
-│  admin            │  [ Lock ]   [ Expire ]   [ Retire ]              │
-│  [Logout]         │  [ Refresh OTP ]    (pending users only)         │
+│                   │  [ Download Vault ]                              │
+│                   │  [ Lock ]   [ Expire ]   [ Retire ]              │
+│                   │  [ Refresh OTP ]    (pending users only)         │
 │                   │  [ Delete User ]    (pending/unverified only)    │
 └───────────────────┴──────────────────────────────────────────────────┘
 ```
+
+Click **Edit** next to the profile section to open an inline form where you can update `firstName`, `lastName`, `displayName`, `plan`, and `expiresAt` (or check **♾ Lifetime** to remove the expiry date).
 
 | Button | Available when | Action |
 |--------|---------------|--------|
 | **Download Vault** | Always | Downloads the user's encrypted vault file |
 | **Lock** | Status = `active` or `expired` | Prevents login; user gets `ACCOUNT_SUSPENDED` error |
 | **Unlock** | Status = `locked` | Restores login access (status → `active`) |
-| **Expire** | Status = `active` | User can still read vault but write operations are blocked |
+| **Expire** | Status = `active` or `locked` | User can still read vault but write operations are blocked |
+| **Reactivate** | Status = `expired` | Opens a date picker to set a new `expiresAt`; restores full vault access |
 | **Retire** | Any non-retired status | Permanently disables account; frees email for reuse (shows confirmation dialog) |
 | **Refresh OTP** | Status = `pending_first_login` | Generates and displays a new OTP; sends email if environment supports it |
 | **Delete User** | Status = `pending_first_login` or `pending_email_verification` | Permanently removes the user record and all vault files |

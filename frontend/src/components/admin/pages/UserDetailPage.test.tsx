@@ -27,6 +27,8 @@ const mockAdmin = {
   unlockUser: vi.fn().mockResolvedValue(undefined),
   expireUser: vi.fn().mockResolvedValue(undefined),
   retireUser: vi.fn().mockResolvedValue(undefined),
+  reactivateUser: vi.fn().mockResolvedValue(undefined),
+  updateUser: vi.fn().mockResolvedValue(undefined),
   loading: false,
   error: null as string | null,
 };
@@ -39,6 +41,9 @@ const pendingUser: UserSummary = {
   createdAt: '2024-01-15T00:00:00Z',
   lastLoginAt: null,
   vaultSizeBytes: 2048,
+  expiresAt: '2026-12-31',
+  firstName: 'Bob',
+  lastName: 'Smith',
 };
 
 const activeUser: UserSummary = {
@@ -47,6 +52,11 @@ const activeUser: UserSummary = {
   username: 'alice@example.com',
   status: 'active',
   lastLoginAt: '2024-03-01T00:00:00Z',
+  plan: 'pro',
+  expiresAt: null,
+  firstName: 'Alice',
+  lastName: 'Johnson',
+  displayName: 'AJ',
 };
 
 function renderDetail(user?: UserSummary) {
@@ -79,14 +89,8 @@ describe('UserDetailPage', () => {
     expect(screen.getByText('bob@example.com')).toBeInTheDocument();
   });
 
-  it('renders email', () => {
-    renderDetail(pendingUser);
-    expect(screen.getByText('bob@example.com')).toBeInTheDocument();
-  });
-
   it('renders em-dash for missing last login', () => {
     renderDetail(pendingUser);
-    // Check that there's a dash shown for last login
     expect(screen.getAllByText('—').length).toBeGreaterThan(0);
   });
 
@@ -105,49 +109,78 @@ describe('UserDetailPage', () => {
     expect(screen.getByText('Active')).toBeInTheDocument();
   });
 
-  it('shows Refresh OTP and Delete User buttons only for pending_first_login', () => {
+  // ── Profile fields ─────────────────────────────────────────────────────────
+
+  it('shows displayName when provided', () => {
+    renderDetail(activeUser);
+    expect(screen.getByText('AJ')).toBeInTheDocument();
+  });
+
+  it('shows first + last name when no displayName', () => {
+    renderDetail(pendingUser);
+    expect(screen.getByText('Bob Smith')).toBeInTheDocument();
+  });
+
+  it('shows plan in metadata table', () => {
+    renderDetail(pendingUser);
+    expect(screen.getByText('free')).toBeInTheDocument();
+  });
+
+  it('shows expiration date when set', () => {
+    renderDetail(pendingUser);
+    expect(screen.getByText('2026-12-31')).toBeInTheDocument();
+  });
+
+  it('shows lifetime indicator for perpetual users', () => {
+    renderDetail(activeUser); // activeUser has expiresAt: null
+    expect(screen.getByText(/lifetime/i)).toBeInTheDocument();
+  });
+
+  // ── Actions ───────────────────────────────────────────────────────────────
+
+  it('shows Refresh OTP and Delete user buttons only for pending_first_login', () => {
     renderDetail(pendingUser);
     expect(screen.getByText('Refresh OTP')).toBeInTheDocument();
-    expect(screen.getByText('Delete User')).toBeInTheDocument();
+    expect(screen.getByText('Delete user')).toBeInTheDocument();
   });
 
-  it('does not show Refresh OTP or Delete User for active user', () => {
+  it('does not show Refresh OTP or Delete user for active user', () => {
     renderDetail(activeUser);
     expect(screen.queryByText('Refresh OTP')).not.toBeInTheDocument();
-    expect(screen.queryByText('Delete User')).not.toBeInTheDocument();
+    expect(screen.queryByText('Delete user')).not.toBeInTheDocument();
   });
 
-  it('always shows Download Vault button', () => {
+  it('always shows Download vault button', () => {
     renderDetail(activeUser);
-    expect(screen.getByText('Download Vault')).toBeInTheDocument();
+    expect(screen.getByText('Download vault')).toBeInTheDocument();
   });
 
-  it('calls downloadUserVault when Download Vault is clicked', async () => {
+  it('calls downloadUserVault when Download vault is clicked', async () => {
     renderDetail(pendingUser);
-    await userEvent.click(screen.getByText('Download Vault'));
+    await userEvent.click(screen.getByText('Download vault'));
     expect(mockAdmin.downloadUserVault).toHaveBeenCalledWith('u1', 'bob@example.com');
   });
 
-  it('shows Confirm Delete / Cancel buttons before deleting', async () => {
+  it('shows Confirm delete / Cancel buttons before deleting', async () => {
     renderDetail(pendingUser);
-    await userEvent.click(screen.getByText('Delete User'));
-    expect(screen.getByText('Confirm Delete')).toBeInTheDocument();
+    await userEvent.click(screen.getByText('Delete user'));
+    expect(screen.getByText('Confirm delete')).toBeInTheDocument();
     expect(screen.getByText('Cancel')).toBeInTheDocument();
     expect(mockAdmin.deleteUser).not.toHaveBeenCalled();
   });
 
   it('cancels delete when Cancel is clicked', async () => {
     renderDetail(pendingUser);
-    await userEvent.click(screen.getByText('Delete User'));
+    await userEvent.click(screen.getByText('Delete user'));
     await userEvent.click(screen.getByText('Cancel'));
-    expect(screen.getByText('Delete User')).toBeInTheDocument();
+    expect(screen.getByText('Delete user')).toBeInTheDocument();
     expect(mockAdmin.deleteUser).not.toHaveBeenCalled();
   });
 
   it('calls deleteUser and navigates to users list after confirm', async () => {
     renderDetail(pendingUser);
-    await userEvent.click(screen.getByText('Delete User'));
-    await userEvent.click(screen.getByText('Confirm Delete'));
+    await userEvent.click(screen.getByText('Delete user'));
+    await userEvent.click(screen.getByText('Confirm delete'));
     expect(mockAdmin.deleteUser).toHaveBeenCalledWith('u1');
     expect(await screen.findByText('Users List')).toBeInTheDocument();
   });
@@ -163,5 +196,37 @@ describe('UserDetailPage', () => {
     renderDetail(pendingUser);
     await userEvent.click(screen.getByText(/← Users/));
     expect(screen.getByText('Users List')).toBeInTheDocument();
+  });
+
+  // ── Edit form ─────────────────────────────────────────────────────────────
+
+  it('shows Edit button and opens edit form when clicked', async () => {
+    renderDetail(pendingUser);
+    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }));
+    expect(screen.getByLabelText(/first name/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/last name/i)).toBeInTheDocument();
+  });
+
+  it('pre-fills edit form with current user values', async () => {
+    renderDetail(pendingUser);
+    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }));
+    expect(screen.getByLabelText(/first name/i)).toHaveValue('Bob');
+    expect(screen.getByLabelText(/last name/i)).toHaveValue('Smith');
+  });
+
+  it('calls updateUser when save is clicked', async () => {
+    renderDetail(pendingUser);
+    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^save$/i }));
+    expect(mockAdmin.updateUser).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'u1' }),
+    );
+  });
+
+  it('closes edit form when Cancel is clicked', async () => {
+    renderDetail(pendingUser);
+    await userEvent.click(screen.getByRole('button', { name: /^edit$/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^cancel$/i }));
+    expect(screen.queryByLabelText(/first name/i)).not.toBeInTheDocument();
   });
 });

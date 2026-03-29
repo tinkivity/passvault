@@ -33,4 +33,8 @@ export interface User {
   otpExpiresAt: string | null;
   registrationToken?: string;           // prod only; for email verification link
   registrationTokenExpiresAt?: string;  // ISO 8601
+  firstName?: string | null;
+  lastName?: string | null;
+  displayName?: string | null;
+  expiresAt?: string | null;            // ISO 8601 date; null = lifetime/perpetual
 }

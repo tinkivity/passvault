@@ -9,11 +9,13 @@ import {
   type ChangePasswordResponse,
   type CreateUserRequest,
   type CreateUserResponse,
+  type UpdateUserRequest,
   type ListUsersResponse,
   type ListLoginEventsResponse,
   type AdminStats,
   type User,
   type UserStatus,
+  type UserPlan,
 } from '@passvault/shared';
 import { getUserById, getUserByUsername, createUser, updateUser, listAllUsers, deleteUser, recordLoginEvent, getLoginCountSince, getLoginEvents, listVaultsByUser, getVaultRecord, deleteVaultRecord } from '../utils/dynamodb.js';
 import { hashPassword, verifyPassword, generateOtp, generateSalt } from '../utils/crypto.js';
@@ -22,7 +24,7 @@ import { signToken } from '../utils/jwt.js';
 import { deleteLegacyVaultFile, deleteVaultFile } from '../utils/s3.js';
 import { sendEmail } from '../utils/ses.js';
 import { verifyPasskeyToken } from './passkey.js';
-import { createFirstVault, deleteVault } from './vault.js';
+import { createFirstVault, deleteVault, sendVaultEmail } from './vault.js';
 import { config } from '../config.js';
 
 export async function adminLogin(request: LoginRequest): Promise<{ response?: LoginResponse; error?: string; statusCode?: number }> {
@@ -170,7 +172,7 @@ export async function createUserInvitation(
     passwordHash: otpHash,
     role: 'user',
     status: userStatus,
-    plan: 'free',
+    plan: request.plan ?? 'free',
     oneTimePasswordHash: otpHash,
     passkeyCredentialId: null,
     passkeyPublicKey: null,
@@ -184,6 +186,10 @@ export async function createUserInvitation(
     failedLoginAttempts: 0,
     lockedUntil: null,
     otpExpiresAt,
+    firstName: request.firstName ?? null,
+    lastName: request.lastName ?? null,
+    displayName: request.displayName ?? null,
+    expiresAt: request.expiresAt !== undefined ? request.expiresAt : null,
     ...(registrationToken && { registrationToken, registrationTokenExpiresAt }),
   };
 
@@ -253,6 +259,10 @@ export async function listUsers(): Promise<ListUsersResponse> {
       createdAt: u.createdAt,
       lastLoginAt: u.lastLoginAt,
       vaultSizeBytes: vaultSizes[i],
+      firstName: u.firstName ?? null,
+      lastName: u.lastName ?? null,
+      displayName: u.displayName ?? null,
+      expiresAt: u.expiresAt ?? null,
     })),
   };
 }
@@ -430,6 +440,62 @@ export async function getStats(): Promise<AdminStats> {
     totalVaultSizeBytes,
     loginsLast7Days,
   };
+}
+
+export async function reactivateUser(
+  userId: string,
+  expiresAt: string | null,
+): Promise<{ response?: { success: true }; error?: string; statusCode?: number }> {
+  const user = await getUserById(userId);
+  if (!user) return { error: ERRORS.NOT_FOUND, statusCode: 404 };
+  if (user.role === 'admin') return { error: ERRORS.FORBIDDEN, statusCode: 403 };
+  if (user.status !== 'expired') return { error: 'User is not expired', statusCode: 400 };
+
+  await updateUser(userId, { status: 'active', expiresAt });
+  return { response: { success: true } };
+}
+
+export async function updateUserProfile(
+  request: UpdateUserRequest,
+): Promise<{ response?: { success: true }; error?: string; statusCode?: number }> {
+  const user = await getUserById(request.userId);
+  if (!user) return { error: ERRORS.NOT_FOUND, statusCode: 404 };
+  if (user.role === 'admin') return { error: ERRORS.FORBIDDEN, statusCode: 403 };
+
+  const updates: Partial<Omit<User, 'userId'>> = {};
+  if ('firstName' in request) updates.firstName = request.firstName;
+  if ('lastName' in request) updates.lastName = request.lastName;
+  if ('displayName' in request) updates.displayName = request.displayName;
+  if ('plan' in request && request.plan) updates.plan = request.plan as UserPlan;
+  if ('expiresAt' in request) updates.expiresAt = request.expiresAt;
+
+  if (Object.keys(updates).length > 0) {
+    await updateUser(request.userId, updates);
+  }
+  return { response: { success: true } };
+}
+
+export async function adminEmailUserVault(
+  userId: string,
+): Promise<{ response?: { success: true }; error?: string; statusCode?: number }> {
+  if (!process.env.SENDER_EMAIL) {
+    return { error: 'Email sending is not available in this environment', statusCode: 503 };
+  }
+
+  const user = await getUserById(userId);
+  if (!user) return { error: ERRORS.NOT_FOUND, statusCode: 404 };
+  if (user.role === 'admin') return { error: ERRORS.FORBIDDEN, statusCode: 403 };
+  if (!user.username.includes('@')) return { error: ERRORS.NO_EMAIL_ADDRESS, statusCode: 400 };
+
+  const vaults = await listVaultsByUser(userId);
+  if (vaults.length === 0) return { error: ERRORS.VAULT_NOT_FOUND, statusCode: 404 };
+
+  for (const vault of vaults) {
+    const result = await sendVaultEmail(userId, vault.vaultId);
+    if (result.error) return { error: result.error, statusCode: result.statusCode };
+  }
+
+  return { response: { success: true } };
 }
 
 async function recordFailedAttempt(userId: string, username: string, currentAttempts: number): Promise<void> {

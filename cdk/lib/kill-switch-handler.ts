@@ -117,8 +117,9 @@ async function activateKillSwitch(): Promise<void> {
     );
     console.log(`Re-enable scheduled at ${reEnableAt.toISOString()} (schedule: ${scheduleName})`);
   } catch (err) {
-    // Scheduling failure is non-fatal — manual recovery is documented
-    console.error('Failed to create re-enable schedule (manual recovery required):', err);
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`Failed to create re-enable schedule: ${message}`);
+    console.error('Manual recovery: see BOTPROTECTION.md or run the aws lambda put-function-concurrency commands listed there');
   }
 
   void firstName; // suppress unused warning

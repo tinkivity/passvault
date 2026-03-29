@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import type { UserSummary, UserStatus } from '@passvault/shared';
+import type { UpdateUserRequest, UserPlan, UserSummary, UserStatus } from '@passvault/shared';
 import { useAuth } from '../../../hooks/useAuth.js';
 import { useAdmin } from '../../../hooks/useAdmin.js';
 import { OtpDisplay } from '../OtpDisplay.js';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 const statusLabel: Record<UserStatus, string> = {
   pending_email_verification: 'Awaiting email verification',
@@ -33,20 +35,80 @@ function formatBytes(bytes: number | null): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function ExpiresDisplay({ expiresAt }: { expiresAt?: string | null }) {
+  if (!expiresAt) return <span className="text-muted-foreground/50">♾ Lifetime</span>;
+  const isPast = new Date(expiresAt) < new Date();
+  return (
+    <span className={isPast ? 'text-orange-600 font-medium' : undefined}>
+      {expiresAt.slice(0, 10)}
+    </span>
+  );
+}
+
 export function UserDetailPage() {
   const { userId } = useParams<{ userId: string }>();
   const location = useLocation();
   const navigate = useNavigate();
   const { token } = useAuth();
   const admin = useAdmin(token);
-  const [refreshedOtp, setRefreshedOtp] = useState<{ username: string; oneTimePassword: string } | null>(null);
+
   const [user, setUser] = useState<UserSummary | null>(
     (location.state as { user?: UserSummary } | null)?.user ?? null,
   );
+  const [refreshedOtp, setRefreshedOtp] = useState<{ username: string; oneTimePassword: string } | null>(null);
   const [retireConfirm, setRetireConfirm] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
 
+  // Edit state
+  const [editing, setEditing] = useState(false);
+  const [editFirstName, setEditFirstName] = useState('');
+  const [editLastName, setEditLastName] = useState('');
+  const [editDisplayName, setEditDisplayName] = useState('');
+  const [editPlan, setEditPlan] = useState<UserPlan>('free');
+  const [editIsPerpetual, setEditIsPerpetual] = useState(false);
+  const [editExpiresAt, setEditExpiresAt] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
+
   const handleBack = () => navigate('/admin/users');
+
+  function startEdit() {
+    if (!user) return;
+    setEditFirstName(user.firstName ?? '');
+    setEditLastName(user.lastName ?? '');
+    setEditDisplayName(user.displayName ?? '');
+    setEditPlan(user.plan);
+    setEditIsPerpetual(user.expiresAt === null || user.expiresAt === undefined);
+    setEditExpiresAt(user.expiresAt ? user.expiresAt.slice(0, 10) : '');
+    setEditError(null);
+    setEditing(true);
+  }
+
+  async function handleSaveEdit() {
+    if (!user) return;
+    setEditError(null);
+    try {
+      const req: UpdateUserRequest = {
+        userId: user.userId,
+        firstName: editFirstName.trim() || null,
+        lastName: editLastName.trim() || null,
+        displayName: editDisplayName.trim() || null,
+        plan: editPlan,
+        expiresAt: editIsPerpetual ? null : (editExpiresAt || null),
+      };
+      await admin.updateUser(req);
+      setUser(u => u ? {
+        ...u,
+        firstName: req.firstName,
+        lastName: req.lastName,
+        displayName: req.displayName,
+        plan: req.plan ?? u.plan,
+        expiresAt: req.expiresAt,
+      } : u);
+      setEditing(false);
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : 'Failed to save changes');
+    }
+  }
 
   if (!user) {
     return (
@@ -110,49 +172,153 @@ export function UserDetailPage() {
     navigate('/admin/users', { replace: true });
   };
 
+  const displayedName = user.displayName
+    || ([user.firstName, user.lastName].filter(Boolean).join(' '))
+    || null;
+
   return (
     <div className="max-w-xl">
       <Button variant="ghost" size="sm" className="mb-6" onClick={handleBack}>
         ← Users
       </Button>
 
-      <div className="bg-card rounded-xl border border-border p-6">
-        <div className="flex items-start gap-3 mb-6">
+      <div className="bg-card rounded-xl border border-border p-6 space-y-6">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-xl font-bold font-mono">{user.username}</h1>
-            <span className={statusClass[user.status]}>
+            {displayedName && (
+              <p className="text-lg font-semibold">{displayedName}</p>
+            )}
+            <p className="font-mono text-sm text-muted-foreground">{user.username}</p>
+            <span className={`mt-1 inline-block ${statusClass[user.status]}`}>
               {statusLabel[user.status]}
             </span>
           </div>
+          {!editing && (
+            <Button variant="outline" size="sm" onClick={startEdit}>
+              Edit
+            </Button>
+          )}
         </div>
 
-        <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-3 text-sm mb-6">
+        {/* Read-only metadata */}
+        <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-3 text-sm">
           <dt className="text-muted-foreground">Plan</dt>
           <dd className="capitalize">{user.plan}</dd>
+          <dt className="text-muted-foreground">Expires</dt>
+          <dd><ExpiresDisplay expiresAt={user.expiresAt} /></dd>
           <dt className="text-muted-foreground">Created</dt>
           <dd>{new Date(user.createdAt).toISOString().slice(0, 10)}</dd>
-          <dt className="text-muted-foreground">Last Login</dt>
+          <dt className="text-muted-foreground">Last login</dt>
           <dd>
             {user.lastLoginAt
               ? new Date(user.lastLoginAt).toISOString().slice(0, 10)
               : '—'}
           </dd>
-          <dt className="text-muted-foreground">Vault Size</dt>
+          <dt className="text-muted-foreground">Vault size</dt>
           <dd>{formatBytes(user.vaultSizeBytes)}</dd>
           <dt className="text-muted-foreground">User ID</dt>
           <dd className="font-mono text-xs text-muted-foreground break-all">{user.userId}</dd>
         </dl>
 
-        {admin.error && <p className="text-destructive text-sm mb-4">{admin.error}</p>}
+        {/* Inline edit form */}
+        {editing && (
+          <div className="border-t border-border pt-4 space-y-4">
+            <p className="text-sm font-medium">Edit profile</p>
 
-        <div className="flex flex-wrap gap-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="edit-first">First name</Label>
+                <Input
+                  id="edit-first"
+                  value={editFirstName}
+                  onChange={e => setEditFirstName(e.target.value)}
+                  placeholder="Jane"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="edit-last">Last name</Label>
+                <Input
+                  id="edit-last"
+                  value={editLastName}
+                  onChange={e => setEditLastName(e.target.value)}
+                  placeholder="Smith"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <Label htmlFor="edit-display">
+                Display name <span className="text-muted-foreground font-normal">(optional)</span>
+              </Label>
+              <Input
+                id="edit-display"
+                value={editDisplayName}
+                onChange={e => setEditDisplayName(e.target.value)}
+                placeholder="Defaults to first + last name"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label>Plan</Label>
+              <div className="flex gap-2">
+                {(['free', 'pro'] as const).map(p => (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setEditPlan(p)}
+                    className={`flex-1 rounded-md border px-3 py-1.5 text-sm transition-colors ${editPlan === p ? 'border-primary bg-primary/10 text-primary font-medium' : 'border-border text-muted-foreground hover:border-primary/50'}`}
+                  >
+                    {p.charAt(0).toUpperCase() + p.slice(1)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-expires">Expiration date</Label>
+              <Input
+                id="edit-expires"
+                type="date"
+                value={editExpiresAt}
+                onChange={e => setEditExpiresAt(e.target.value)}
+                disabled={editIsPerpetual}
+              />
+              <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={editIsPerpetual}
+                  onChange={e => setEditIsPerpetual(e.target.checked)}
+                  className="rounded"
+                />
+                ♾ Lifetime — never expires
+              </label>
+            </div>
+
+            {editError && <p className="text-sm text-destructive">{editError}</p>}
+
+            <div className="flex gap-2">
+              <Button size="sm" onClick={handleSaveEdit} disabled={admin.loading}>
+                {admin.loading ? 'Saving…' : 'Save'}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {admin.error && !editing && <p className="text-destructive text-sm">{admin.error}</p>}
+
+        {/* Actions */}
+        <div className="border-t border-border pt-4 flex flex-wrap gap-2">
           <Button
             variant="ghost"
             size="sm"
             onClick={() => admin.downloadUserVault(user.userId, user.username)}
             disabled={admin.loading}
           >
-            Download Vault
+            Download vault
           </Button>
 
           {user.status === 'pending_first_login' && (
@@ -161,7 +327,7 @@ export function UserDetailPage() {
             </Button>
           )}
 
-          {(user.status === 'active' || user.status === 'expired') && (
+          {user.status === 'active' && (
             <Button variant="outline" size="sm" onClick={handleLock} disabled={admin.loading}>
               Lock
             </Button>
@@ -173,9 +339,15 @@ export function UserDetailPage() {
             </Button>
           )}
 
-          {user.status === 'active' && (
-            <Button variant="outline" size="sm" onClick={handleExpire} disabled={admin.loading}>
-              Mark Expired
+          {(user.status === 'active' || user.status === 'locked') && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="text-orange-600 border-orange-300 hover:bg-orange-50 hover:text-orange-700"
+              onClick={handleExpire}
+              disabled={admin.loading}
+            >
+              Expire
             </Button>
           )}
 
@@ -183,7 +355,7 @@ export function UserDetailPage() {
             retireConfirm ? (
               <>
                 <Button variant="destructive" size="sm" onClick={handleRetire} disabled={admin.loading}>
-                  Confirm Retire
+                  Confirm retire
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => setRetireConfirm(false)}>
                   Cancel
@@ -197,7 +369,7 @@ export function UserDetailPage() {
                 onClick={() => setRetireConfirm(true)}
                 disabled={admin.loading}
               >
-                Retire User
+                Retire user
               </Button>
             )
           )}
@@ -206,7 +378,7 @@ export function UserDetailPage() {
             deleteConfirm ? (
               <>
                 <Button variant="destructive" size="sm" onClick={handleDelete} disabled={admin.loading}>
-                  Confirm Delete
+                  Confirm delete
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => setDeleteConfirm(false)}>
                   Cancel
@@ -219,7 +391,7 @@ export function UserDetailPage() {
                 className="text-destructive hover:text-destructive"
                 onClick={() => setDeleteConfirm(true)}
               >
-                Delete User
+                Delete user
               </Button>
             )
           )}

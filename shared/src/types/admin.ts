@@ -2,6 +2,20 @@ import type { UserStatus, UserPlan } from './user.js';
 
 export interface CreateUserRequest {
   username: string;  // must be valid email address
+  firstName?: string;
+  lastName?: string;
+  displayName?: string;
+  plan?: UserPlan;
+  expiresAt?: string | null;  // ISO 8601 date; null = lifetime/perpetual
+}
+
+export interface UpdateUserRequest {
+  userId: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  displayName?: string | null;
+  plan?: UserPlan;
+  expiresAt?: string | null;
 }
 
 export interface CreateUserResponse {
@@ -19,6 +33,10 @@ export interface UserSummary {
   createdAt: string;
   lastLoginAt: string | null;
   vaultSizeBytes: number | null;
+  firstName?: string | null;
+  lastName?: string | null;
+  displayName?: string | null;
+  expiresAt?: string | null;
 }
 
 export interface ListUsersResponse {

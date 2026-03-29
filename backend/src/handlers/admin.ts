@@ -4,7 +4,7 @@ import { success, error } from '../utils/response.js';
 import { validatePow } from '../middleware/pow.js';
 import { validateHoneypot } from '../middleware/honeypot.js';
 import { requireAuth } from '../middleware/auth.js';
-import { adminLogin, adminChangePassword, createUserInvitation, listUsers, refreshOtp, deleteNewUser, lockUser, unlockUser, expireUser, retireUser, getStats, listLoginEvents } from '../services/admin.js';
+import { adminLogin, adminChangePassword, createUserInvitation, listUsers, refreshOtp, deleteNewUser, lockUser, unlockUser, expireUser, retireUser, reactivateUser, updateUserProfile, getStats, listLoginEvents, adminEmailUserVault } from '../services/admin.js';
 import { downloadVault, listVaults } from '../services/vault.js';
 import {
   generateChallengeJwt,
@@ -93,6 +93,18 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // GET /admin/vault?userId=...
     if (path === API_PATHS.ADMIN_USER_VAULT && method === 'GET') {
       return await handleDownloadUserVault(event);
+    }
+    // POST /admin/users/email-vault
+    if (path === API_PATHS.ADMIN_USERS_EMAIL_VAULT && method === 'POST') {
+      return await handleEmailUserVault(event);
+    }
+    // POST /admin/users/reactivate
+    if (path === API_PATHS.ADMIN_USER_REACTIVATE && method === 'POST') {
+      return await handleReactivateUser(event);
+    }
+    // POST /admin/users/update
+    if (path === API_PATHS.ADMIN_USER_UPDATE && method === 'POST') {
+      return await handleUpdateUser(event);
     }
     // GET /admin/stats
     if (path === API_PATHS.ADMIN_STATS && method === 'GET') {
@@ -513,6 +525,63 @@ async function handleRetireUser(event: APIGatewayProxyEvent): Promise<APIGateway
   if (!userId) return error('Missing userId', 400);
 
   const result = await retireUser(userId);
+  if (result.error) return error(result.error, result.statusCode || 400);
+  return success(result.response);
+}
+
+async function handleReactivateUser(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
+  if (pow.errorResponse) return pow.errorResponse;
+
+  const { user, errorResponse } = await requireAuth(event);
+  if (errorResponse) return errorResponse;
+  if (user!.role !== 'admin' || user!.status !== 'active') {
+    return error(ERRORS.FORBIDDEN, 403);
+  }
+
+  const parsed = parseBody(event);
+  if ('parseError' in parsed) return parsed.parseError;
+  const { userId, expiresAt } = parsed.body as { userId: string; expiresAt: string | null };
+  if (!userId) return error('Missing userId', 400);
+
+  const result = await reactivateUser(userId, expiresAt ?? null);
+  if (result.error) return error(result.error, result.statusCode || 400);
+  return success(result.response);
+}
+
+async function handleUpdateUser(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
+  if (pow.errorResponse) return pow.errorResponse;
+
+  const { user, errorResponse } = await requireAuth(event);
+  if (errorResponse) return errorResponse;
+  if (user!.role !== 'admin' || user!.status !== 'active') {
+    return error(ERRORS.FORBIDDEN, 403);
+  }
+
+  const parsed = parseBody(event);
+  if ('parseError' in parsed) return parsed.parseError;
+  const result = await updateUserProfile(parsed.body as import('@passvault/shared').UpdateUserRequest);
+  if (result.error) return error(result.error, result.statusCode || 400);
+  return success(result.response);
+}
+
+async function handleEmailUserVault(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
+  if (pow.errorResponse) return pow.errorResponse;
+
+  const { user, errorResponse } = await requireAuth(event);
+  if (errorResponse) return errorResponse;
+  if (user!.role !== 'admin' || user!.status !== 'active') {
+    return error(ERRORS.FORBIDDEN, 403);
+  }
+
+  const parsed = parseBody(event);
+  if ('parseError' in parsed) return parsed.parseError;
+  const { userId } = parsed.body as { userId: string };
+  if (!userId) return error('Missing userId', 400);
+
+  const result = await adminEmailUserVault(userId);
   if (result.error) return error(result.error, result.statusCode || 400);
   return success(result.response);
 }

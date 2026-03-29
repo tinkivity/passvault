@@ -145,7 +145,7 @@ Business logic layer. Depends on utils (Step 3). Called by handlers (Step 6).
 ```
 backend/src/services/
 ├── auth.ts               # login(), changePassword() — env-conditional passkey flow; locked/retired/expired status checks
-├── admin.ts              # adminLogin(), createUserInvitation(), listUsers(), lockUser(), unlockUser(), expireUser(), retireUser(), verifyEmailToken()
+├── admin.ts              # adminLogin(), createUserInvitation(), listUsers(), lockUser(), unlockUser(), expireUser(), retireUser(), reactivateUser(), updateUserProfile(), adminEmailUserVault(), verifyEmailToken()
 ├── passkey.ts            # challenge JWTs, passkey tokens, WebAuthn verify/register
 ├── vault.ts              # getVault(), putVault(), downloadVault(), createVault() (plan limits), deleteVault(), sendVaultEmail()
 └── challenge.ts          # generateChallenge(), validateSolution()
@@ -172,6 +172,7 @@ backend/src/handlers/
 │                         # GET /api/admin/users, POST /api/admin/users (create)
 │                         # GET /api/admin/users/:userId
 │                         # POST /api/admin/users/lock, /unlock, /expire, /retire
+│                         # POST /api/admin/users/reactivate, /update, /email-vault
 │                         # POST /api/admin/users/refresh-otp
 │                         # DELETE /api/admin/users?userId= (delete pending user)
 │                         # GET /api/admin/stats
@@ -244,7 +245,7 @@ frontend/src/
 │   │                          # exports computeWarnings() — recomputes warningCodes before every save
 │   ├── useVaults.ts           # fetchVaults(), createVault(displayName), deleteVault(vaultId)
 │   ├── useWarningCatalog.ts   # fetches GET /api/config/warning-codes once; getLabel(code) helper
-│   └── useAdmin.ts            # createUser, listUsers, lockUser, unlockUser, expireUser, retireUser
+│   └── useAdmin.ts            # createUser, listUsers, lockUser, unlockUser, expireUser, retireUser, reactivateUser, updateUserProfile, emailUserVault
 ├── lib/
 │   └── password-gen.ts        # generateSecurePassword(length?) using crypto.getRandomValues
 ├── components/
@@ -261,15 +262,15 @@ frontend/src/
 │   │   └── ConfirmDialog.tsx    # generic confirmation dialog (used for delete + unsaved-changes)
 │   ├── admin/
 │   │   ├── AdminShell.tsx       # full-viewport shell: top bar + sidebar + Outlet
-│   │   ├── AdminSidebar.tsx     # collapsible sections (Management, Logs); heroicons
+│   │   ├── AdminSidebar.tsx     # collapsible sections (Management, Logs); heroicons; 3-dot hover menu on "Users" item with "Create user" shortcut (navigates to /admin/users?create=1)
 │   │   ├── AdminBreadcrumbs.tsx # reads useLocation() pathname + state
-│   │   ├── CreateUserForm.tsx   # email-as-username form; OtpDisplay on success
-│   │   ├── UserList.tsx         # TanStack Table; lock icon badge; filter; Lock/Download/Refresh OTP/Delete actions
+│   │   ├── CreateUserForm.tsx   # collects email, firstName, lastName, displayName, plan (Free/Pro toggle), expiresAt (date picker + "♾ Lifetime" checkbox); OtpDisplay on success
+│   │   ├── UserList.tsx         # TanStack Table; Status + Plan columns with badges; Status and Plan filters; row actions: Lock/Unlock/Expire/Reactivate (date picker dialog)/Email vault; confirmation dialogs on destructive actions
 │   │   ├── OtpDisplay.tsx       # OTP + copy + Done
 │   │   └── pages/
 │   │       ├── DashboardPage.tsx    # stats cards + recharts area chart
 │   │       ├── AdminPage.tsx        # admin account management (change password, passkey)
-│   │       ├── UserDetailPage.tsx   # user detail; Lock/Unlock/Expire/Retire buttons; OTP refresh
+│   │       ├── UserDetailPage.tsx   # shows all profile fields (firstName, lastName, displayName, plan, expiresAt); inline edit form; Lock/Unlock/Expire/Reactivate/Retire buttons; OTP refresh
 │   │       └── LoginsPage.tsx       # login events table; sorting + filtering
 │   └── layout/                  # EnvironmentBanner, Layout (auth pages wrapper)
 ├── router.tsx                   # /vault/:vaultId/* routes; /admin/* routes; auth guards

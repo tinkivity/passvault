@@ -429,6 +429,9 @@ POST   /api/admin/users/lock                      → Admin Lambda
 POST   /api/admin/users/unlock                    → Admin Lambda
 POST   /api/admin/users/expire                    → Admin Lambda
 POST   /api/admin/users/retire                    → Admin Lambda
+POST   /api/admin/users/reactivate                → Admin Lambda
+POST   /api/admin/users/update                    → Admin Lambda (update profile fields)
+POST   /api/admin/users/email-vault               → Admin Lambda (prod only)
 POST   /api/admin/users/refresh-otp               → Admin Lambda
 DELETE /api/admin/users                           → Admin Lambda (delete pending user)
 GET    /api/admin/stats                           → Admin Lambda
@@ -734,7 +737,14 @@ You will be prompted to set a new password on first login.
 
 > **Save the one-time password** before closing the terminal — it cannot be recovered. If lost, delete the admin item from DynamoDB and re-run the script.
 
-> **Dev stack note:** `scripts/dev-ui.sh` runs `init-admin.ts` automatically on first launch if the admin account is absent. You do not need to run it manually for dev.
+> **Dev stack note:** `scripts/dev-ui.sh` runs `init-admin.ts` automatically on first launch if the admin account is absent. You do not need to run it manually for dev. On first launch it also runs `scripts/seed-dev.ts`, which creates two ready-to-use test accounts directly in DynamoDB and S3 (no OTP / change-password flow required):
+>
+> | Email | Name | Password | Plan | Expires |
+> |---|---|---|---|---|
+> | alice@example.com | Alice Johnson | AliceTest1! | free | +1 year from seed date |
+> | bob@example.com | Bob Smith | BobTest1! | pro | ♾ lifetime |
+>
+> Both accounts include pre-seeded vault content. The script is idempotent — users that already exist are skipped.
 
 > **Beta stack note:** `scripts/beta-deploy-ui.sh` automates admin initialisation and the full frontend deploy (build → S3 sync → CloudFront invalidation). See [scripts/beta-deploy-ui.sh](scripts/beta-deploy-ui.sh) for usage.
 

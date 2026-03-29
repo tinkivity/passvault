@@ -31,7 +31,7 @@ npm run test:watch --workspace=backend
 
 ### Current coverage
 
-501 tests across 35 files (all passing): 261 backend, 183 frontend, 57 shared.
+537 tests across 35 files (all passing): 282 backend, 198 frontend, 57 shared.
 
 #### Backend (`backend/src/`)
 
@@ -45,11 +45,11 @@ npm run test:watch --workspace=backend
 | `src/middleware/honeypot.test.ts` | 8 | Hidden field detection (email/phone/website), disabled mode |
 | `src/services/challenge.test.ts` | 3 | Challenge generation, PoW solution validation |
 | `src/services/auth.test.ts` | 31 | Login (OTP, normal, passkeyToken), changePassword, lockout, OTP expiry, status checks (locked/retired/expired) |
-| `src/services/admin.test.ts` | 69 | adminLogin, adminChangePassword, createUserInvitation, listUsers, lockout, lockUser, unlockUser, expireUser, retireUser, verifyEmailToken |
+| `src/services/admin.test.ts` | 90 | adminLogin, adminChangePassword, createUserInvitation, listUsers, lockout, lockUser, unlockUser, expireUser, retireUser, reactivateUser, updateUserProfile, adminEmailUserVault, verifyEmailToken |
 | `src/services/vault.test.ts` | 24 | getVault, putVault, downloadVault, sendVaultEmail, createVault (plan limits), deleteVault |
 | `src/services/passkey.test.ts` | 11 | Challenge JWTs, passkey tokens, WebAuthn assertion/attestation verification |
 | `src/handlers/auth.test.ts` | 25 | Handler routing, PoW/honeypot middleware, passkey endpoints, email verification, logout |
-| `src/handlers/admin.test.ts` | 28 | Handler routing, auth middleware, all admin endpoints including lock/unlock/expire/retire |
+| `src/handlers/admin.test.ts` | 38 | Handler routing, auth middleware, all admin endpoints including lock/unlock/expire/retire/reactivate/update/email-vault |
 | `src/handlers/challenge.test.ts` | 3 | Challenge handler routing |
 | `src/handlers/vault.test.ts` | 13 | Handler routing, auth middleware, vault CRUD, status checks (expired/locked) |
 | `src/handlers/health.test.ts` | 4 | Health check handler |
@@ -69,11 +69,11 @@ All tests mock AWS SDK calls (`@aws-sdk/client-dynamodb`, `@aws-sdk/client-s3`) 
 | `src/components/admin/OtpDisplay.test.tsx` | 5 | OTP display, copy, Done |
 | `src/components/admin/AdminBreadcrumbs.test.tsx` | 10 | Breadcrumb rendering for all routes |
 | `src/components/admin/AdminSidebar.test.tsx` | 15 | Sidebar nav, collapsible sections |
-| `src/components/admin/CreateUserForm.test.tsx` | 7 | Email validation, OTP display, error handling |
-| `src/components/admin/UserList.test.tsx` | 28 | Table, sorting, filters, actions (download/refresh OTP/delete), status badges |
+| `src/components/admin/CreateUserForm.test.tsx` | 14 | Email validation, firstName/lastName/displayName fields, plan toggle, expiresAt date picker, lifetime checkbox, OTP display, error handling |
+| `src/components/admin/UserList.test.tsx` | 41 | Table, sorting, Status + Plan filters, Plan column badge, Expires column, row actions (Lock/Unlock/Expire/Reactivate/Email vault), confirmation dialogs |
 | `src/components/admin/pages/DashboardPage.test.tsx` | 9 | Stats cards, chart rendering |
 | `src/components/admin/pages/AdminPage.test.tsx` | 10 | Admin account management |
-| `src/components/admin/pages/UserDetailPage.test.tsx` | 17 | User detail, lock/unlock/expire/retire buttons, OTP refresh, delete |
+| `src/components/admin/pages/UserDetailPage.test.tsx` | 26 | User detail (all profile fields), inline edit form (firstName/lastName/displayName/plan/expiresAt), lock/unlock/expire/reactivate/retire buttons, OTP refresh, delete |
 | `src/components/admin/pages/LoginsPage.test.tsx` | 34 | Login events table, sorting, filtering |
 | `src/components/layout/Layout.test.tsx` | 11 | Layout rendering, environment banner |
 
@@ -256,12 +256,26 @@ These scenarios cover features introduced after the initial implementation. Run 
 - Expired verification link (> 7 days) → 400 `EMAIL_VERIFICATION_INVALID`
 - Create user in dev/beta → status starts at `pending_first_login` directly; no verification required
 
-### Admin: User Lifecycle (Lock / Unlock / Expire / Retire)
+### Admin: User Lifecycle (Lock / Unlock / Expire / Retire / Reactivate)
 
 - **Lock:** Lock an active user → login returns 403 `ACCOUNT_SUSPENDED`; admin unlocks → login works again
 - **Expire:** Mark user expired → login succeeds; vault GET works; vault PUT returns 403 `ACCOUNT_EXPIRED`
+- **Reactivate:** Reactivate an expired user with a new `expiresAt` date → status returns to `active`; vault writes unblocked; reactivate with `expiresAt=null` → lifetime access
 - **Retire:** Retire user → user disappears from admin list; original email address can be used to create a new account; retired user login returns 401 `INVALID_CREDENTIALS`
 - Admin cannot lock/unlock/expire/retire another admin account → 403
+
+### Admin: Update User Profile
+
+- Update `firstName`, `lastName`, `displayName` → changes reflected on UserDetailPage and UserList immediately
+- Change `plan` from `free` to `pro` → user can now create up to 10 vaults; Plan badge in UserList updates
+- Change `plan` from `pro` to `free` → existing vaults above the free limit are not removed; new vault creation blocked above limit
+- Update `expiresAt` to a past date → status changes to `expired` on next login attempt
+
+### Admin: Email Vault (Prod Only)
+
+- Admin clicks "Email vault" row action on UserList → confirmation dialog → confirms → `POST /api/admin/users/email-vault` → user receives encrypted vault backup email
+- Call in dev → 400 error
+- Call with `SENDER_EMAIL` unset → 503
 
 ### Multi-Vault (Plan Limits)
 

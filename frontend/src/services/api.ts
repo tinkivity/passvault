@@ -18,6 +18,7 @@ import type {
   CreateVaultRequest,
   CreateUserRequest,
   CreateUserResponse,
+  UpdateUserRequest,
   ListUsersResponse,
   ListLoginEventsResponse,
   AdminStats,
@@ -265,6 +266,33 @@ export class ApiClient {
     return this.request(API_PATHS.ADMIN_USERS_RETIRE, {
       method: 'POST',
       body: { userId },
+      token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+    });
+  }
+
+  async emailUserVault(userId: string, token: string): Promise<void> {
+    return this.request(API_PATHS.ADMIN_USERS_EMAIL_VAULT, {
+      method: 'POST',
+      body: { userId },
+      token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+    });
+  }
+
+  async reactivateUser(userId: string, expiresAt: string | null, token: string): Promise<void> {
+    return this.request(API_PATHS.ADMIN_USER_REACTIVATE, {
+      method: 'POST',
+      body: { userId, expiresAt },
+      token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+    });
+  }
+
+  async updateUser(req: UpdateUserRequest, token: string): Promise<void> {
+    return this.request(API_PATHS.ADMIN_USER_UPDATE, {
+      method: 'POST',
+      body: req,
       token,
       powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
     });

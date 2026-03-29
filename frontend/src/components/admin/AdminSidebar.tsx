@@ -1,6 +1,6 @@
 import { useLocation } from 'react-router-dom';
 import { NavLink } from 'react-router-dom';
-import { Home, UserCog, Settings2, FileTerminal, LogOut } from 'lucide-react';
+import { Home, UserCog, Settings2, FileTerminal, LogOut, MoreHorizontal, UserPlus } from 'lucide-react';
 import logo from '../../assets/logo.png';
 import {
   Sidebar,
@@ -11,10 +11,17 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
 } from '@/components/ui/sidebar';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 interface NavItemDef {
   to: string;
@@ -25,11 +32,6 @@ interface NavItemDef {
 
 const topItems: NavItemDef[] = [
   { to: '/admin/dashboard', label: 'Dashboard', icon: Home, end: true },
-];
-
-const managementItems: NavItemDef[] = [
-  { to: '/admin/users', label: 'Users', icon: UserCog },
-  { to: '/admin/management/admin', label: 'Admin', icon: Settings2 },
 ];
 
 const logItems: NavItemDef[] = [
@@ -57,9 +59,12 @@ function NavItem({ to, label, icon: Icon, end = false }: NavItemDef) {
 interface AdminSidebarProps {
   username: string;
   onLogout: () => void;
+  onCreateUser?: () => void;
 }
 
-export function AdminSidebar({ username, onLogout }: AdminSidebarProps) {
+export function AdminSidebar({ username, onLogout, onCreateUser }: AdminSidebarProps) {
+  const { pathname } = useLocation();
+
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="border-b border-sidebar-border">
@@ -84,7 +89,31 @@ export function AdminSidebar({ username, onLogout }: AdminSidebarProps) {
           <SidebarGroupLabel>Management</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {managementItems.map(item => <NavItem key={item.to} {...item} />)}
+              {/* Users — with 3-dot action menu */}
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  render={<NavLink to="/admin/users" />}
+                  isActive={pathname.startsWith('/admin/users')}
+                  tooltip="Users"
+                >
+                  <UserCog className="h-4 w-4 shrink-0" />
+                  <span>Users</span>
+                </SidebarMenuButton>
+                <DropdownMenu>
+                  <DropdownMenuTrigger render={<SidebarMenuAction showOnHover />}>
+                    <MoreHorizontal className="h-4 w-4" />
+                    <span className="sr-only">More</span>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent side="right" align="start">
+                    <DropdownMenuItem onClick={onCreateUser}>
+                      <UserPlus className="mr-2 h-4 w-4" />
+                      Create user
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </SidebarMenuItem>
+
+              <NavItem to="/admin/management/admin" label="Admin" icon={Settings2} />
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

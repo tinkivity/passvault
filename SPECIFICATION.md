@@ -27,7 +27,7 @@ PassVault is an invitation-only, personal password manager and secure vault with
   - Password (step 2 — derives the encryption key)
   - > **Environment Note**: In dev and beta environments where passkeys are disabled, the status transitions directly from "pending_first_login" to "active" after password change. The passkey setup step is skipped entirely. Login requires only username + password.
 - **Create User Invitation**: Admin creates new users by:
-  - Specifying the user's email address (used as the username / login identity)
+  - Specifying the user's email address (used as the username / login identity); optionally setting `firstName`, `lastName`, `displayName`, `plan` (`free` or `pro`, default `free`), and `expiresAt` (ISO date or null for lifetime)
   - System generates a secure one-time password (OTP) with a per-environment expiry time
   - In prod: SES sends a combined invitation email containing the OTP and an email verification link; user status is set to `pending_email_verification` until the link is clicked
   - In dev/beta: no verification email; user status starts at `pending_first_login` directly
@@ -43,6 +43,9 @@ PassVault is an invitation-only, personal password manager and secure vault with
   - Admin cannot lock/unlock/expire/retire another admin account (returns 403)
 - **Refresh OTP**: Admin can generate a new OTP for a user that is still in `pending_first_login` state (e.g. OTP expired or was lost); sends email if the user is in a beta/prod environment
 - **Delete Pending User**: Admin can delete a user that has not yet completed first login; removes the DynamoDB record and all associated S3 vault files
+- **Reactivate User**: Admin can reactivate an `expired` user, optionally setting a new `expiresAt` date or granting lifetime access
+- **Update User Profile**: Admin can update `firstName`, `lastName`, `displayName`, `plan`, and `expiresAt` on any non-retired user
+- **Email Vault**: Admin can trigger an encrypted vault backup email to be sent to the user's registered email address (prod only; requires `SENDER_EMAIL`)
 - **Admin Limitations - Zero Access to User Data**:
   - **Admin CANNOT access user file content** unless they know the user's password
   - User files are encrypted with keys derived from user passwords (not admin password)
@@ -276,11 +279,12 @@ For a detailed bot attack cost analysis including worst-case calculations and de
     - **Vault Storage** — sum of all user vault file sizes, formatted (B / KB / MB / GB)
     - **Logins (last 7 days)** — login event count for the past 7 days; clicking the number navigates to the Logins screen
   - **Users page** (`/admin/users`):
-    - "Create User" button opens a modal dialog with the invitation form
-    - After creation the OTP is shown; clicking "Done" closes the modal
-    - Users table: Username, Status, Email, Created date, Last login date, Vault size
-    - Clicking a row navigates to the User Detail page
-  - **User Detail page** (`/admin/users/:userId`): full user record + action buttons (Download Vault, Refresh OTP, Delete User)
+    - "Create User" button opens a modal dialog; form collects email, `firstName`, `lastName`, `displayName`, `plan` (Free/Pro toggle), and `expiresAt` (date picker, default +30 days, with "♾ Lifetime" checkbox); after creation the OTP is shown and clicking "Done" closes the modal
+    - Hovering the "Users" sidebar item reveals a 3-dot menu with a "Create user" shortcut (navigates to `/admin/users?create=1`)
+    - Users table columns: Username, Status, Plan (Free/Pro badge), Expires (date or "♾ lifetime"), Created, Last Login, Vault Size
+    - Status and Plan filters (Popover+Command pattern); clicking a row navigates to the User Detail page
+    - Row actions: Lock (active users), Unlock (locked users), Expire (active/locked users, orange), Reactivate (expired users — opens date picker dialog for new `expiresAt`), Email vault (prod only); all destructive actions have confirmation dialogs
+  - **User Detail page** (`/admin/users/:userId`): full user record including `firstName`, `lastName`, `displayName`, `plan`, and `expiresAt`; inline edit form for all profile fields; action buttons (Download Vault, Refresh OTP, Delete User, Lock/Unlock/Expire/Reactivate/Retire)
   - **Logins page** (`/admin/logs/logins`):
     - Table with columns: Status (icon), Username, Login Time (UTC), Duration (mm:ss)
     - Sortable by all four columns (click column header to toggle asc/desc)
@@ -541,7 +545,7 @@ Protection Layers:
 > **Passkey endpoints (dev/beta)**: When `passkeyRequired=false`, the passkey challenge/verify/register endpoints are still deployed but will not be exercised by the UI. POST /admin/login accepts `username` + `password` directly.
 
 - **POST /api/admin/users** (Requires admin auth, blocked if admin status is not "active")
-  - Request: `{ "username": "string" }` — username must be a valid email address
+  - Request: `{ "username": "string", "firstName"?: "string", "lastName"?: "string", "displayName"?: "string", "plan"?: "free" | "pro", "expiresAt"?: "string | null" }` — username must be a valid email address
   - Response: `{ "success": true, "username": "string", "oneTimePassword": "string", "userId": "string" }`
   - Creates new user invitation; also creates the first vault record (`Personal Vault`) for the user
   - Generates secure random one-time password (min 16 characters) with per-environment expiry (dev=60min, beta=10min, prod=120min)
@@ -550,7 +554,7 @@ Protection Layers:
   - Returns OTP to display to admin in the UI (always, regardless of email delivery)
 
 - **GET /api/admin/users** (Requires admin auth, blocked if admin status is not "active")
-  - Response: `{ "users": [{ "userId": "string", "username": "string", "status": "string", "plan": "free" | "pro", "createdAt": "timestamp", "lastLoginAt": "timestamp", "vaultSizeBytes": number | null }] }`
+  - Response: `{ "users": [{ "userId": "string", "username": "string", "status": "string", "plan": "free" | "pro", "firstName"?: "string", "lastName"?: "string", "displayName"?: "string", "expiresAt"?: "string | null", "createdAt": "timestamp", "lastLoginAt": "timestamp", "vaultSizeBytes": number | null }] }`
   - Returns list of all non-retired users with their status and current vault file size
 
 - **GET /api/admin/users/:userId** (Requires admin auth)
@@ -591,6 +595,22 @@ Protection Layers:
   - Returns 400 if user is in any other status
   - Removes the DynamoDB user record and all associated S3 vault files
   - Response: `{ "success": true }`
+
+- **POST /api/admin/users/reactivate** (Requires admin auth, PoW HIGH)
+  - Request: `{ "userId": "string", "expiresAt": "string | null" }` — `expiresAt` is an ISO date string or `null` for lifetime access
+  - Response: `{ "success": true }`
+  - Reactivates an `expired` user; sets `expiresAt` to the new value; sets status back to `active`
+
+- **POST /api/admin/users/update** (Requires admin auth, PoW HIGH)
+  - Request: `{ "userId": "string", "firstName"?: "string", "lastName"?: "string", "displayName"?: "string", "plan"?: "free" | "pro", "expiresAt"?: "string | null" }`
+  - Response: `{ "success": true }`
+  - Updates profile fields on any non-retired user; only fields present in the request body are changed
+
+- **POST /api/admin/users/email-vault** (Requires admin auth, PoW HIGH; prod only)
+  - Request: `{ "userId": "string" }`
+  - Response: `{ "success": true }`
+  - Emails the user's encrypted vault backup to their registered email address
+  - Returns 503 if `SENDER_EMAIL` is not set; returns 400 if called in dev
 
 - **GET /api/admin/stats** (Requires admin auth, PoW HIGH)
   - Response: `{ "totalUsers": number, "totalVaultSizeBytes": number, "loginsLast7Days": number }`
@@ -713,11 +733,15 @@ Attributes:
 - userId:                   unique identifier (UUID)
 - username:                 email address used as login identity (String, GSI)
                             Retired users have username renamed to _retired_{userId}_{original}
+- firstName:                given name (String, optional)
+- lastName:                 family name (String, optional)
+- displayName:              preferred display name (String, optional)
 - passwordHash:             bcrypt hashed password (String)
 - role:                     "admin" or "user" (String)
 - status:                   "pending_email_verification" | "pending_first_login" |
                             "pending_passkey_setup" | "active" | "locked" | "expired" | "retired"
 - plan:                     "free" | "pro" (String) — default "free"
+- expiresAt:                ISO date string after which the account transitions to "expired" (String, nullable)
 - oneTimePasswordHash:      bcrypt hash of OTP (String, nullable) - cleared after first password change
 - otpExpiresAt:             ISO timestamp when the one-time password expires (String, nullable)
 - registrationToken:        UUID for email verification link (String, nullable) — prod only

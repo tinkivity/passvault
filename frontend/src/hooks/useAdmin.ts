@@ -1,17 +1,17 @@
 import { useState, useCallback } from 'react';
-import type { AdminStats, ListLoginEventsResponse, UserSummary } from '@passvault/shared';
+import type { AdminStats, CreateUserRequest, ListLoginEventsResponse, UpdateUserRequest, UserSummary } from '@passvault/shared';
 import { api } from '../services/api.js';
 
 export function useAdmin(token: string | null) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const createUser = useCallback(async (username: string): Promise<{ username: string; oneTimePassword: string }> => {
+  const createUser = useCallback(async (req: CreateUserRequest): Promise<{ username: string; oneTimePassword: string }> => {
     if (!token) throw new Error('Not authenticated');
     setLoading(true);
     setError(null);
     try {
-      const res = await api.createUser({ username }, token);
+      const res = await api.createUser(req, token);
       return { username: res.username, oneTimePassword: res.oneTimePassword };
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to create user';
@@ -181,5 +181,50 @@ export function useAdmin(token: string | null) {
     }
   }, [token]);
 
-  return { loading, error, createUser, listUsers, downloadUserVault, refreshOtp, deleteUser, lockUser, unlockUser, expireUser, retireUser, getStats, getLoginEvents };
+  const emailUserVault = useCallback(async (userId: string): Promise<void> => {
+    if (!token) throw new Error('Not authenticated');
+    setLoading(true);
+    setError(null);
+    try {
+      await api.emailUserVault(userId, token);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to send vault email';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  const reactivateUser = useCallback(async (userId: string, expiresAt: string | null): Promise<void> => {
+    if (!token) throw new Error('Not authenticated');
+    setLoading(true);
+    setError(null);
+    try {
+      await api.reactivateUser(userId, expiresAt, token);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to reactivate user';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  const updateUser = useCallback(async (req: UpdateUserRequest): Promise<void> => {
+    if (!token) throw new Error('Not authenticated');
+    setLoading(true);
+    setError(null);
+    try {
+      await api.updateUser(req, token);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to update user';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  return { loading, error, createUser, listUsers, downloadUserVault, refreshOtp, deleteUser, lockUser, unlockUser, expireUser, retireUser, reactivateUser, updateUser, emailUserVault, getStats, getLoginEvents };
 }

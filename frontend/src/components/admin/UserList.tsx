@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { ColumnDef, SortingFn } from '@tanstack/react-table';
-import type { UserSummary, UserStatus } from '@passvault/shared';
+import type { UserSummary, UserStatus, UserPlan } from '@passvault/shared';
 import {
   ArrowDownTrayIcon,
   ArrowPathIcon,
@@ -9,11 +9,18 @@ import {
   EllipsisHorizontalIcon,
   PlusCircleIcon,
   XMarkIcon,
+  LockClosedIcon,
+  LockOpenIcon,
+  EnvelopeIcon,
+  UserIcon,
+  ClockIcon,
+  ArrowUturnUpIcon,
 } from '@heroicons/react/24/outline';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Label } from '@/components/ui/label';
 import {
   Popover,
   PopoverContent,
@@ -45,6 +52,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { OtpDisplay } from './OtpDisplay.js';
 import { DateRangeFilter } from './DateRangeFilter.js';
 import { DataTable } from './DataTable.js';
@@ -56,12 +64,26 @@ function formatBytes(bytes: number | null): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function defaultExpiresAt(): string {
+  return new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+/** Returns true when a date string (YYYY-MM-DD or ISO) is in the past */
+function isPastDate(dateStr: string): boolean {
+  return new Date(dateStr) < new Date();
+}
+
 interface UserListProps {
   users: UserSummary[];
   loading: boolean;
   onDownload: (userId: string, username: string) => void;
   onRefreshOtp: (userId: string) => Promise<{ username: string; oneTimePassword: string }>;
   onDeleteUser: (userId: string) => Promise<void>;
+  onLockUser: (userId: string) => Promise<void>;
+  onUnlockUser: (userId: string) => Promise<void>;
+  onExpireUser: (userId: string) => Promise<void>;
+  onReactivateUser: (userId: string, expiresAt: string | null) => Promise<void>;
+  onEmailVault: (userId: string) => Promise<void>;
   onRowClick?: (user: UserSummary) => void;
 }
 
@@ -69,6 +91,15 @@ const ALL_STATUSES: UserStatus[] = [
   'active', 'expired', 'locked',
   'pending_first_login', 'pending_passkey_setup', 'pending_email_verification',
 ];
+
+const ALL_PLANS: UserPlan[] = ['free', 'pro'];
+
+const planLabel: Record<UserPlan, string> = { free: 'Free', pro: 'Pro' };
+
+const planPill: Record<UserPlan, string> = {
+  free: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+  pro: 'bg-blue-500/10 text-blue-600',
+};
 
 const statusLabel: Record<UserStatus, string> = {
   pending_email_verification: 'Awaiting email verification',
@@ -113,6 +144,7 @@ const nullLastSortFn: SortingFn<UserSummary> = (rowA, rowB, columnId) => {
 function applyFilters(
   users: UserSummary[],
   statuses: Set<UserStatus>,
+  plans: Set<UserPlan>,
   username: string,
   createdFrom: string,
   createdTo: string,
@@ -121,6 +153,7 @@ function applyFilters(
 ): UserSummary[] {
   return users.filter((u) => {
     if (statuses.size > 0 && !statuses.has(u.status)) return false;
+    if (plans.size > 0 && !plans.has(u.plan)) return false;
     if (username && !u.username.toLowerCase().includes(username.toLowerCase())) return false;
     const created = u.createdAt.slice(0, 10);
     if (createdFrom && created < createdFrom) return false;
@@ -135,11 +168,30 @@ function applyFilters(
   });
 }
 
+function ExpiresCell({ expiresAt }: { expiresAt?: string | null }) {
+  if (!expiresAt) {
+    return <span className="text-muted-foreground/50 text-xs tabular-nums">♾ lifetime</span>;
+  }
+  const past = isPastDate(expiresAt);
+  return (
+    <span className={`text-xs tabular-nums ${past ? 'text-orange-500' : 'text-muted-foreground'}`}>
+      {expiresAt.slice(0, 10)}
+    </span>
+  );
+}
+
 function getUserColumns(
   onDownload: UserListProps['onDownload'],
   onRefreshOtp: (userId: string) => Promise<void>,
   onDeleteUser: (user: UserSummary) => void,
+  onSetLockTarget: (user: UserSummary) => void,
+  onSetUnlockTarget: (user: UserSummary) => void,
+  onSetExpireTarget: (user: UserSummary) => void,
+  onSetReactivateTarget: (user: UserSummary) => void,
+  onEmailVault: (userId: string) => void,
+  onShowUser: ((user: UserSummary) => void) | undefined,
   actionLoading: string | null,
+  isProd: boolean,
 ): ColumnDef<UserSummary>[] {
   const cols: ColumnDef<UserSummary>[] = [
     {
@@ -160,6 +212,17 @@ function getUserColumns(
         <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${statusPill[row.original.status]}`}>
           <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusDot[row.original.status]}`} />
           {statusLabel[row.original.status]}
+        </span>
+      ),
+    },
+    {
+      accessorKey: 'plan',
+      header: 'Plan',
+      size: 72,
+      sortingFn: (rowA, rowB) => rowA.original.plan.localeCompare(rowB.original.plan),
+      cell: ({ row }) => (
+        <span className={`inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full ${planPill[row.original.plan]}`}>
+          {planLabel[row.original.plan]}
         </span>
       ),
     },
@@ -190,9 +253,17 @@ function getUserColumns(
       ),
     },
     {
+      id: 'expiresAt',
+      accessorKey: 'expiresAt',
+      header: 'Expires',
+      size: 112,
+      sortingFn: nullLastSortFn,
+      cell: ({ row }) => <ExpiresCell expiresAt={row.original.expiresAt} />,
+    },
+    {
       accessorKey: 'vaultSizeBytes',
-      header: 'Vault Size',
-      size: 96,
+      header: 'Vault',
+      size: 80,
       cell: ({ row }) => (
         <span className="text-muted-foreground tabular-nums">
           {formatBytes(row.original.vaultSizeBytes)}
@@ -205,6 +276,7 @@ function getUserColumns(
       size: 40,
       cell: ({ row }) => {
         const user = row.original;
+        const canExpire = user.status === 'active' || user.status === 'locked';
         return (
           <div onClick={e => e.stopPropagation()}>
             <DropdownMenu>
@@ -214,26 +286,94 @@ function getUserColumns(
                 <EllipsisHorizontalIcon className="h-4 w-4" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                {/* 1. Lock user — only shown when active */}
+                {user.status === 'active' && (
+                  <DropdownMenuItem
+                    variant="destructive"
+                    onClick={() => onSetLockTarget(user)}
+                  >
+                    <LockClosedIcon className="mr-2 h-4 w-4" />
+                    lock
+                  </DropdownMenuItem>
+                )}
+
+                {/* 2. Unlock user — only shown when locked */}
+                {user.status === 'locked' && (
+                  <DropdownMenuItem
+                    className="text-green-600 focus:text-green-600"
+                    onClick={() => onSetUnlockTarget(user)}
+                  >
+                    <LockOpenIcon className="mr-2 h-4 w-4" />
+                    unlock
+                  </DropdownMenuItem>
+                )}
+
+                {/* Expire — only for active or locked */}
+                {canExpire && (
+                  <DropdownMenuItem
+                    className="text-orange-600 focus:text-orange-600"
+                    onClick={() => onSetExpireTarget(user)}
+                  >
+                    <ClockIcon className="mr-2 h-4 w-4" />
+                    expire
+                  </DropdownMenuItem>
+                )}
+
+                {/* Reactivate — only for expired users */}
+                {user.status === 'expired' && (
+                  <DropdownMenuItem
+                    className="text-green-600 focus:text-green-600"
+                    onClick={() => onSetReactivateTarget(user)}
+                  >
+                    <ArrowUturnUpIcon className="mr-2 h-4 w-4" />
+                    reactivate
+                  </DropdownMenuItem>
+                )}
+
+                {(user.status === 'active' || user.status === 'locked' || canExpire || user.status === 'expired') && (
+                  <DropdownMenuSeparator />
+                )}
+
+                {/* 3. Download vault */}
                 <DropdownMenuItem onClick={() => onDownload(user.userId, user.username)}>
                   <ArrowDownTrayIcon className="mr-2 h-4 w-4" />
-                  Download vault ({formatBytes(user.vaultSizeBytes)})
+                  download vault
                 </DropdownMenuItem>
+
+                {/* 4. Email vault — disabled in dev/beta */}
+                <DropdownMenuItem
+                  disabled={!isProd}
+                  onClick={() => { if (isProd) onEmailVault(user.userId); }}
+                >
+                  <EnvelopeIcon className="mr-2 h-4 w-4" />
+                  email vault
+                </DropdownMenuItem>
+
+                <DropdownMenuSeparator />
+
+                {/* 5. Show user details */}
+                <DropdownMenuItem onClick={() => onShowUser?.(user)}>
+                  <UserIcon className="mr-2 h-4 w-4" />
+                  user details
+                </DropdownMenuItem>
+
+                {/* Existing: refresh OTP + delete — only for pending_first_login */}
                 {user.status === 'pending_first_login' && (
                   <>
+                    <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onClick={() => onRefreshOtp(user.userId)}
                       disabled={actionLoading === user.userId + ':refresh'}
                     >
                       <ArrowPathIcon className="mr-2 h-4 w-4" />
-                      Refresh OTP
+                      refresh OTP
                     </DropdownMenuItem>
-                    <DropdownMenuSeparator />
                     <DropdownMenuItem
                       variant="destructive"
                       onClick={() => onDeleteUser(user)}
                     >
                       <TrashIcon className="mr-2 h-4 w-4" />
-                      Delete user
+                      delete user
                     </DropdownMenuItem>
                   </>
                 )}
@@ -248,8 +388,9 @@ function getUserColumns(
   return cols;
 }
 
-export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUser, onRowClick }: UserListProps) {
+export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUser, onLockUser, onUnlockUser, onExpireUser, onReactivateUser, onEmailVault, onRowClick }: UserListProps) {
   const [selectedStatuses, setSelectedStatuses] = useState<Set<UserStatus>>(new Set());
+  const [selectedPlans, setSelectedPlans] = useState<Set<UserPlan>>(new Set());
   const [usernameFilter, setUsernameFilter] = useState('');
   const [createdFrom, setCreatedFrom] = useState('');
   const [createdTo, setCreatedTo] = useState('');
@@ -259,12 +400,33 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUse
   const [deleteTarget, setDeleteTarget] = useState<UserSummary | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [lockTarget, setLockTarget] = useState<UserSummary | null>(null);
+  const [lockLoading, setLockLoading] = useState(false);
+  const [unlockTarget, setUnlockTarget] = useState<UserSummary | null>(null);
+  const [unlockLoading, setUnlockLoading] = useState(false);
+  const [expireTarget, setExpireTarget] = useState<UserSummary | null>(null);
+  const [expireLoading, setExpireLoading] = useState(false);
+  const [reactivateTarget, setReactivateTarget] = useState<UserSummary | null>(null);
+  const [reactivateLoading, setReactivateLoading] = useState(false);
+  const [reactivateDate, setReactivateDate] = useState(defaultExpiresAt());
+  const [reactivatePerpetual, setReactivatePerpetual] = useState(false);
+
+  const isProd = import.meta.env.VITE_ENVIRONMENT === 'prod';
 
   function toggleStatus(status: UserStatus) {
     setSelectedStatuses(prev => {
       const next = new Set(prev);
       if (next.has(status)) next.delete(status);
       else next.add(status);
+      return next;
+    });
+  }
+
+  function togglePlan(plan: UserPlan) {
+    setSelectedPlans(prev => {
+      const next = new Set(prev);
+      if (next.has(plan)) next.delete(plan);
+      else next.add(plan);
       return next;
     });
   }
@@ -290,10 +452,67 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUse
     }
   }
 
+  async function handleLockConfirm() {
+    if (!lockTarget) return;
+    setLockLoading(true);
+    try {
+      await onLockUser(lockTarget.userId);
+      setLockTarget(null);
+    } finally {
+      setLockLoading(false);
+    }
+  }
+
+  async function handleUnlockConfirm() {
+    if (!unlockTarget) return;
+    setUnlockLoading(true);
+    try {
+      await onUnlockUser(unlockTarget.userId);
+      setUnlockTarget(null);
+    } finally {
+      setUnlockLoading(false);
+    }
+  }
+
+  async function handleExpireConfirm() {
+    if (!expireTarget) return;
+    setExpireLoading(true);
+    try {
+      await onExpireUser(expireTarget.userId);
+      setExpireTarget(null);
+    } finally {
+      setExpireLoading(false);
+    }
+  }
+
+  async function handleReactivateConfirm() {
+    if (!reactivateTarget) return;
+    setReactivateLoading(true);
+    try {
+      const expiresAt = reactivatePerpetual ? null : (reactivateDate || null);
+      await onReactivateUser(reactivateTarget.userId, expiresAt);
+      setReactivateTarget(null);
+    } finally {
+      setReactivateLoading(false);
+    }
+  }
+
   const columns = useMemo(
-    () => getUserColumns(onDownload, handleRefreshOtp, setDeleteTarget, actionLoading),
+    () => getUserColumns(
+      onDownload,
+      handleRefreshOtp,
+      setDeleteTarget,
+      setLockTarget,
+      setUnlockTarget,
+      setExpireTarget,
+      setReactivateTarget,
+      (userId) => { onEmailVault(userId).catch(() => {}); },
+      onRowClick,
+      actionLoading,
+      isProd,
+    ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [onDownload, actionLoading],
+    [onDownload, onRowClick, onEmailVault, actionLoading, isProd],
   );
 
   if (refreshedOtp) {
@@ -306,10 +525,10 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUse
     );
   }
 
-  const hasFilters = selectedStatuses.size > 0 || usernameFilter !== '' ||
+  const hasFilters = selectedStatuses.size > 0 || selectedPlans.size > 0 || usernameFilter !== '' ||
     createdFrom !== '' || createdTo !== '' || lastLoginFrom !== '' || lastLoginTo !== '';
 
-  const filtered = applyFilters(users, selectedStatuses, usernameFilter, createdFrom, createdTo, lastLoginFrom, lastLoginTo);
+  const filtered = applyFilters(users, selectedStatuses, selectedPlans, usernameFilter, createdFrom, createdTo, lastLoginFrom, lastLoginTo);
 
   const footerLabel = hasFilters
     ? `Showing ${filtered.length} of ${users.length} ${users.length === 1 ? 'record' : 'records'}`
@@ -404,6 +623,60 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUse
             </PopoverContent>
           </Popover>
 
+          <Popover>
+            <PopoverTrigger render={
+              <Button variant="outline" size="sm" className="h-8 border-dashed" aria-label="Filter by plan" />
+            }>
+              <PlusCircleIcon className="mr-1 h-4 w-4" />
+              Plan
+              {selectedPlans.size > 0 && (
+                <>
+                  <Separator orientation="vertical" className="mx-2 h-4" />
+                  <div className="hidden space-x-1 lg:flex">
+                    {Array.from(selectedPlans).map(plan => (
+                      <Badge key={plan} variant="secondary" className="rounded-sm px-1 font-normal">
+                        {planLabel[plan]}
+                      </Badge>
+                    ))}
+                  </div>
+                  <Badge variant="secondary" className="rounded-sm px-1 font-normal lg:hidden">
+                    {selectedPlans.size}
+                  </Badge>
+                </>
+              )}
+            </PopoverTrigger>
+            <PopoverContent className="w-[160px] p-0" align="start">
+              <Command>
+                <CommandList>
+                  <CommandGroup>
+                    {ALL_PLANS.map(plan => (
+                      <CommandItem
+                        key={plan}
+                        onSelect={() => togglePlan(plan)}
+                        data-checked={selectedPlans.has(plan) ? 'true' : undefined}
+                      >
+                        {planLabel[plan]}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                  {selectedPlans.size > 0 && (
+                    <>
+                      <CommandSeparator />
+                      <CommandGroup>
+                        <CommandItem
+                          onSelect={() => setSelectedPlans(new Set())}
+                          className="justify-center text-center"
+                        >
+                          Clear filters
+                        </CommandItem>
+                      </CommandGroup>
+                    </>
+                  )}
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+
           <DateRangeFilter
             label="Created"
             ariaLabel="Filter by created date"
@@ -429,6 +702,7 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUse
               className="h-8 px-2 lg:px-3"
               onClick={() => {
                 setSelectedStatuses(new Set());
+                setSelectedPlans(new Set());
                 setUsernameFilter('');
                 setCreatedFrom('');
                 setCreatedTo('');
@@ -480,6 +754,144 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUse
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Lock confirmation */}
+      <AlertDialog
+        open={lockTarget !== null}
+        onOpenChange={(open) => { if (!open) setLockTarget(null); }}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Lock user?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <strong>{lockTarget?.username}</strong> will be locked and will no longer be able to log in. You can unlock them at any time.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={handleLockConfirm}
+              disabled={lockLoading}
+            >
+              {lockLoading ? 'Locking…' : 'Lock user'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Unlock confirmation */}
+      <AlertDialog
+        open={unlockTarget !== null}
+        onOpenChange={(open) => { if (!open) setUnlockTarget(null); }}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unlock user?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <strong>{unlockTarget?.username}</strong> will be restored to active status and will be able to log in again.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleUnlockConfirm}
+              disabled={unlockLoading}
+            >
+              {unlockLoading ? 'Unlocking…' : 'Unlock user'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Expire confirmation */}
+      <AlertDialog
+        open={expireTarget !== null}
+        onOpenChange={(open) => { if (!open) setExpireTarget(null); }}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Expire user?</AlertDialogTitle>
+            <AlertDialogDescription className="sr-only">Expire user confirmation</AlertDialogDescription>
+            <div className="space-y-2 text-sm text-muted-foreground -mt-2">
+              <p>
+                <strong className="text-foreground">{expireTarget?.username}</strong> will be set to expired status. They will be able to log in and read their vault but cannot make changes.
+              </p>
+              {expireTarget?.expiresAt ? (
+                <p>
+                  Planned expiration date:{' '}
+                  <span className="font-medium text-orange-600">{expireTarget.expiresAt.slice(0, 10)}</span>
+                </p>
+              ) : (
+                <p className="text-muted-foreground/60">This is a lifetime user — no planned expiration date.</p>
+              )}
+            </div>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-orange-600 hover:bg-orange-700 text-white"
+              onClick={handleExpireConfirm}
+              disabled={expireLoading}
+            >
+              {expireLoading ? 'Expiring…' : 'Expire user'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Reactivate dialog */}
+      <Dialog
+        open={reactivateTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setReactivateTarget(null);
+            setReactivateDate(defaultExpiresAt());
+            setReactivatePerpetual(false);
+          }
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Reactivate user</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2 text-sm">
+            <p className="text-muted-foreground">
+              Reactivate <strong className="text-foreground">{reactivateTarget?.username}</strong> and set a new expiration date.
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="reactivate-expires">Expiration date</Label>
+              <Input
+                id="reactivate-expires"
+                type="date"
+                value={reactivateDate}
+                onChange={e => setReactivateDate(e.target.value)}
+                min={new Date().toISOString().slice(0, 10)}
+                disabled={reactivatePerpetual}
+              />
+              <label className="flex items-center gap-2 text-muted-foreground cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={reactivatePerpetual}
+                  onChange={e => setReactivatePerpetual(e.target.checked)}
+                  className="rounded"
+                />
+                ♾ Lifetime — never expires
+              </label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReactivateTarget(null)}>Cancel</Button>
+            <Button
+              className="bg-green-600 hover:bg-green-700 text-white"
+              onClick={handleReactivateConfirm}
+              disabled={reactivateLoading}
+            >
+              {reactivateLoading ? 'Reactivating…' : 'Reactivate'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

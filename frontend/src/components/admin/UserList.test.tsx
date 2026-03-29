@@ -13,6 +13,7 @@ const mockUsers: UserSummary[] = [
     createdAt: '2024-01-15T00:00:00Z',
     lastLoginAt: '2024-03-01T00:00:00Z',
     vaultSizeBytes: 1024,
+    expiresAt: '2026-12-31',
   },
   {
     userId: 'u2',
@@ -22,21 +23,27 @@ const mockUsers: UserSummary[] = [
     createdAt: '2024-02-01T00:00:00Z',
     lastLoginAt: null,
     vaultSizeBytes: null,
+    expiresAt: null,
   },
   {
     userId: 'u3',
     username: 'bob@example.com',
     status: 'pending_passkey_setup',
-    plan: 'free',
+    plan: 'pro',
     createdAt: '2024-01-20T00:00:00Z',
     lastLoginAt: '2024-02-15T00:00:00Z',
     vaultSizeBytes: 512,
+    expiresAt: '2025-06-30',
   },
 ];
 
 function renderList(overrides?: {
   onRefreshOtp?: ReturnType<typeof vi.fn>;
   onDeleteUser?: ReturnType<typeof vi.fn>;
+  onLockUser?: ReturnType<typeof vi.fn>;
+  onUnlockUser?: ReturnType<typeof vi.fn>;
+  onExpireUser?: ReturnType<typeof vi.fn>;
+  onReactivateUser?: ReturnType<typeof vi.fn>;
   onRowClick?: ReturnType<typeof vi.fn>;
   users?: UserSummary[];
   loading?: boolean;
@@ -48,6 +55,11 @@ function renderList(overrides?: {
       onDownload={vi.fn()}
       onRefreshOtp={overrides?.onRefreshOtp ?? vi.fn()}
       onDeleteUser={overrides?.onDeleteUser ?? vi.fn()}
+      onLockUser={overrides?.onLockUser ?? vi.fn()}
+      onUnlockUser={overrides?.onUnlockUser ?? vi.fn()}
+      onExpireUser={overrides?.onExpireUser ?? vi.fn()}
+      onReactivateUser={overrides?.onReactivateUser ?? vi.fn()}
+      onEmailVault={vi.fn()}
       onRowClick={overrides?.onRowClick}
     />,
   );
@@ -64,7 +76,7 @@ describe('UserList', () => {
 
   it('shows a loading skeleton while loading', () => {
     renderList({ users: [], loading: true });
-    expect(screen.getByText(/Loading users/)).toBeInTheDocument(); // caption sr-only
+    expect(screen.getByText(/Loading users/)).toBeInTheDocument();
   });
 
   it('shows an empty-state message when there are no users', () => {
@@ -74,7 +86,7 @@ describe('UserList', () => {
 
   it('sorts by username ascending by default', () => {
     renderList();
-    const rows = screen.getAllByRole('row').slice(1); // skip header
+    const rows = screen.getAllByRole('row').slice(1);
     expect(rows[0]).toHaveTextContent('alice');
     expect(rows[1]).toHaveTextContent('bob');
     expect(rows[2]).toHaveTextContent('charlie');
@@ -116,6 +128,68 @@ describe('UserList', () => {
     expect(within(tbody).getByText('Awaiting passkey setup')).toBeInTheDocument();
   });
 
+  // ── Plan column ───────────────────────────────────────────────────────────────
+
+  it('renders a Plan column header', () => {
+    renderList();
+    expect(screen.getByRole('button', { name: /^plan$/i })).toBeInTheDocument();
+  });
+
+  it('shows Free badge for free-plan users', () => {
+    renderList();
+    const tbody = screen.getAllByRole('rowgroup')[1];
+    // charlie and alice are free
+    expect(within(tbody).getAllByText('Free').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('shows Pro badge for pro-plan users', () => {
+    renderList();
+    const tbody = screen.getAllByRole('rowgroup')[1];
+    expect(within(tbody).getByText('Pro')).toBeInTheDocument();
+  });
+
+  it('shows the plan filter button', () => {
+    renderList();
+    expect(screen.getByLabelText(/filter by plan/i)).toBeInTheDocument();
+  });
+
+  it('plan filter hides non-matching users', async () => {
+    renderList();
+    await userEvent.click(screen.getByLabelText(/filter by plan/i));
+    await userEvent.click(await screen.findByRole('option', { name: /^pro$/i }));
+    await userEvent.keyboard('{Escape}');
+    const tbody = screen.getAllByRole('rowgroup')[1];
+    expect(within(tbody).getByText('bob@example.com')).toBeInTheDocument();
+    expect(within(tbody).queryByText('alice@example.com')).not.toBeInTheDocument();
+    expect(within(tbody).queryByText('charlie@example.com')).not.toBeInTheDocument();
+  });
+
+  it('reset button clears plan filter', async () => {
+    renderList();
+    await userEvent.click(screen.getByLabelText(/filter by plan/i));
+    await userEvent.click(await screen.findByRole('option', { name: /^pro$/i }));
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(screen.getByRole('button', { name: /reset/i }));
+    const tbody = screen.getAllByRole('rowgroup')[1];
+    expect(within(tbody).getByText('alice@example.com')).toBeInTheDocument();
+    expect(within(tbody).getByText('bob@example.com')).toBeInTheDocument();
+    expect(within(tbody).getByText('charlie@example.com')).toBeInTheDocument();
+  });
+
+  // ── Expires column ────────────────────────────────────────────────────────────
+
+  it('shows expiration date for users with expiresAt set', () => {
+    renderList();
+    expect(screen.getByText('2026-12-31')).toBeInTheDocument();
+  });
+
+  it('shows lifetime indicator for users with null expiresAt', () => {
+    renderList();
+    expect(screen.getByText(/lifetime/i)).toBeInTheDocument();
+  });
+
+  // ── Row actions ───────────────────────────────────────────────────────────────
+
   it('calls onDownload with userId and username when the download button is clicked', async () => {
     const onDownload = vi.fn();
     render(
@@ -125,6 +199,11 @@ describe('UserList', () => {
         onDownload={onDownload}
         onRefreshOtp={vi.fn()}
         onDeleteUser={vi.fn()}
+        onLockUser={vi.fn()}
+        onUnlockUser={vi.fn()}
+        onExpireUser={vi.fn()}
+        onReactivateUser={vi.fn()}
+        onEmailVault={vi.fn()}
       />,
     );
     await userEvent.click(screen.getByRole('button', { name: "Actions for alice@example.com" }));
@@ -136,23 +215,97 @@ describe('UserList', () => {
     renderList();
     expect(screen.getByText('charlie@example.com')).toBeInTheDocument();
     expect(screen.getByText('bob@example.com')).toBeInTheDocument();
-    // alice has no email — shown as em-dash
     expect(screen.getAllByText('—').length).toBeGreaterThan(0);
   });
 
   it('shows Refresh OTP and Delete options only for pending_first_login users', async () => {
     renderList();
-    // alice is pending_first_login — should have both options
     await userEvent.click(screen.getByRole('button', { name: 'Actions for alice@example.com' }));
     expect(await screen.findByText(/refresh otp/i)).toBeInTheDocument();
     expect(screen.getByText(/delete user/i)).toBeInTheDocument();
-    // close menu
     await userEvent.keyboard('{Escape}');
-    // bob is pending_passkey_setup — no refresh/delete
     await userEvent.click(screen.getByRole('button', { name: 'Actions for bob@example.com' }));
     await screen.findByText(/download vault/i);
     expect(screen.queryByText(/refresh otp/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/delete user/i)).not.toBeInTheDocument();
+  });
+
+  it('shows Lock option only for active users', async () => {
+    renderList();
+    // charlie is active — should have lock option
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for charlie@example.com' }));
+    expect(await screen.findByText(/^lock$/i)).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    // alice is pending_first_login — no lock option
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for alice@example.com' }));
+    await screen.findByText(/download vault/i);
+    expect(screen.queryByText(/^lock$/i)).not.toBeInTheDocument();
+  });
+
+  it('shows Unlock option only for locked users', async () => {
+    const lockedUser: UserSummary = { ...mockUsers[0], status: 'locked' };
+    renderList({ users: [lockedUser] });
+    await userEvent.click(screen.getByRole('button', { name: `Actions for ${lockedUser.username}` }));
+    expect(await screen.findByText(/^unlock$/i)).toBeInTheDocument();
+    expect(screen.queryByText(/^lock$/i)).not.toBeInTheDocument();
+  });
+
+  it('shows Expire option for active and locked users', async () => {
+    const lockedUser: UserSummary = { ...mockUsers[0], status: 'locked' };
+    renderList({ users: [lockedUser] });
+    await userEvent.click(screen.getByRole('button', { name: `Actions for ${lockedUser.username}` }));
+    expect(await screen.findByText(/^expire$/i)).toBeInTheDocument();
+  });
+
+  it('shows Reactivate option only for expired users', async () => {
+    const expiredUser: UserSummary = { ...mockUsers[0], status: 'expired' };
+    renderList({ users: [expiredUser] });
+    await userEvent.click(screen.getByRole('button', { name: `Actions for ${expiredUser.username}` }));
+    expect(await screen.findByText(/^reactivate$/i)).toBeInTheDocument();
+    expect(screen.queryByText(/^lock$/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^expire$/i)).not.toBeInTheDocument();
+  });
+
+  it('shows lock confirmation dialog and calls onLockUser when confirmed', async () => {
+    const onLockUser = vi.fn().mockResolvedValue(undefined);
+    renderList({ onLockUser });
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for charlie@example.com' }));
+    await userEvent.click(await screen.findByText(/^lock$/i));
+    expect(await screen.findByText(/lock user\?/i)).toBeInTheDocument();
+    expect(onLockUser).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: /lock user/i }));
+    expect(onLockUser).toHaveBeenCalledWith('u1');
+  });
+
+  it('cancels lock when Cancel is clicked', async () => {
+    const onLockUser = vi.fn();
+    renderList({ onLockUser });
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for charlie@example.com' }));
+    await userEvent.click(await screen.findByText(/^lock$/i));
+    await userEvent.click(await screen.findByRole('button', { name: /^cancel$/i }));
+    expect(onLockUser).not.toHaveBeenCalled();
+  });
+
+  it('shows expire confirmation dialog and calls onExpireUser when confirmed', async () => {
+    const onExpireUser = vi.fn().mockResolvedValue(undefined);
+    renderList({ onExpireUser });
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for charlie@example.com' }));
+    await userEvent.click(await screen.findByText(/^expire$/i));
+    expect(await screen.findByText(/expire user\?/i)).toBeInTheDocument();
+    expect(onExpireUser).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: /expire user/i }));
+    expect(onExpireUser).toHaveBeenCalledWith('u1');
+  });
+
+  it('shows reactivate dialog and calls onReactivateUser when confirmed', async () => {
+    const onReactivateUser = vi.fn().mockResolvedValue(undefined);
+    const expiredUser: UserSummary = { ...mockUsers[0], status: 'expired' };
+    renderList({ users: [expiredUser], onReactivateUser });
+    await userEvent.click(screen.getByRole('button', { name: `Actions for ${expiredUser.username}` }));
+    await userEvent.click(await screen.findByText(/^reactivate$/i));
+    expect(await screen.findByText(/reactivate user/i)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /^reactivate$/i }));
+    expect(onReactivateUser).toHaveBeenCalledWith('u1', expect.anything());
   });
 
   it('calls onRefreshOtp and shows OtpDisplay on success', async () => {
@@ -242,9 +395,10 @@ describe('UserList', () => {
     }
   });
 
-  it('shows filter bar with status and username controls', () => {
+  it('shows filter bar with status, plan, and username controls', () => {
     renderList();
     expect(screen.getByLabelText(/filter by status/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/filter by plan/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/filter by username/i)).toBeInTheDocument();
   });
 
