@@ -34,7 +34,15 @@ export function AdminShell() {
 
   const hours = Math.floor(secondsLeft / 3600);
   const minutes = Math.floor((secondsLeft % 3600) / 60);
-  const timeDisplay = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+  const secs = secondsLeft % 60;
+  const timeDisplay = hours > 0
+    ? `${hours}h ${minutes}m`
+    : `${minutes}:${String(secs).padStart(2, '0')}`;
+  const timerClass = secondsLeft <= 30
+    ? 'text-sm font-mono font-medium text-destructive hidden sm:inline mr-2'
+    : secondsLeft <= 60
+      ? 'text-sm font-mono font-medium text-amber-500 hidden sm:inline mr-2'
+      : 'text-sm font-mono text-foreground/60 hidden sm:inline mr-2';
 
   return (
     <SidebarProvider>
@@ -54,7 +62,7 @@ export function AdminShell() {
                 <AdminBreadcrumbs />
               </div>
               <div className="flex items-center gap-1 shrink-0">
-                <span className="text-sm text-foreground/60 hidden sm:inline mr-2">{timeDisplay}</span>
+                <span className={timerClass}>{timeDisplay}</span>
                 <Button
                   variant="ghost"
                   size="icon-sm"

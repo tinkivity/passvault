@@ -86,7 +86,7 @@ export function VaultItemNewPage() {
             id="category"
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
             value={category}
-            onChange={e => { setCategory(e.target.value as VaultItemCategory); setFields({}); }}
+            onChange={e => { setCategory(e.target.value as VaultItemCategory); setFields(f => ({ name: f.name ?? '' })); }}
           >
             {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
           </select>

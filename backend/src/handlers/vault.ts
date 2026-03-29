@@ -7,6 +7,7 @@ import {
   listVaults,
   createVault,
   deleteVault,
+  renameVault,
   getVault,
   putVault,
   downloadVault,
@@ -53,8 +54,12 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return await handleCreateVault(event);
     }
 
+    // PATCH /api/vaults/{vaultId} — rename vault
     // DELETE /api/vaults/{vaultId}
     const vaultsDeleteMatch = path.match(/^\/api\/vaults\/([^/]+)$/);
+    if (vaultsDeleteMatch && method === 'PATCH') {
+      return await handleRenameVault(event, vaultsDeleteMatch[1]);
+    }
     if (vaultsDeleteMatch && method === 'DELETE') {
       return await handleDeleteVault(event, vaultsDeleteMatch[1]);
     }
@@ -129,6 +134,25 @@ async function handleCreateVault(event: APIGatewayProxyEvent): Promise<APIGatewa
   const result = await createVault(user!.userId, parsed.body as { displayName: string });
   if (result.error) return error(result.error, result.statusCode || 400);
   return success(result.response, 201);
+}
+
+async function handleRenameVault(event: APIGatewayProxyEvent, vaultId: string): Promise<APIGatewayProxyResult> {
+  const pow = validatePow(event, POW_CONFIG.DIFFICULTY.HIGH);
+  if (pow.errorResponse) return pow.errorResponse;
+
+  const { user, errorResponse } = await requireAuth(event);
+  if (errorResponse) return errorResponse;
+
+  if (user!.status !== 'active') {
+    return error(ERRORS.FORBIDDEN, 403);
+  }
+
+  const parsed = parseBody(event);
+  if ('parseError' in parsed) return parsed.parseError;
+
+  const result = await renameVault(user!.userId, vaultId, (parsed.body.displayName as string) ?? '');
+  if (result.error) return error(result.error, result.statusCode || 400);
+  return success(result.response);
 }
 
 async function handleDeleteVault(event: APIGatewayProxyEvent, vaultId: string): Promise<APIGatewayProxyResult> {

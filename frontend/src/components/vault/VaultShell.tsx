@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { api } from '../../services/api.js';
 import { Outlet, useNavigate, useParams } from 'react-router-dom';
 import { SunIcon, MoonIcon, LockClosedIcon } from '@heroicons/react/24/outline';
 import { Loader2 } from 'lucide-react';
@@ -67,7 +68,15 @@ export function VaultShell() {
 
   const hours = Math.floor(secondsLeft / 3600);
   const minutes = Math.floor((secondsLeft % 3600) / 60);
-  const timeDisplay = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+  const secs = secondsLeft % 60;
+  const timeDisplay = hours > 0
+    ? `${hours}h ${minutes}m`
+    : `${minutes}:${String(secs).padStart(2, '0')}`;
+  const timerClass = secondsLeft <= 30
+    ? 'text-sm font-mono font-medium text-destructive hidden sm:inline mr-2'
+    : secondsLeft <= 60
+      ? 'text-sm font-mono font-medium text-amber-500 hidden sm:inline mr-2'
+      : 'text-sm font-mono text-foreground/60 hidden sm:inline mr-2';
 
   const refreshVaults = useCallback(async () => {
     const list = await fetchVaults();
@@ -82,6 +91,27 @@ export function VaultShell() {
     refreshVaults();
     fetchCatalog();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleRenameVault = useCallback(async (vaultId: string, displayName: string) => {
+    const updated = await api.renameVault(vaultId, { displayName }, token!);
+    setVaults(prev => prev.map(v => v.vaultId === vaultId ? { ...v, displayName: updated.displayName } : v));
+  }, [token]);
+
+  const handleDownloadVault = useCallback(async (vaultId: string, displayName: string) => {
+    const res = await api.downloadVault(vaultId, token!);
+    const blob = new Blob([JSON.stringify(res, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const safeName = displayName.replace(/[^a-zA-Z0-9_-]/g, '_');
+    a.download = `passvault-${safeName}-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [token]);
+
+  const handleEmailVault = useCallback(async (vaultId: string) => {
+    await api.sendVaultEmail(vaultId, token!);
+  }, [token]);
 
   const handleCreateVault = useCallback(async (displayName: string) => {
     const newVault = await createVault(displayName);
@@ -163,6 +193,9 @@ export function VaultShell() {
               username={username ?? ''}
               onLogout={handleLogout}
               onCreateVault={handleCreateVault}
+              onRenameVault={handleRenameVault}
+              onDownloadVault={handleDownloadVault}
+              onEmailVault={handleEmailVault}
             />
             <SidebarInset className="flex flex-col overflow-hidden">
               <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b bg-background px-4">
@@ -172,7 +205,7 @@ export function VaultShell() {
                   <VaultBreadcrumbs />
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
-                  <span className="text-sm text-foreground/60 hidden sm:inline mr-2">{timeDisplay}</span>
+                  <span className={timerClass}>{timeDisplay}</span>
                   <Button
                     variant="ghost"
                     size="icon-sm"

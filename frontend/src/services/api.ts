@@ -16,6 +16,7 @@ import type {
   VaultDownloadResponse,
   VaultSummary,
   CreateVaultRequest,
+  RenameVaultRequest,
   CreateUserRequest,
   CreateUserResponse,
   UpdateUserRequest,
@@ -29,7 +30,7 @@ import { solveChallenge } from './pow-solver.js';
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '';
 
-type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
+type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 interface RequestOptions {
   method?: HttpMethod;
@@ -352,6 +353,15 @@ export class ApiClient {
   async putVault(vaultId: string, req: VaultPutRequest, token: string): Promise<VaultPutResponse> {
     return this.request<VaultPutResponse>(`/api/vault/${encodeURIComponent(vaultId)}`, {
       method: 'PUT',
+      body: req,
+      token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+    });
+  }
+
+  async renameVault(vaultId: string, req: RenameVaultRequest, token: string): Promise<VaultSummary> {
+    return this.request<VaultSummary>(`/api/vaults/${encodeURIComponent(vaultId)}`, {
+      method: 'PATCH',
       body: req,
       token,
       powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,

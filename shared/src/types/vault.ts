@@ -8,6 +8,10 @@ export interface CreateVaultRequest {
   displayName: string;
 }
 
+export interface RenameVaultRequest {
+  displayName: string;
+}
+
 export interface VaultGetResponse {
   encryptedContent: string;
   lastModified: string;

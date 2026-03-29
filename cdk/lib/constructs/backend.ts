@@ -317,6 +317,7 @@ export class BackendConstruct extends Construct {
     vaults.addMethod('GET', new apigateway.LambdaIntegration(this.vaultFn));
     vaults.addMethod('POST', new apigateway.LambdaIntegration(this.vaultFn));
     const vaultById = vaults.addResource('{vaultId}');
+    vaultById.addMethod('PATCH', new apigateway.LambdaIntegration(this.vaultFn));
     vaultById.addMethod('DELETE', new apigateway.LambdaIntegration(this.vaultFn));
 
     // Vault (singular) — content operations on a specific vault

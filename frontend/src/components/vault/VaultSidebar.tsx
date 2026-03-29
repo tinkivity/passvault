@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { NavLink, useParams } from 'react-router-dom';
-import { Vault, Plus, LogOut } from 'lucide-react';
+import { NavLink, useNavigate, useParams } from 'react-router-dom';
+import { Vault, Plus, LogOut, MoreHorizontal, Download, Mail, Pencil } from 'lucide-react';
 import type { VaultSummary } from '@passvault/shared';
 import { LIMITS } from '@passvault/shared';
 import logo from '../../assets/logo.png';
@@ -13,10 +13,18 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
 } from '@/components/ui/sidebar';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   Dialog,
   DialogContent,
@@ -28,16 +36,54 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
+const isProd = import.meta.env.VITE_ENVIRONMENT === 'prod';
+
 interface VaultSidebarProps {
   vaults: VaultSummary[];
   plan: string;
   username: string;
   onLogout: () => void;
   onCreateVault: (displayName: string) => Promise<void>;
+  onRenameVault: (vaultId: string, displayName: string) => Promise<void>;
+  onDownloadVault: (vaultId: string, displayName: string) => Promise<void>;
+  onEmailVault: (vaultId: string) => Promise<void>;
 }
 
-export function VaultSidebar({ vaults, plan, username, onLogout, onCreateVault }: VaultSidebarProps) {
+export function VaultSidebar({ vaults, plan, username, onLogout, onCreateVault, onRenameVault, onDownloadVault, onEmailVault }: VaultSidebarProps) {
+  const navigate = useNavigate();
   const { vaultId } = useParams<{ vaultId: string }>();
+  const [emailedVaultId, setEmailedVaultId] = useState<string | null>(null);
+  const [renamingVault, setRenamingVault] = useState<VaultSummary | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [renaming, setRenaming] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
+
+  const handleEmail = async (id: string) => {
+    await onEmailVault(id);
+    setEmailedVaultId(id);
+    setTimeout(() => setEmailedVaultId(null), 4000);
+  };
+
+  const openRename = (vault: VaultSummary) => {
+    setRenamingVault(vault);
+    setRenameValue(vault.displayName);
+    setRenameError(null);
+  };
+
+  const handleRename = async () => {
+    if (!renamingVault || !renameValue.trim()) return;
+    setRenaming(true);
+    setRenameError(null);
+    try {
+      await onRenameVault(renamingVault.vaultId, renameValue.trim());
+      setRenamingVault(null);
+    } catch (err) {
+      setRenameError(err instanceof Error ? err.message : 'Failed to rename vault');
+    } finally {
+      setRenaming(false);
+    }
+  };
+
   const [showDialog, setShowDialog] = useState(false);
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
@@ -86,6 +132,33 @@ export function VaultSidebar({ vaults, plan, username, onLogout, onCreateVault }
                       <Vault className="h-4 w-4 shrink-0" />
                       <span>{vault.displayName}</span>
                     </SidebarMenuButton>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger render={<SidebarMenuAction showOnHover />}>
+                        <MoreHorizontal className="h-4 w-4" />
+                        <span className="sr-only">Vault actions</span>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent side="right" align="start">
+                        <DropdownMenuItem onClick={() => navigate(`/vault/${vault.vaultId}/items/new`)}>
+                          <Plus className="mr-2 h-4 w-4" />
+                          New item
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => openRename(vault)}>
+                          <Pencil className="mr-2 h-4 w-4" />
+                          Rename vault
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => onDownloadVault(vault.vaultId, vault.displayName)}>
+                          <Download className="mr-2 h-4 w-4" />
+                          Download vault
+                        </DropdownMenuItem>
+                        {isProd && (
+                          <DropdownMenuItem onClick={() => handleEmail(vault.vaultId)}>
+                            <Mail className="mr-2 h-4 w-4" />
+                            {emailedVaultId === vault.vaultId ? 'Email sent!' : 'Email vault'}
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </SidebarMenuItem>
                 ))}
                 {canCreate && (
@@ -117,6 +190,34 @@ export function VaultSidebar({ vaults, plan, username, onLogout, onCreateVault }
 
         <SidebarRail />
       </Sidebar>
+
+      <Dialog open={!!renamingVault} onOpenChange={open => { if (!open) setRenamingVault(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename Vault</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1">
+              <Label htmlFor="rename-vault-name">Name</Label>
+              <Input
+                id="rename-vault-name"
+                value={renameValue}
+                onChange={e => setRenameValue(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleRename()}
+                maxLength={64}
+                autoFocus
+              />
+            </div>
+            {renameError && <p className="text-sm text-destructive">{renameError}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenamingVault(null)}>Cancel</Button>
+            <Button onClick={handleRename} disabled={renaming || !renameValue.trim()}>
+              {renaming ? 'Saving…' : 'Save'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent>

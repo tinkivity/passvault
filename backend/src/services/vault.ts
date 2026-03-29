@@ -15,7 +15,7 @@ import {
 } from '@passvault/shared';
 
 import { getVaultFile, putVaultFile, deleteVaultFile, getLegacyVaultFile, migrateLegacyVaultFile } from '../utils/s3.js';
-import { getUserById, createVaultRecord, getVaultRecord, listVaultsByUser, deleteVaultRecord } from '../utils/dynamodb.js';
+import { getUserById, createVaultRecord, getVaultRecord, listVaultsByUser, deleteVaultRecord, updateVaultDisplayName } from '../utils/dynamodb.js';
 import { sendEmailWithAttachment } from '../utils/ses.js';
 
 // Hardcoded warning code catalog — returned by GET /api/config/warning-codes.
@@ -220,6 +220,20 @@ export async function sendVaultEmail(
   );
 
   return { response: { success: true } };
+}
+
+export async function renameVault(
+  userId: string,
+  vaultId: string,
+  displayName: string,
+): Promise<{ response?: VaultSummary; error?: string; statusCode?: number }> {
+  if (!displayName.trim()) return { error: 'Display name is required', statusCode: 400 };
+  const vault = await getVaultRecord(vaultId);
+  if (!vault || vault.userId !== userId) {
+    return { error: ERRORS.VAULT_NOT_FOUND, statusCode: 404 };
+  }
+  await updateVaultDisplayName(vaultId, displayName.trim());
+  return { response: { ...vault, displayName: displayName.trim() } };
 }
 
 export async function getWarningCodes(): Promise<{ response?: WarningCodeDefinition[]; error?: string; statusCode?: number }> {

@@ -220,6 +220,17 @@ export async function listVaultsByUser(userId: string): Promise<VaultSummary[]> 
   );
 }
 
+export async function updateVaultDisplayName(vaultId: string, displayName: string): Promise<void> {
+  await docClient.send(
+    new UpdateCommand({
+      TableName: VAULTS_TABLE,
+      Key: { vaultId },
+      UpdateExpression: 'SET displayName = :dn',
+      ExpressionAttributeValues: { ':dn': displayName },
+    }),
+  );
+}
+
 export async function deleteVaultRecord(vaultId: string): Promise<void> {
   await docClient.send(
     new DeleteCommand({

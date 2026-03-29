@@ -117,13 +117,15 @@ describe('validatePow — enabled (beta / prod)', () => {
 
   it('returns 403 when solution does not meet difficulty', () => {
     const ts = Math.floor(Date.now() / 1000).toString();
+    // Use difficulty=20 (5 leading zero nibbles) so a random string has a
+    // ~1-in-a-million chance of accidentally satisfying the check.
     const result = validatePow(
       makeEvent({
         'x-pow-nonce': nonce,
         'x-pow-solution': 'definitely-wrong-solution',
         'x-pow-timestamp': ts,
       }),
-      difficulty,
+      20,
     );
     expect(result.valid).toBe(false);
     expect(result.errorResponse?.statusCode).toBe(403);
