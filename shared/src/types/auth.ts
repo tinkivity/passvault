@@ -14,6 +14,20 @@ export interface LoginResponse {
   requirePasswordChange?: boolean;
   requirePasskeySetup?: boolean;
   loginEventId?: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  displayName?: string | null;
+}
+
+export interface UpdateProfileRequest {
+  firstName?: string | null;
+  lastName?: string | null;
+  displayName?: string | null;
+  email?: string;
+}
+
+export interface UpdateNotificationsRequest {
+  notificationPrefs: import('./user.js').NotificationPrefs;
 }
 
 export interface ChangePasswordRequest {

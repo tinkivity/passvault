@@ -5,6 +5,7 @@ import {
   type LoginResponse,
   type ChangePasswordRequest,
   type ChangePasswordResponse,
+  type UpdateProfileRequest,
   type UserStatus,
 } from '@passvault/shared';
 import { getUserById, getUserByUsername, updateUser, recordLoginEvent } from '../utils/dynamodb.js';
@@ -117,6 +118,9 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
     encryptionSalt: user.encryptionSalt,
     plan: user.plan,
     loginEventId,
+    firstName: user.firstName ?? null,
+    lastName: user.lastName ?? null,
+    displayName: user.displayName ?? null,
   };
 
   if (user.status === 'pending_first_login') {
@@ -157,6 +161,34 @@ export async function changePassword(
   });
 
   return { response: { success: true } };
+}
+
+export async function updateProfile(
+  userId: string,
+  request: UpdateProfileRequest,
+): Promise<{ error?: string; statusCode?: number }> {
+  const updates: Record<string, unknown> = {};
+
+  if ('firstName' in request) updates.firstName = request.firstName ?? null;
+  if ('lastName' in request) updates.lastName = request.lastName ?? null;
+  if ('displayName' in request) updates.displayName = request.displayName ?? null;
+
+  if (request.email !== undefined) {
+    if (!LIMITS.EMAIL_PATTERN.test(request.email)) {
+      return { error: ERRORS.INVALID_EMAIL, statusCode: 400 };
+    }
+    const existing = await getUserByUsername(request.email);
+    if (existing && existing.userId !== userId) {
+      return { error: ERRORS.USER_EXISTS, statusCode: 409 };
+    }
+    updates.username = request.email;
+  }
+
+  if (Object.keys(updates).length > 0) {
+    await updateUser(userId, updates as Parameters<typeof updateUser>[1]);
+  }
+
+  return {};
 }
 
 async function recordFailedAttempt(userId: string, username: string, currentAttempts: number): Promise<void> {

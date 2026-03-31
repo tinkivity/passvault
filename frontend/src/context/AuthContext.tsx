@@ -5,6 +5,9 @@ export interface AuthState {
   token: string | null;
   role: UserRole | null;
   username: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  displayName: string | null;
   status: UserStatus | null;
   plan: UserPlan | null;
   encryptionSalt: string | null;
@@ -14,12 +17,16 @@ export interface AuthState {
 interface AuthContextValue extends AuthState {
   setAuth: (state: AuthState) => void;
   clearAuth: () => void;
+  patchAuth: (patch: Partial<AuthState>) => void;
 }
 
 const initialState: AuthState = {
   token: null,
   role: null,
   username: null,
+  firstName: null,
+  lastName: null,
+  displayName: null,
   status: null,
   plan: null,
   encryptionSalt: null,
@@ -53,8 +60,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try { sessionStorage.removeItem(SESSION_KEY); } catch { /* ignore */ }
   }, []);
 
+  const patchAuth = useCallback((patch: Partial<AuthState>) => {
+    setAuthState(prev => {
+      const next = { ...prev, ...patch };
+      try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(next)); } catch { /* quota */ }
+      return next;
+    });
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ ...auth, setAuth, clearAuth }}>
+    <AuthContext.Provider value={{ ...auth, setAuth, clearAuth, patchAuth }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,5 +1,5 @@
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { API_PATHS, POW_CONFIG, ERRORS } from '@passvault/shared';
+import { API_PATHS, POW_CONFIG, ERRORS, type UpdateNotificationsRequest } from '@passvault/shared';
 import { success, error } from '../utils/response.js';
 import { validatePow } from '../middleware/pow.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -14,6 +14,7 @@ import {
   sendVaultEmail,
   getWarningCodes,
 } from '../services/vault.js';
+import { updateUser } from '../utils/dynamodb.js';
 
 function parseBody(event: APIGatewayProxyEvent): { body: Record<string, unknown> } | { parseError: APIGatewayProxyResult } {
   try {
@@ -85,6 +86,16 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const vaultEmailMatch = path.match(/^\/api\/vault\/([^/]+)\/email$/);
     if (vaultEmailMatch && method === 'POST') {
       return await handleSendVaultEmail(event, vaultEmailMatch[1]);
+    }
+
+    // GET /api/vault/notifications
+    if (path === API_PATHS.VAULT_NOTIFICATIONS && method === 'GET') {
+      return await handleGetNotifications(event);
+    }
+
+    // POST /api/vault/notifications
+    if (path === API_PATHS.VAULT_NOTIFICATIONS && method === 'POST') {
+      return await handleUpdateNotifications(event);
     }
 
     return error('Not found', 404);
@@ -241,4 +252,37 @@ async function handleSendVaultEmail(event: APIGatewayProxyEvent, vaultId: string
   const result = await sendVaultEmail(user!.userId, vaultId);
   if (result.error) return error(result.error, result.statusCode || 500);
   return success(result.response);
+}
+
+async function handleGetNotifications(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  const { user, errorResponse } = await requireAuth(event);
+  if (errorResponse) return errorResponse;
+
+  if (user!.status !== 'active') {
+    return error(ERRORS.FORBIDDEN, 403);
+  }
+
+  const fullUser = await getUserById(user!.userId);
+  if (!fullUser) return error(ERRORS.NOT_FOUND, 404);
+
+  const notificationPrefs = fullUser.notificationPrefs ?? { failedLoginDigest: 'none', vaultBackup: 'none' };
+  return success({ notificationPrefs });
+}
+
+async function handleUpdateNotifications(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  const { user, errorResponse } = await requireAuth(event);
+  if (errorResponse) return errorResponse;
+
+  if (user!.status !== 'active') {
+    return error(ERRORS.FORBIDDEN, 403);
+  }
+
+  const parsed = parseBody(event);
+  if ('parseError' in parsed) return parsed.parseError;
+
+  const { notificationPrefs } = parsed.body as unknown as UpdateNotificationsRequest;
+  if (!notificationPrefs) return error('Missing notificationPrefs', 400);
+
+  await updateUser(user!.userId, { notificationPrefs });
+  return success({ success: true });
 }

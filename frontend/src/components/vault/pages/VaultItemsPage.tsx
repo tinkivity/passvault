@@ -2,9 +2,9 @@ import { useEffect, useState, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Plus, TriangleAlert } from 'lucide-react';
 import type { VaultFile, VaultItem, VaultItemCategory } from '@passvault/shared';
-import { useAuth } from '../../hooks/useAuth.js';
-import { useVault } from '../../hooks/useVault.js';
-import { useVaultShellContext } from './VaultShell.js';
+import { useAuth } from '../../../hooks/useAuth.js';
+import { useVault } from '../../../hooks/useVault.js';
+import { useVaultShellContext } from '../VaultShell.js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {

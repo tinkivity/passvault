@@ -4,15 +4,14 @@ import { LoginPage } from './components/auth/LoginPage.js';
 import { PasswordChangePage } from './components/auth/PasswordChangePage.js';
 import { PasskeySetupPage } from './components/auth/PasskeySetupPage.js';
 import { VaultShell } from './components/vault/VaultShell.js';
-import { VaultItemsPage } from './components/vault/VaultItemsPage.js';
-import { VaultItemNewPage } from './components/vault/VaultItemNewPage.js';
-import { VaultItemDetailPage } from './components/vault/VaultItemDetailPage.js';
+import { VaultItemsPage } from './components/vault/pages/VaultItemsPage.js';
+import { VaultItemNewPage } from './components/vault/pages/VaultItemNewPage.js';
+import { VaultItemDetailPage } from './components/vault/pages/VaultItemDetailPage.js';
 import { AdminShell } from './components/admin/AdminShell.js';
 import { DashboardPage } from './components/admin/pages/DashboardPage.js';
 import { UsersPage } from './components/admin/pages/UsersPage.js';
 import { UserDetailPage } from './components/admin/pages/UserDetailPage.js';
 import { LoginsPage } from './components/admin/pages/LoginsPage.js';
-import { AdminPage } from './components/admin/pages/AdminPage.js';
 
 // ---- Guards ---------------------------------------------------------------
 
@@ -109,7 +108,6 @@ export const router = createBrowserRouter([
           { path: 'users', element: <UsersPage /> },
           { path: 'users/:userId', element: <UserDetailPage /> },
           { path: 'logs/logins', element: <LoginsPage /> },
-          { path: 'management/admin', element: <AdminPage /> },
         ],
       },
     ],

@@ -1,7 +1,7 @@
-import { Link, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import type { VaultSummary, VaultItem } from '@passvault/shared';
-
-type Crumb = { label: string; to?: string };
+import { Breadcrumbs } from '../shared/Breadcrumbs.js';
+import type { Crumb } from '../shared/Breadcrumbs.js';
 
 function buildCrumbs(pathname: string, state: unknown): Crumb[] {
   const vaultMatch = pathname.match(/^\/vault\/([^/]+)(\/(.*))?$/);
@@ -34,30 +34,5 @@ function buildCrumbs(pathname: string, state: unknown): Crumb[] {
 
 export function VaultBreadcrumbs() {
   const { pathname, state } = useLocation();
-  const crumbs = buildCrumbs(pathname, state);
-
-  return (
-    <nav className="flex items-center gap-1 text-sm min-w-0" aria-label="Breadcrumb">
-      {crumbs.map((crumb, i) => {
-        const isLast = i === crumbs.length - 1;
-        return (
-          <span key={i} className="flex items-center gap-1 min-w-0">
-            {i > 0 && <span className="text-muted-foreground select-none shrink-0">›</span>}
-            {isLast || !crumb.to ? (
-              <span className={`truncate ${isLast ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
-                {crumb.label}
-              </span>
-            ) : (
-              <Link
-                to={crumb.to}
-                className="text-muted-foreground hover:text-foreground transition-colors truncate"
-              >
-                {crumb.label}
-              </Link>
-            )}
-          </span>
-        );
-      })}
-    </nav>
-  );
+  return <Breadcrumbs crumbs={buildCrumbs(pathname, state)} />;
 }

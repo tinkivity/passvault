@@ -3,6 +3,8 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
+import * as events from 'aws-cdk-lib/aws-events';
+import * as eventsTargets from 'aws-cdk-lib/aws-events-targets';
 import { Construct } from 'constructs';
 import type { EnvironmentConfig } from '@passvault/shared';
 import type { StorageConstruct } from './storage.js';
@@ -19,6 +21,7 @@ export class BackendConstruct extends Construct {
   public readonly adminFn: lambda.Function;
   public readonly vaultFn: lambda.Function;
   public readonly healthFn: lambda.Function;
+  public readonly digestFn: lambda.Function;
 
   constructor(scope: Construct, id: string, props: BackendConstructProps) {
     super(scope, id);
@@ -198,6 +201,39 @@ export class BackendConstruct extends Construct {
     // IAM: grant S3 file read+write to admin (creates empty vault on invite, downloads vault for backup)
     storage.filesBucket.grantReadWrite(this.adminFn);
 
+    // Digest Lambda — scheduled daily at 01:00 UTC, sends failed-login digests and vault backups
+    const digestLogGroup = new logs.LogGroup(this, 'DigestLogs', {
+
+      logGroupName: `/aws/lambda/passvault-digest-${env}`,
+      retention: retentionDays,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+    this.digestFn = new lambda.Function(this, 'DigestFn', {
+      runtime,
+      architecture,
+      functionName: `passvault-digest-${env}`,
+      handler: 'digest.handler',
+      code: lambda.Code.fromAsset('../backend/dist/digest'),
+      environment: {
+        ...commonEnv,
+        LOGIN_EVENTS_TABLE_NAME: storage.loginEventsTable.tableName,
+      },
+      memorySize: 256,
+      timeout: cdk.Duration.minutes(5),
+      logGroup: digestLogGroup,
+    });
+    storage.usersTable.grantReadWriteData(this.digestFn);
+    storage.loginEventsTable.grantReadData(this.digestFn);
+    storage.vaultsTable.grantReadData(this.digestFn);
+    storage.filesBucket.grantRead(this.digestFn);
+
+    // EventBridge rule: run digest daily at 01:00 UTC
+    new events.Rule(this, 'DigestSchedule', {
+      ruleName: `passvault-digest-schedule-${env}`,
+      schedule: events.Schedule.cron({ minute: '0', hour: '1' }),
+      targets: [new eventsTargets.LambdaFunction(this.digestFn)],
+    });
+
     // API Gateway
     this.api = new apigateway.RestApi(this, 'Api', {
       restApiName: `passvault-api-${env}`,
@@ -310,6 +346,8 @@ export class BackendConstruct extends Construct {
     authVerifyEmail.addMethod('GET', new apigateway.LambdaIntegration(this.authFn));
     const authLogout = auth.addResource('logout');
     authLogout.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
+    const authProfile = auth.addResource('profile');
+    authProfile.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
 
     // Vaults (plural) — list and create
     const vaults = apiRoot.addResource('vaults');
@@ -328,6 +366,11 @@ export class BackendConstruct extends Construct {
     vaultDownload.addMethod('GET', new apigateway.LambdaIntegration(this.vaultFn));
     const vaultEmail = vaultId.addResource('email');
     vaultEmail.addMethod('POST', new apigateway.LambdaIntegration(this.vaultFn));
+
+    // Vault notifications preferences
+    const vaultNotifications = vault.addResource('notifications');
+    vaultNotifications.addMethod('GET', new apigateway.LambdaIntegration(this.vaultFn));
+    vaultNotifications.addMethod('POST', new apigateway.LambdaIntegration(this.vaultFn));
 
     // Config (warning codes catalog — public, no auth required)
     const configResource = apiRoot.addResource('config');

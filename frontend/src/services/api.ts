@@ -5,6 +5,9 @@ import type {
   LoginResponse,
   ChangePasswordRequest,
   ChangePasswordResponse,
+  UpdateProfileRequest,
+  UpdateNotificationsRequest,
+  NotificationPrefs,
   PasskeyChallengeResponse,
   PasskeyVerifyRequest,
   PasskeyVerifyResponse,
@@ -149,6 +152,14 @@ export class ApiClient {
       body: req,
       token,
       powDifficulty: POW_CONFIG.DIFFICULTY.MEDIUM,
+    });
+  }
+
+  async updateProfile(req: UpdateProfileRequest, token: string): Promise<void> {
+    return this.request(API_PATHS.AUTH_PROFILE, {
+      method: 'POST',
+      body: req,
+      token,
     });
   }
 
@@ -373,6 +384,22 @@ export class ApiClient {
       method: 'GET',
       token,
       powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+    });
+  }
+
+  async getNotificationPrefs(token: string): Promise<NotificationPrefs> {
+    const res = await this.request<{ notificationPrefs: NotificationPrefs }>(API_PATHS.VAULT_NOTIFICATIONS, {
+      method: 'GET',
+      token,
+    });
+    return res.notificationPrefs;
+  }
+
+  async updateNotificationPrefs(prefs: NotificationPrefs, token: string): Promise<void> {
+    return this.request(API_PATHS.VAULT_NOTIFICATIONS, {
+      method: 'POST',
+      body: { notificationPrefs: prefs } satisfies UpdateNotificationsRequest,
+      token,
     });
   }
 

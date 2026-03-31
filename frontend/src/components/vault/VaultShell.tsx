@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../services/api.js';
 import { Outlet, useNavigate, useParams } from 'react-router-dom';
-import { SunIcon, MoonIcon, LockClosedIcon } from '@heroicons/react/24/outline';
+import { LockClosedIcon } from '@heroicons/react/24/outline';
 import { Loader2 } from 'lucide-react';
 import type { VaultSummary, WarningCodeDefinition } from '@passvault/shared';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useAutoLogout } from '../../hooks/useAutoLogout.js';
-import { useTheme } from '../../hooks/useTheme.js';
 import { useVaults } from '../../hooks/useVaults.js';
 import { useWarningCatalog } from '../../hooks/useWarningCatalog.js';
 import { useAuthContext } from '../../context/AuthContext.js';
@@ -14,11 +13,11 @@ import { useEncryptionContext } from '../../context/EncryptionContext.js';
 import { EnvironmentBanner } from '../layout/EnvironmentBanner.js';
 import { VaultSidebar } from './VaultSidebar.js';
 import { VaultBreadcrumbs } from './VaultBreadcrumbs.js';
+import { ShellHeader } from '../shared/ShellHeader.js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Separator } from '@/components/ui/separator';
-import { SidebarProvider, SidebarTrigger, SidebarInset } from '@/components/ui/sidebar';
+import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
 
 const VIEW_TIMEOUT = Number(import.meta.env.VITE_VIEW_TIMEOUT_SECONDS ?? 900);
 
@@ -41,10 +40,9 @@ export function useVaultShellContext(): VaultShellContext {
 export function VaultShell() {
   const navigate = useNavigate();
   const { vaultId } = useParams<{ vaultId: string }>();
-  const { token, username, plan, logout } = useAuth();
+  const { token, plan, logout } = useAuth();
   const { encryptionSalt } = useAuthContext();
   const { deriveKey, hasKey } = useEncryptionContext();
-  const { isDark, toggleTheme } = useTheme();
   const { fetchVaults, createVault } = useVaults(token);
   const { catalog, fetchCatalog } = useWarningCatalog();
 
@@ -65,18 +63,6 @@ export function VaultShell() {
     onLogout: handleLogout,
     active: true,
   });
-
-  const hours = Math.floor(secondsLeft / 3600);
-  const minutes = Math.floor((secondsLeft % 3600) / 60);
-  const secs = secondsLeft % 60;
-  const timeDisplay = hours > 0
-    ? `${hours}h ${minutes}m`
-    : `${minutes}:${String(secs).padStart(2, '0')}`;
-  const timerClass = secondsLeft <= 30
-    ? 'text-sm font-mono font-medium text-destructive hidden sm:inline mr-2'
-    : secondsLeft <= 60
-      ? 'text-sm font-mono font-medium text-amber-500 hidden sm:inline mr-2'
-      : 'text-sm font-mono text-foreground/60 hidden sm:inline mr-2';
 
   const refreshVaults = useCallback(async () => {
     const list = await fetchVaults();
@@ -190,7 +176,6 @@ export function VaultShell() {
             <VaultSidebar
               vaults={vaults}
               plan={plan ?? 'free'}
-              username={username ?? ''}
               onLogout={handleLogout}
               onCreateVault={handleCreateVault}
               onRenameVault={handleRenameVault}
@@ -198,27 +183,7 @@ export function VaultShell() {
               onEmailVault={handleEmailVault}
             />
             <SidebarInset className="flex flex-col overflow-hidden">
-              <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b bg-background px-4">
-                <SidebarTrigger className="-ml-1" />
-                <Separator orientation="vertical" className="mr-2 h-4" />
-                <div className="flex-1 min-w-0">
-                  <VaultBreadcrumbs />
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <span className={timerClass}>{timeDisplay}</span>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    onClick={toggleTheme}
-                    title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-                    aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-                  >
-                    {isDark
-                      ? <SunIcon className="w-4 h-4" />
-                      : <MoonIcon className="w-4 h-4" />}
-                  </Button>
-                </div>
-              </header>
+              <ShellHeader breadcrumbs={<VaultBreadcrumbs />} secondsLeft={secondsLeft} />
               <main className="flex-1 overflow-auto bg-muted p-6">
                 <Outlet />
               </main>

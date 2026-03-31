@@ -68,14 +68,4 @@ describe('AdminBreadcrumbs', () => {
     expect(screen.getAllByText('›')).toHaveLength(2);
   });
 
-  it('shows "Admin (link) > Management > Admin" on /admin/management/admin', () => {
-    renderAt('/admin/management/admin');
-    expect(screen.getByRole('link', { name: 'Admin' })).toHaveAttribute('href', '/admin/dashboard');
-    expect(screen.getByText('Management')).toBeInTheDocument();
-    // last crumb "Admin" is plain text, not a link
-    expect(screen.queryByRole('link', { name: 'Admin' })).toBeInTheDocument(); // the first-crumb link
-    const allAdmins = screen.getAllByText('Admin');
-    // one is a link, one is plain text
-    expect(allAdmins).toHaveLength(2);
-  });
 });

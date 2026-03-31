@@ -1,5 +1,13 @@
 export type UserRole = 'admin' | 'user';
 
+export type DigestFrequency = 'daily' | 'weekly' | 'monthly';
+export type VaultBackupFrequency = 'on_save' | 'daily' | 'weekly' | 'monthly';
+
+export interface NotificationPrefs {
+  failedLoginDigest: DigestFrequency | 'none';
+  vaultBackup: VaultBackupFrequency | 'none';
+}
+
 export type UserStatus =
   | 'pending_email_verification'  // prod only: awaiting email link click
   | 'pending_first_login'         // account created; must change password
@@ -37,4 +45,7 @@ export interface User {
   lastName?: string | null;
   displayName?: string | null;
   expiresAt?: string | null;            // ISO 8601 date; null = lifetime/perpetual
+  notificationPrefs?: NotificationPrefs | null;
+  lastDigestSentAt?: string | null;     // ISO 8601; updated after each digest send
+  lastBackupSentAt?: string | null;     // ISO 8601; updated after each vault backup send
 }

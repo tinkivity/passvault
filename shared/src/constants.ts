@@ -10,6 +10,7 @@ export const API_PATHS = {
   AUTH_PASSKEY_REGISTER: '/api/auth/passkey/register',
   AUTH_VERIFY_EMAIL: '/api/auth/verify-email',
   AUTH_LOGOUT: '/api/auth/logout',
+  AUTH_PROFILE: '/api/auth/profile',
   ADMIN_LOGIN: '/api/admin/login',
   ADMIN_CHANGE_PASSWORD: '/api/admin/change-password',
   ADMIN_PASSKEY_CHALLENGE: '/api/admin/passkey/challenge',
@@ -29,6 +30,7 @@ export const API_PATHS = {
   ADMIN_STATS: '/api/admin/stats',
   ADMIN_LOGIN_EVENTS: '/api/admin/login-events',
   VAULTS: '/api/vaults',
+  VAULT_NOTIFICATIONS: '/api/vault/notifications',
   CONFIG_WARNING_CODES: '/api/config/warning-codes',
 } as const;
 

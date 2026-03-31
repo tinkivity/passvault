@@ -1,15 +1,29 @@
 import { render, screen } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { MemoryRouter } from 'react-router-dom';
 import { SidebarProvider } from '@/components/ui/sidebar';
+import { AuthProvider } from '../../context/AuthContext';
 import { AdminSidebar } from './AdminSidebar';
+
+vi.mock('../../hooks/useAuth.js', () => ({
+  useAuth: () => ({
+    username: 'testuser',
+    firstName: null,
+    displayName: null,
+    plan: 'free',
+    adminChangePassword: vi.fn(),
+    loading: false,
+  }),
+}));
 
 function renderSidebar(path = '/admin/dashboard') {
   return render(
     <MemoryRouter initialEntries={[path]}>
-      <SidebarProvider>
-        <AdminSidebar username="testuser" onLogout={() => {}} />
-      </SidebarProvider>
+      <AuthProvider>
+        <SidebarProvider>
+          <AdminSidebar onLogout={() => {}} />
+        </SidebarProvider>
+      </AuthProvider>
     </MemoryRouter>,
   );
 }
@@ -35,16 +49,6 @@ describe('AdminSidebar', () => {
   it('User link points to /admin/users', () => {
     renderSidebar();
     expect(screen.getByRole('link', { name: /^users?$/i })).toHaveAttribute('href', '/admin/users');
-  });
-
-  it('Admin link is always visible', () => {
-    renderSidebar();
-    expect(screen.getByRole('link', { name: /^admin$/i })).toBeInTheDocument();
-  });
-
-  it('Admin link points to /admin/management/admin', () => {
-    renderSidebar();
-    expect(screen.getByRole('link', { name: /^admin$/i })).toHaveAttribute('href', '/admin/management/admin');
   });
 
   it('Logins link is always visible', () => {
@@ -84,11 +88,6 @@ describe('AdminSidebar', () => {
   it('Logins link has aria-current="page" when on /admin/logs/logins', () => {
     renderSidebar('/admin/logs/logins');
     expect(screen.getByRole('link', { name: /^logins$/i })).toHaveAttribute('aria-current', 'page');
-  });
-
-  it('Admin link has aria-current="page" when on /admin/management/admin', () => {
-    renderSidebar('/admin/management/admin');
-    expect(screen.getByRole('link', { name: /^admin$/i })).toHaveAttribute('aria-current', 'page');
   });
 
   it('Dashboard link does not have aria-current when on /admin/users', () => {

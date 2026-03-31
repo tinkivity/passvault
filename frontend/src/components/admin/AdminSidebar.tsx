@@ -1,7 +1,8 @@
 import { useLocation } from 'react-router-dom';
 import { NavLink } from 'react-router-dom';
-import { Home, UserCog, Settings2, FileTerminal, LogOut, MoreHorizontal, UserPlus } from 'lucide-react';
+import { Home, UserCog, FileTerminal, MoreHorizontal, UserPlus } from 'lucide-react';
 import logo from '../../assets/logo.png';
+import { NavUser } from '../shared/NavUser.js';
 import {
   Sidebar,
   SidebarContent,
@@ -57,12 +58,11 @@ function NavItem({ to, label, icon: Icon, end = false }: NavItemDef) {
 }
 
 interface AdminSidebarProps {
-  username: string;
   onLogout: () => void;
   onCreateUser?: () => void;
 }
 
-export function AdminSidebar({ username, onLogout, onCreateUser }: AdminSidebarProps) {
+export function AdminSidebar({ onLogout, onCreateUser }: AdminSidebarProps) {
   const { pathname } = useLocation();
 
   return (
@@ -112,8 +112,6 @@ export function AdminSidebar({ username, onLogout, onCreateUser }: AdminSidebarP
                   </DropdownMenuContent>
                 </DropdownMenu>
               </SidebarMenuItem>
-
-              <NavItem to="/admin/management/admin" label="Admin" icon={Settings2} />
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -130,17 +128,7 @@ export function AdminSidebar({ username, onLogout, onCreateUser }: AdminSidebarP
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border">
-        <div className="px-3 py-1 text-xs text-sidebar-foreground/60 truncate group-data-[collapsible=icon]:hidden">
-          {username}
-        </div>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton onClick={onLogout} tooltip="Logout">
-              <LogOut className="h-4 w-4 shrink-0" />
-              <span>Logout</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        <NavUser role="admin" onLogout={onLogout} />
       </SidebarFooter>
 
       <SidebarRail />

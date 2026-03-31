@@ -149,7 +149,7 @@ export class PassVaultStack extends cdk.Stack {
       // checks IAM on the recipient identity ARN in addition to the sender ARN.
       // Using a wildcard resource avoids having to enumerate every recipient identity.
       const transactionalSender = `noreply@${senderDomain}`;
-      for (const fn of [backend.adminFn, backend.authFn, backend.vaultFn]) {
+      for (const fn of [backend.adminFn, backend.authFn, backend.vaultFn, backend.digestFn]) {
         fn.addToRolePolicy(new iam.PolicyStatement({
           actions: ['ses:SendEmail', 'ses:SendRawEmail'],
           resources: [`arn:aws:ses:${this.region}:${this.account}:identity/*`],

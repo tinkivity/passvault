@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { NavLink, useNavigate, useParams } from 'react-router-dom';
-import { Vault, Plus, LogOut, MoreHorizontal, Download, Mail, Pencil } from 'lucide-react';
+import { Vault, Plus, MoreHorizontal, Download, Mail, Pencil } from 'lucide-react';
 import type { VaultSummary } from '@passvault/shared';
 import { LIMITS } from '@passvault/shared';
 import logo from '../../assets/logo.png';
+import { NavUser } from '../shared/NavUser.js';
 import {
   Sidebar,
   SidebarContent,
@@ -41,7 +42,6 @@ const isProd = import.meta.env.VITE_ENVIRONMENT === 'prod';
 interface VaultSidebarProps {
   vaults: VaultSummary[];
   plan: string;
-  username: string;
   onLogout: () => void;
   onCreateVault: (displayName: string) => Promise<void>;
   onRenameVault: (vaultId: string, displayName: string) => Promise<void>;
@@ -49,7 +49,7 @@ interface VaultSidebarProps {
   onEmailVault: (vaultId: string) => Promise<void>;
 }
 
-export function VaultSidebar({ vaults, plan, username, onLogout, onCreateVault, onRenameVault, onDownloadVault, onEmailVault }: VaultSidebarProps) {
+export function VaultSidebar({ vaults, plan, onLogout, onCreateVault, onRenameVault, onDownloadVault, onEmailVault }: VaultSidebarProps) {
   const navigate = useNavigate();
   const { vaultId } = useParams<{ vaultId: string }>();
   const [emailedVaultId, setEmailedVaultId] = useState<string | null>(null);
@@ -175,17 +175,7 @@ export function VaultSidebar({ vaults, plan, username, onLogout, onCreateVault, 
         </SidebarContent>
 
         <SidebarFooter className="border-t border-sidebar-border">
-          <div className="px-3 py-1 text-xs text-sidebar-foreground/60 truncate group-data-[collapsible=icon]:hidden">
-            {username}
-          </div>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton onClick={onLogout} tooltip="Logout">
-                <LogOut className="h-4 w-4 shrink-0" />
-                <span>Logout</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
+          <NavUser role="user" onLogout={onLogout} />
         </SidebarFooter>
 
         <SidebarRail />

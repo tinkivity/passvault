@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import type { ChangePasswordRequest, PasskeyVerifyResponse } from '@passvault/shared';
+import type { ChangePasswordRequest, PasskeyVerifyResponse, UpdateProfileRequest } from '@passvault/shared';
 import { useAuthContext } from '../context/AuthContext.js';
 import { useEncryptionContext } from '../context/EncryptionContext.js';
 import { api } from '../services/api.js';
@@ -7,7 +7,7 @@ import { authenticateWithPasskey } from '../services/passkey.js';
 import { createHoneypot, getHoneypotFields } from '../services/honeypot.js';
 
 export function useAuth() {
-  const { token, role, username, status, plan, loginEventId, setAuth, clearAuth } = useAuthContext();
+  const { token, role, username, firstName, lastName, displayName, status, plan, loginEventId, setAuth, clearAuth, patchAuth } = useAuthContext();
   const { deriveKey, clearKey } = useEncryptionContext();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +53,9 @@ export function useAuth() {
         token: res.token,
         role: res.role,
         username: res.username,
+        firstName: res.firstName ?? null,
+        lastName: res.lastName ?? null,
+        displayName: res.displayName ?? null,
         status: res.requirePasswordChange
           ? 'pending_first_login'
           : res.requirePasskeySetup
@@ -89,6 +92,9 @@ export function useAuth() {
         token: res.token,
         role: res.role,
         username: res.username,
+        firstName: res.firstName ?? null,
+        lastName: res.lastName ?? null,
+        displayName: res.displayName ?? null,
         status: res.requirePasswordChange ? 'pending_first_login' : 'active',
         plan: res.plan ?? null,
         encryptionSalt: res.encryptionSalt,
@@ -121,6 +127,27 @@ export function useAuth() {
     }
   }, [token]);
 
+  const updateProfile = useCallback(async (req: UpdateProfileRequest) => {
+    if (!token) throw new Error('Not authenticated');
+    setLoading(true);
+    setError(null);
+    try {
+      await api.updateProfile(req, token);
+      patchAuth({
+        ...(('firstName' in req) && { firstName: req.firstName ?? null }),
+        ...(('lastName' in req) && { lastName: req.lastName ?? null }),
+        ...(('displayName' in req) && { displayName: req.displayName ?? null }),
+        ...(req.email !== undefined && { username: req.email }),
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Profile update failed';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [token, patchAuth]);
+
   const adminChangePassword = useCallback(async (req: ChangePasswordRequest) => {
     if (!token) throw new Error('Not authenticated');
     setLoading(true);
@@ -148,6 +175,9 @@ export function useAuth() {
     token,
     role,
     username,
+    firstName,
+    lastName,
+    displayName,
     status,
     plan,
     loading,
@@ -159,6 +189,7 @@ export function useAuth() {
     login,
     // shared
     changePassword,
+    updateProfile,
     adminChangePassword,
     logout,
   };

@@ -5,7 +5,7 @@ import { success, error } from '../utils/response.js';
 import { validatePow } from '../middleware/pow.js';
 import { validateHoneypot } from '../middleware/honeypot.js';
 import { requireAuth } from '../middleware/auth.js';
-import { login, changePassword } from '../services/auth.js';
+import { login, changePassword, updateProfile } from '../services/auth.js';
 import { verifyEmailToken } from '../services/admin.js';
 import { updateLoginEventLogout } from '../utils/dynamodb.js';
 import {
@@ -66,6 +66,10 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     // POST /auth/logout
     if (path === API_PATHS.AUTH_LOGOUT && method === 'POST') {
       return await handleLogout(event);
+    }
+    // POST /auth/profile
+    if (path === API_PATHS.AUTH_PROFILE && method === 'POST') {
+      return await handleUpdateProfile(event);
     }
 
     return error('Not found', 404);
@@ -236,6 +240,25 @@ async function handleVerifyEmail(event: APIGatewayProxyEvent): Promise<APIGatewa
     return error(result.error, result.statusCode || 400);
   }
   return success(result.response);
+}
+
+async function handleUpdateProfile(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  const { user, errorResponse } = await requireAuth(event);
+  if (errorResponse) return errorResponse;
+
+  if (user!.status !== 'active') {
+    return error(ERRORS.FORBIDDEN, 403);
+  }
+
+  const parsed = parseBody(event);
+  if ('parseError' in parsed) return parsed.parseError;
+
+  const result = await updateProfile(
+    user!.userId,
+    parsed.body as import('@passvault/shared').UpdateProfileRequest,
+  );
+  if (result.error) return error(result.error, result.statusCode || 400);
+  return success({ success: true });
 }
 
 async function handleLogout(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
