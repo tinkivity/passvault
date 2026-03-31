@@ -26,7 +26,6 @@ export function AccountDialog({ open, onOpenChange }: AccountDialogProps) {
     email: username ?? '',
   });
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
 
   // Sync form when dialog opens or auth state changes
   useEffect(() => {
@@ -38,14 +37,12 @@ export function AccountDialog({ open, onOpenChange }: AccountDialogProps) {
         email: username ?? '',
       });
       setError(null);
-      setSuccess(false);
     }
   }, [open, firstName, lastName, displayName, username]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setSuccess(false);
     try {
       await updateProfile({
         firstName: form.firstName.trim() || null,
@@ -53,7 +50,7 @@ export function AccountDialog({ open, onOpenChange }: AccountDialogProps) {
         displayName: form.displayName.trim() || null,
         ...(form.email.trim() !== username ? { email: form.email.trim() } : {}),
       });
-      setSuccess(true);
+      onOpenChange(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save changes');
     }
@@ -114,7 +111,6 @@ export function AccountDialog({ open, onOpenChange }: AccountDialogProps) {
             </p>
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
-          {success && <p className="text-sm text-green-600">Changes saved.</p>}
           <DialogFooter>
             <Button variant="outline" type="button" onClick={() => onOpenChange(false)}>
               Cancel

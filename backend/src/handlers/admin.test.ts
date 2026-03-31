@@ -211,10 +211,10 @@ describe('POST /admin/change-password', () => {
     expect(res.statusCode).toBe(403);
   });
 
-  it('returns 400 when status is not pending_first_login', async () => {
-    authOk(adminUser); // status: active
+  it('returns 403 when status is locked', async () => {
+    authOk({ ...adminUser, status: 'locked' });
     const res = await handler(makeEvent(API_PATHS.ADMIN_CHANGE_PASSWORD, 'POST', {}));
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(403);
   });
 
   it('returns 200 on success', async () => {

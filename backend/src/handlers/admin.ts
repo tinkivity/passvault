@@ -149,8 +149,8 @@ async function handleChangePassword(event: APIGatewayProxyEvent): Promise<APIGat
   if (user!.role !== 'admin') {
     return error(ERRORS.FORBIDDEN, 403);
   }
-  if (user!.status !== 'pending_first_login') {
-    return error('Password change not required', 400);
+  if (user!.status !== 'pending_first_login' && user!.status !== 'active') {
+    return error(ERRORS.FORBIDDEN, 403);
   }
 
   const parsed = parseBody(event);

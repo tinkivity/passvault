@@ -45,12 +45,10 @@ export function NavUser({ role, onLogout }: NavUserProps) {
   const [newPassword, setNewPassword] = useState('');
   const [confirm, setConfirm] = useState('');
   const [pwError, setPwError] = useState<string | null>(null);
-  const [pwSuccess, setPwSuccess] = useState(false);
 
   const handlePwSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setPwError(null);
-    setPwSuccess(false);
 
     if (newPassword !== confirm) {
       setPwError('Passwords do not match');
@@ -63,7 +61,7 @@ export function NavUser({ role, onLogout }: NavUserProps) {
     }
     try {
       await adminChangePassword({ newPassword });
-      setPwSuccess(true);
+      setPwOpen(false);
       setNewPassword('');
       setConfirm('');
     } catch (err) {
@@ -151,7 +149,7 @@ export function NavUser({ role, onLogout }: NavUserProps) {
               {role === 'admin' && (
                 <>
                   <DropdownMenuGroup>
-                    <DropdownMenuItem onClick={() => { setPwOpen(true); setPwSuccess(false); setPwError(null); }}>
+                    <DropdownMenuItem onClick={() => { setPwOpen(true); setPwError(null); }}>
                       <KeyRound className="mr-2 h-4 w-4" />
                       Change Password
                     </DropdownMenuItem>
@@ -184,9 +182,6 @@ export function NavUser({ role, onLogout }: NavUserProps) {
             <DialogHeader>
               <DialogTitle>Change Password</DialogTitle>
             </DialogHeader>
-            {pwSuccess && (
-              <p className="text-sm text-green-600">Password changed successfully.</p>
-            )}
             <form onSubmit={handlePwSubmit} className="flex flex-col gap-4">
               <div className="flex flex-col gap-1">
                 <label htmlFor="nav-new-password" className="text-sm font-medium">New Password</label>

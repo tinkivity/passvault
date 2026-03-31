@@ -34,13 +34,11 @@ export function NotificationsDialog({ open, onOpenChange }: NotificationsDialogP
   const [loadingFetch, setLoadingFetch] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
 
   useEffect(() => {
     if (!open || !token) return;
     setLoadingFetch(true);
     setError(null);
-    setSuccess(false);
     api.getNotificationPrefs(token)
       .then(p => setPrefs(p))
       .catch(() => setError('Failed to load notification preferences'))
@@ -52,10 +50,9 @@ export function NotificationsDialog({ open, onOpenChange }: NotificationsDialogP
     if (!token) return;
     setSaving(true);
     setError(null);
-    setSuccess(false);
     try {
       await api.updateNotificationPrefs(prefs, token);
-      setSuccess(true);
+      onOpenChange(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save preferences');
     } finally {
@@ -118,7 +115,6 @@ export function NotificationsDialog({ open, onOpenChange }: NotificationsDialogP
           </div>
 
           {error && <p className="text-sm text-destructive">{error}</p>}
-          {success && <p className="text-sm text-green-600">Preferences saved.</p>}
 
           <DialogFooter>
             <Button variant="outline" type="button" onClick={() => onOpenChange(false)}>

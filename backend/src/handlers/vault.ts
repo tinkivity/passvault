@@ -14,7 +14,7 @@ import {
   sendVaultEmail,
   getWarningCodes,
 } from '../services/vault.js';
-import { updateUser } from '../utils/dynamodb.js';
+import { getUserById, updateUser } from '../utils/dynamodb.js';
 
 function parseBody(event: APIGatewayProxyEvent): { body: Record<string, unknown> } | { parseError: APIGatewayProxyResult } {
   try {
@@ -65,6 +65,16 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
       return await handleDeleteVault(event, vaultsDeleteMatch[1]);
     }
 
+    // GET /api/vault/notifications
+    if (path === API_PATHS.VAULT_NOTIFICATIONS && method === 'GET') {
+      return await handleGetNotifications(event);
+    }
+
+    // POST /api/vault/notifications
+    if (path === API_PATHS.VAULT_NOTIFICATIONS && method === 'POST') {
+      return await handleUpdateNotifications(event);
+    }
+
     // GET /api/vault/{vaultId} — get vault content
     const vaultGetMatch = path.match(/^\/api\/vault\/([^/]+)$/);
     if (vaultGetMatch && method === 'GET') {
@@ -86,16 +96,6 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     const vaultEmailMatch = path.match(/^\/api\/vault\/([^/]+)\/email$/);
     if (vaultEmailMatch && method === 'POST') {
       return await handleSendVaultEmail(event, vaultEmailMatch[1]);
-    }
-
-    // GET /api/vault/notifications
-    if (path === API_PATHS.VAULT_NOTIFICATIONS && method === 'GET') {
-      return await handleGetNotifications(event);
-    }
-
-    // POST /api/vault/notifications
-    if (path === API_PATHS.VAULT_NOTIFICATIONS && method === 'POST') {
-      return await handleUpdateNotifications(event);
     }
 
     return error('Not found', 404);
