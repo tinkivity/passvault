@@ -4,14 +4,14 @@ import { Breadcrumbs } from '../shared/Breadcrumbs.js';
 import type { Crumb } from '../shared/Breadcrumbs.js';
 
 function buildCrumbs(pathname: string, state: unknown): Crumb[] {
-  const vaultMatch = pathname.match(/^\/vault\/([^/]+)(\/(.*))?$/);
+  const vaultMatch = pathname.match(/^\/ui\/([^/]+)(\/(.*))?$/);
   if (!vaultMatch) return [{ label: 'Vault' }];
 
   const vaultId = vaultMatch[1];
   const rest = vaultMatch[3] ?? '';
   const s = state as { vault?: VaultSummary; item?: VaultItem } | null;
   const vaultName = s?.vault?.displayName ?? 'Vault';
-  const vaultBase = `/vault/${vaultId}/items`;
+  const vaultBase = `/ui/${vaultId}/items`;
 
   if (rest === '' || rest === 'items') {
     return [{ label: vaultName }];

@@ -37,7 +37,7 @@ const mockListVaultsByUser = vi.mocked(listVaultsByUser);
 const mockCreateVaultRecord = vi.mocked(createVaultRecord);
 const mockSendEmailWithAttachment = vi.mocked(sendEmailWithAttachment);
 
-const VAULT_RECORD = { vaultId: 'vault-1', userId: 'user-1', displayName: 'Personal Vault', createdAt: '2024-01-01T00:00:00.000Z' };
+const VAULT_RECORD = { vaultId: 'vault-1', userId: 'user-1', displayName: 'Personal Vault', encryptionSalt: 'vault-salt==', createdAt: '2024-01-01T00:00:00.000Z' };
 
 function makeUser(overrides: Partial<User> = {}): User {
   return {
@@ -160,7 +160,7 @@ describe('downloadVault', () => {
     const result = await downloadVault('user-1', 'vault-1');
     expect(result.error).toBeUndefined();
     expect(result.response?.encryptedContent).toBe('');
-    expect(result.response?.encryptionSalt).toBe('base64salt==');
+    expect(result.response?.encryptionSalt).toBe('vault-salt==');
     expect(result.response?.username).toBe('alice@example.com');
     expect(result.response?.algorithm).toBeDefined();
     expect(result.response?.parameters).toBeDefined();
@@ -266,7 +266,8 @@ describe('createVault', () => {
     expect(result.error).toBeUndefined();
     expect(result.response?.displayName).toBe('Personal Vault');
     expect(result.response?.vaultId).toBeTruthy();
-    expect(mockCreateVaultRecord).toHaveBeenCalled();
+    expect(result.response?.encryptionSalt).toBeTruthy();
+    expect(mockCreateVaultRecord).toHaveBeenCalledWith(expect.any(String), 'user-1', 'Personal Vault', expect.any(String));
   });
 
   it('allows pro users to create up to 10 vaults', async () => {

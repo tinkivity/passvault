@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import type { ColumnDef, SortingFn } from '@tanstack/react-table';
-import type { UserSummary, UserStatus, UserPlan } from '@passvault/shared';
+import type { UserSummary, UserStatus, UserPlan, UserVaultStub } from '@passvault/shared';
 import {
   ArrowDownTrayIcon,
   ArrowPathIcon,
@@ -76,7 +76,7 @@ function isPastDate(dateStr: string): boolean {
 interface UserListProps {
   users: UserSummary[];
   loading: boolean;
-  onDownload: (userId: string, username: string) => void;
+  onDownload: (userId: string, username: string, vaultId?: string) => void;
   onRefreshOtp: (userId: string) => Promise<{ username: string; oneTimePassword: string }>;
   onDeleteUser: (userId: string) => Promise<void>;
   onLockUser: (userId: string) => Promise<void>;
@@ -92,13 +92,14 @@ const ALL_STATUSES: UserStatus[] = [
   'pending_first_login', 'pending_passkey_setup', 'pending_email_verification',
 ];
 
-const ALL_PLANS: UserPlan[] = ['free', 'pro'];
+const ALL_PLANS: UserPlan[] = ['free', 'pro', 'administrator'];
 
-const planLabel: Record<UserPlan, string> = { free: 'Free', pro: 'Pro' };
+const planLabel: Record<UserPlan, string> = { free: 'Free', pro: 'Pro', administrator: 'Administrator' };
 
 const planPill: Record<UserPlan, string> = {
   free: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
   pro: 'bg-blue-500/10 text-blue-600',
+  administrator: 'bg-purple-500/10 text-purple-600',
 };
 
 const statusLabel: Record<UserStatus, string> = {
@@ -182,6 +183,7 @@ function ExpiresCell({ expiresAt }: { expiresAt?: string | null }) {
 
 function getUserColumns(
   onDownload: UserListProps['onDownload'],
+  onPickVault: (user: UserSummary) => void,
   onRefreshOtp: (userId: string) => Promise<void>,
   onDeleteUser: (user: UserSummary) => void,
   onSetLockTarget: (user: UserSummary) => void,
@@ -334,11 +336,19 @@ function getUserColumns(
                   <DropdownMenuSeparator />
                 )}
 
-                {/* 3. Download vault */}
-                <DropdownMenuItem onClick={() => onDownload(user.userId, user.username)}>
-                  <ArrowDownTrayIcon className="mr-2 h-4 w-4" />
-                  download vault
-                </DropdownMenuItem>
+                {/* 3. Download vault — hidden when user has no vaults */}
+                {user.vaultCount > 0 && (
+                  <DropdownMenuItem onClick={() => {
+                    if (user.vaultCount === 1) {
+                      onDownload(user.userId, user.username, user.vaults[0].vaultId);
+                    } else {
+                      onPickVault(user);
+                    }
+                  }}>
+                    <ArrowDownTrayIcon className="mr-2 h-4 w-4" />
+                    download vault
+                  </DropdownMenuItem>
+                )}
 
                 {/* 4. Email vault — disabled in dev/beta */}
                 <DropdownMenuItem
@@ -410,8 +420,13 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUse
   const [reactivateLoading, setReactivateLoading] = useState(false);
   const [reactivateDate, setReactivateDate] = useState(defaultExpiresAt());
   const [reactivatePerpetual, setReactivatePerpetual] = useState(false);
+  const [vaultPickerUser, setVaultPickerUser] = useState<UserSummary | null>(null);
 
   const isProd = import.meta.env.VITE_ENVIRONMENT === 'prod';
+
+  const handlePickVault = useCallback((user: UserSummary) => {
+    setVaultPickerUser(user);
+  }, []);
 
   function toggleStatus(status: UserStatus) {
     setSelectedStatuses(prev => {
@@ -500,6 +515,7 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUse
   const columns = useMemo(
     () => getUserColumns(
       onDownload,
+      handlePickVault,
       handleRefreshOtp,
       setDeleteTarget,
       setLockTarget,
@@ -512,7 +528,7 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUse
       isProd,
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [onDownload, onRowClick, onEmailVault, actionLoading, isProd],
+    [onDownload, handlePickVault, onRowClick, onEmailVault, actionLoading, isProd],
   );
 
   if (refreshedOtp) {
@@ -839,6 +855,42 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUse
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Vault picker dialog — shown when user has multiple vaults */}
+      <Dialog
+        open={vaultPickerUser !== null}
+        onOpenChange={(open) => { if (!open) setVaultPickerUser(null); }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Select vault to download</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <p className="text-sm text-muted-foreground">
+              <strong className="text-foreground">{vaultPickerUser?.username}</strong> has {vaultPickerUser?.vaultCount} vaults. Choose one to download.
+            </p>
+            <div className="flex flex-col gap-2 mt-3">
+              {(vaultPickerUser?.vaults ?? []).map((v: UserVaultStub) => (
+                <Button
+                  key={v.vaultId}
+                  variant="outline"
+                  className="justify-start"
+                  onClick={() => {
+                    onDownload(vaultPickerUser!.userId, vaultPickerUser!.username, v.vaultId);
+                    setVaultPickerUser(null);
+                  }}
+                >
+                  <ArrowDownTrayIcon className="mr-2 h-4 w-4 shrink-0" />
+                  {v.displayName}
+                </Button>
+              ))}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setVaultPickerUser(null)}>Cancel</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Reactivate dialog */}
       <Dialog

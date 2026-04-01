@@ -1,0 +1,105 @@
+import { useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { LockClosedIcon } from '@heroicons/react/24/outline';
+import { Loader2 } from 'lucide-react';
+import { useAuth } from '../../../hooks/useAuth.js';
+import { useEncryptionContext } from '../../../context/EncryptionContext.js';
+import { useVaultShellContext } from '../VaultShell.js';
+import { api } from '../../../services/api.js';
+import { decrypt } from '../../../services/crypto.js';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+
+export function VaultUnlockPage() {
+  const { vaultId } = useParams<{ vaultId: string }>();
+  const navigate = useNavigate();
+  const { token, logout } = useAuth();
+  const { deriveKey, clearKey } = useEncryptionContext();
+  const { vaults } = useVaultShellContext();
+
+  const vault = vaults.find(v => v.vaultId === vaultId);
+
+  const [password, setPassword] = useState('');
+  const [unlockError, setUnlockError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const handleUnlock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!vaultId || !vault) return;
+    setLoading(true);
+    setUnlockError(null);
+    try {
+      await deriveKey(vaultId, password, vault.encryptionSalt);
+
+      // Verify the password is correct by attempting to decrypt vault content
+      const res = await api.getVault(vaultId, token!);
+      if (res.encryptedContent) {
+        try {
+          await decrypt(vaultId, res.encryptedContent);
+        } catch {
+          clearKey(vaultId);
+          setUnlockError('Incorrect password. Please try again.');
+          return;
+        }
+      }
+
+      navigate(`/ui/${vaultId}/items`);
+    } catch (err) {
+      if (!unlockError) {
+        setUnlockError(err instanceof Error ? err.message : 'Failed to unlock vault.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!vault) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <p className="text-sm text-muted-foreground">Vault not found.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-[60vh] items-center justify-center">
+      <div className="w-full max-w-sm rounded-lg border border-border bg-background p-8 space-y-6">
+        <div className="flex flex-col items-center gap-2 text-center">
+          <LockClosedIcon className="h-8 w-8 text-muted-foreground" />
+          <h1 className="text-lg font-semibold">{vault.displayName}</h1>
+          <p className="text-sm text-muted-foreground">
+            Enter the vault password to open it.
+          </p>
+        </div>
+        <form onSubmit={handleUnlock} className="space-y-4">
+          <div className="space-y-1">
+            <Label htmlFor="vault-password">Password</Label>
+            <Input
+              id="vault-password"
+              type="password"
+              autoFocus
+              autoComplete="current-password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              required
+            />
+          </div>
+          {unlockError && <p className="text-sm text-destructive">{unlockError}</p>}
+          <Button type="submit" className="w-full" disabled={loading}>
+            {loading ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-2" />Unlocking…</> : 'Open Vault'}
+          </Button>
+        </form>
+        <div className="text-center">
+          <button
+            type="button"
+            className="text-xs text-muted-foreground hover:underline"
+            onClick={() => { logout(); navigate('/login', { replace: true }); }}
+          >
+            Sign out instead
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

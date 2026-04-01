@@ -75,7 +75,7 @@ export function UsersPage() {
   };
 
   const handleRowClick = (user: UserSummary) => {
-    navigate(`/admin/users/${user.userId}`, { state: { user } });
+    navigate(`/ui/admin/users/${user.userId}`, { state: { user } });
   };
 
   return (

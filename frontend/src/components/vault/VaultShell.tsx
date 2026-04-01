@@ -1,25 +1,20 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../services/api.js';
-import { Outlet, useNavigate, useParams } from 'react-router-dom';
-import { LockClosedIcon } from '@heroicons/react/24/outline';
-import { Loader2 } from 'lucide-react';
+import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import type { VaultSummary, WarningCodeDefinition } from '@passvault/shared';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useAutoLogout } from '../../hooks/useAutoLogout.js';
 import { useVaults } from '../../hooks/useVaults.js';
 import { useWarningCatalog } from '../../hooks/useWarningCatalog.js';
-import { useAuthContext } from '../../context/AuthContext.js';
-import { useEncryptionContext } from '../../context/EncryptionContext.js';
 import { EnvironmentBanner } from '../layout/EnvironmentBanner.js';
 import { VaultSidebar } from './VaultSidebar.js';
 import { VaultBreadcrumbs } from './VaultBreadcrumbs.js';
+import { AdminBreadcrumbs } from '../admin/AdminBreadcrumbs.js';
 import { ShellHeader } from '../shared/ShellHeader.js';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
 
 const VIEW_TIMEOUT = Number(import.meta.env.VITE_VIEW_TIMEOUT_SECONDS ?? 900);
+const ADMIN_TIMEOUT = Number(import.meta.env.VITE_ADMIN_TIMEOUT_SECONDS ?? 900);
 
 export interface VaultShellContext {
   vaults: VaultSummary[];
@@ -39,17 +34,11 @@ export function useVaultShellContext(): VaultShellContext {
 
 export function VaultShell() {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const { vaultId } = useParams<{ vaultId: string }>();
-  const { token, plan, logout } = useAuth();
-  const { encryptionSalt } = useAuthContext();
-  const { deriveKey, hasKey } = useEncryptionContext();
+  const { token, role, plan, logout } = useAuth();
   const { fetchVaults, createVault } = useVaults(token);
   const { catalog, fetchCatalog } = useWarningCatalog();
-
-  const [locked, setLocked] = useState(!hasKey());
-  const [unlockPassword, setUnlockPassword] = useState('');
-  const [unlockError, setUnlockError] = useState<string | null>(null);
-  const [unlockLoading, setUnlockLoading] = useState(false);
 
   const [vaults, setVaults] = useState<VaultSummary[]>([]);
 
@@ -58,8 +47,10 @@ export function VaultShell() {
     navigate('/login', { replace: true });
   }, [logout, navigate]);
 
+  const timeoutSeconds = role === 'admin' ? ADMIN_TIMEOUT : VIEW_TIMEOUT;
+
   const { secondsLeft } = useAutoLogout({
-    timeoutSeconds: VIEW_TIMEOUT,
+    timeoutSeconds,
     onLogout: handleLogout,
     active: true,
   });
@@ -67,11 +58,7 @@ export function VaultShell() {
   const refreshVaults = useCallback(async () => {
     const list = await fetchVaults();
     setVaults(list);
-    // Redirect to first vault if none selected
-    if (!vaultId && list.length > 0) {
-      navigate(`/vault/${list[0].vaultId}/items`, { replace: true });
-    }
-  }, [fetchVaults, vaultId, navigate]);
+  }, [fetchVaults]);
 
   useEffect(() => {
     refreshVaults();
@@ -103,68 +90,10 @@ export function VaultShell() {
     const newVault = await createVault(displayName);
     const updated = [...vaults, newVault];
     setVaults(updated);
-    navigate(`/vault/${newVault.vaultId}/items`);
+    navigate(`/ui/${newVault.vaultId}`);
   }, [createVault, vaults, navigate]);
 
-  const handleUnlock = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!encryptionSalt) return;
-    setUnlockLoading(true);
-    setUnlockError(null);
-    try {
-      await deriveKey(unlockPassword, encryptionSalt);
-      setLocked(false);
-      setUnlockPassword('');
-    } catch {
-      setUnlockError('Incorrect password. Please try again.');
-    } finally {
-      setUnlockLoading(false);
-    }
-  }, [deriveKey, unlockPassword, encryptionSalt]);
-
-  if (locked) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-muted">
-        <div className="w-full max-w-sm rounded-lg border border-border bg-background p-8 space-y-6">
-          <div className="flex flex-col items-center gap-2 text-center">
-            <LockClosedIcon className="h-8 w-8 text-muted-foreground" />
-            <h1 className="text-lg font-semibold">Vault locked</h1>
-            <p className="text-sm text-muted-foreground">
-              Enter your password to unlock your vault.
-            </p>
-          </div>
-          <form onSubmit={handleUnlock} className="space-y-4">
-            <div className="space-y-1">
-              <Label htmlFor="unlock-password">Password</Label>
-              <Input
-                id="unlock-password"
-                type="password"
-                autoFocus
-                autoComplete="current-password"
-                value={unlockPassword}
-                onChange={e => setUnlockPassword(e.target.value)}
-                required
-              />
-            </div>
-            {unlockError && <p className="text-sm text-destructive">{unlockError}</p>}
-            <Button type="submit" className="w-full" disabled={unlockLoading}>
-              {unlockLoading ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-2" />Unlocking…</> : 'Unlock'}
-            </Button>
-          </form>
-          <div className="text-center">
-            <button
-              type="button"
-              className="text-xs text-muted-foreground hover:underline"
-              onClick={() => { logout(); navigate('/login', { replace: true }); }}
-            >
-              Sign out instead
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
+  const isAdminRoute = pathname.startsWith('/ui/admin');
   const shellContext: VaultShellContext = { vaults, catalog, refreshVaults };
 
   return (
@@ -176,6 +105,7 @@ export function VaultShell() {
             <VaultSidebar
               vaults={vaults}
               plan={plan ?? 'free'}
+              role={role ?? 'user'}
               onLogout={handleLogout}
               onCreateVault={handleCreateVault}
               onRenameVault={handleRenameVault}
@@ -183,7 +113,10 @@ export function VaultShell() {
               onEmailVault={handleEmailVault}
             />
             <SidebarInset className="flex flex-col overflow-hidden">
-              <ShellHeader breadcrumbs={<VaultBreadcrumbs />} secondsLeft={secondsLeft} />
+              <ShellHeader
+                breadcrumbs={isAdminRoute ? <AdminBreadcrumbs /> : <VaultBreadcrumbs />}
+                secondsLeft={secondsLeft}
+              />
               <main className="flex-1 overflow-auto bg-muted p-6">
                 <Outlet />
               </main>

@@ -21,9 +21,13 @@ export class PassVaultStack extends cdk.Stack {
   constructor(scope: Construct, id: string, config: EnvironmentConfig, props?: PassVaultStackProps) {
     super(scope, id, props);
 
-    // Alert email for SES notifications. Provide via:
-    //   cdk deploy --context alertEmail=you@example.com
-    const alertEmail = this.node.tryGetContext('alertEmail') as string | undefined;
+    // Admin email — used as the initial administrator username and as the SES alert recipient.
+    // Required for all stacks. Provide via:
+    //   cdk deploy --context adminEmail=you@example.com
+    const adminEmail = this.node.tryGetContext('adminEmail') as string | undefined;
+    if (!adminEmail) {
+      throw new Error('CDK context variable "adminEmail" is required. Pass --context adminEmail=you@example.com');
+    }
 
     // 1. Storage: DynamoDB + S3 buckets
     const storage = new StorageConstruct(this, 'Storage', config);
@@ -130,11 +134,11 @@ export class PassVaultStack extends cdk.Stack {
     //
     // All Route53 DNS records (DKIM, SPF, MX, DMARC) are created on deploy
     // and destroyed on cdk destroy.
-    if (killSwitchTopic && alertEmail && props?.domain) {
+    if (killSwitchTopic && props?.domain) {
       const senderDomain = `${config.subdomain}.${props.domain}`;
       const sesNotifier = new SesNotifierConstruct(this, 'SesNotifier', {
         topic: killSwitchTopic,
-        alertEmail,
+        alertEmail: adminEmail,
         senderDomain,
         rootDomain: props.domain,
         environment: config.environment,
@@ -159,6 +163,11 @@ export class PassVaultStack extends cdk.Stack {
     }
 
     // Stack outputs
+    new cdk.CfnOutput(this, 'AdminEmail', {
+      value: adminEmail,
+      description: 'Initial administrator username (email address)',
+    });
+
     new cdk.CfnOutput(this, 'ApiUrl', {
       value: backend.api.url,
       description: 'API Gateway endpoint URL',

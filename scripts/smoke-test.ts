@@ -311,7 +311,6 @@ async function main() {
       assert(r.status === 200, `expected 200, got ${r.status}: ${r.error}`);
       assert(r.ok, `success=false: ${r.error}`);
       assert(typeof r.data?.token === 'string' && r.data.token.length > 0, 'missing token');
-      assertField(r.data!, 'encryptionSalt', 'string');
       adminToken = r.data!.token;
 
       const flags: string[] = [];

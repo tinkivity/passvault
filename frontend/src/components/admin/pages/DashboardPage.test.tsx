@@ -70,12 +70,12 @@ describe('DashboardPage', () => {
     await waitFor(() => expect(screen.getByText('7')).toBeInTheDocument());
   });
 
-  it('user count links to /admin/users', async () => {
+  it('user count links to /ui/admin/users', async () => {
     setupMock({ totalUsers: 3, totalVaultSizeBytes: 0, loginsLast7Days: 0 });
     renderPage();
     await waitFor(() => {
       const link = screen.getByRole('link', { name: '3' });
-      expect(link).toHaveAttribute('href', '/admin/users');
+      expect(link).toHaveAttribute('href', '/ui/admin/users');
     });
   });
 
@@ -91,12 +91,12 @@ describe('DashboardPage', () => {
     await waitFor(() => expect(screen.getByText('15')).toBeInTheDocument());
   });
 
-  it('login count links to /admin/logs/logins', async () => {
+  it('login count links to /ui/admin/logs/logins', async () => {
     setupMock({ totalUsers: 0, totalVaultSizeBytes: 0, loginsLast7Days: 42 });
     renderPage();
     await waitFor(() => {
       const link = screen.getByRole('link', { name: '42' });
-      expect(link).toHaveAttribute('href', '/admin/logs/logins');
+      expect(link).toHaveAttribute('href', '/ui/admin/logs/logins');
     });
   });
 

@@ -142,12 +142,16 @@ API_URL=$(_cfn_output ApiUrl) || {
 
 TABLE_NAME=$(_cfn_output UsersTableName)
 FILES_BUCKET_NAME=$(_cfn_output FilesBucketName)
+ADMIN_EMAIL=$(_cfn_output AdminEmail)
 
 if [[ -z "$API_URL" || "$API_URL" == "None" ]]; then
   echo "Error: ApiUrl output not found in stack $STACK." >&2; exit 1
 fi
 if [[ -z "$TABLE_NAME" || "$TABLE_NAME" == "None" ]]; then
   echo "Error: UsersTableName output not found in stack $STACK." >&2; exit 1
+fi
+if [[ -z "$ADMIN_EMAIL" || "$ADMIN_EMAIL" == "None" ]]; then
+  echo "Error: AdminEmail output not found in stack $STACK." >&2; exit 1
 fi
 if [[ "$ENV" == "dev" && ( -z "$FILES_BUCKET_NAME" || "$FILES_BUCKET_NAME" == "None" ) ]]; then
   echo "Error: FilesBucketName output not found in stack $STACK." >&2; exit 1
@@ -175,6 +179,7 @@ if [[ "$ENV" != "dev" ]]; then
 fi
 
 echo "  API URL          : $API_URL"
+echo "  Admin email      : $ADMIN_EMAIL"
 [[ "$ENV" != "dev" ]] && echo "  Frontend bucket  : $FRONTEND_BUCKET"
 [[ "$ENV" != "dev" ]] && echo "  CloudFront URL   : $CLOUDFRONT_URL"
 echo "  DynamoDB table   : $TABLE_NAME"
@@ -187,7 +192,7 @@ ADMIN_COUNT=$(aws dynamodb query \
   --table-name "$TABLE_NAME" \
   --index-name "username-index" \
   --key-condition-expression "username = :u" \
-  --expression-attribute-values '{":u":{"S":"admin"}}' \
+  --expression-attribute-values "{\":u\":{\"S\":\"$ADMIN_EMAIL\"}}" \
   --region "$REGION" \
   --query "Count" \
   --output text)
@@ -200,6 +205,7 @@ if [[ "$ADMIN_COUNT" -eq 0 ]]; then
   echo ""
   ENVIRONMENT="$ENV" \
   DYNAMODB_TABLE="$TABLE_NAME" \
+  ADMIN_EMAIL="$ADMIN_EMAIL" \
     npx tsx "$REPO_ROOT/scripts/init-admin.ts"
   echo ""
   echo "⚠  Save the one-time password above before continuing."

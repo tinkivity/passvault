@@ -8,7 +8,7 @@ import { createHoneypot, getHoneypotFields } from '../services/honeypot.js';
 
 export function useAuth() {
   const { token, role, username, firstName, lastName, displayName, status, plan, loginEventId, setAuth, clearAuth, patchAuth } = useAuthContext();
-  const { deriveKey, clearKey } = useEncryptionContext();
+  const { clearKey } = useEncryptionContext();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,17 +37,12 @@ export function useAuth() {
   const completeLogin = useCallback(async (
     passkeyToken: string,
     password: string,
-    encryptionSalt: string,
   ) => {
     setLoading(true);
     setError(null);
     try {
       const honeypot = createHoneypot();
       const res = await api.login({ passkeyToken, password }, getHoneypotFields(honeypot));
-
-      if (res.role === 'user') {
-        await deriveKey(password, encryptionSalt);
-      }
 
       setAuth({
         token: res.token,
@@ -62,7 +57,6 @@ export function useAuth() {
             ? 'pending_passkey_setup'
             : 'active',
         plan: res.plan ?? null,
-        encryptionSalt,
         loginEventId: res.loginEventId ?? null,
       });
 
@@ -74,7 +68,7 @@ export function useAuth() {
     } finally {
       setLoading(false);
     }
-  }, [setAuth, deriveKey]);
+  }, [setAuth]);
 
   // dev/beta direct login: username + password (works for both user and admin roles)
   const login = useCallback(async (username: string, password: string) => {
@@ -83,10 +77,6 @@ export function useAuth() {
     try {
       const honeypot = createHoneypot();
       const res = await api.login({ username, password }, getHoneypotFields(honeypot));
-
-      if (res.role === 'user') {
-        await deriveKey(password, res.encryptionSalt);
-      }
 
       setAuth({
         token: res.token,
@@ -97,7 +87,6 @@ export function useAuth() {
         displayName: res.displayName ?? null,
         status: res.requirePasswordChange ? 'pending_first_login' : 'active',
         plan: res.plan ?? null,
-        encryptionSalt: res.encryptionSalt,
         loginEventId: res.loginEventId ?? null,
       });
 
@@ -109,7 +98,7 @@ export function useAuth() {
     } finally {
       setLoading(false);
     }
-  }, [setAuth, deriveKey]);
+  }, [setAuth]);
 
   const changePassword = useCallback(async (req: ChangePasswordRequest) => {
     if (!token) throw new Error('Not authenticated');
@@ -117,7 +106,6 @@ export function useAuth() {
     setError(null);
     try {
       await api.changePassword(req, token);
-      // Re-derive key with new password using existing salt
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Password change failed';
       setError(msg);

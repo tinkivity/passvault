@@ -181,7 +181,7 @@ export async function getLoginCountSince(isoTimestamp: string): Promise<number> 
 
 // ---- Vault CRUD -----------------------------------------------------------
 
-export async function createVaultRecord(vaultId: string, userId: string, displayName: string): Promise<void> {
+export async function createVaultRecord(vaultId: string, userId: string, displayName: string, encryptionSalt: string): Promise<void> {
   await docClient.send(
     new PutCommand({
       TableName: VAULTS_TABLE,
@@ -189,6 +189,7 @@ export async function createVaultRecord(vaultId: string, userId: string, display
         vaultId,
         userId,
         displayName,
+        encryptionSalt,
         createdAt: new Date().toISOString(),
       },
       ConditionExpression: 'attribute_not_exists(vaultId)',
@@ -196,14 +197,14 @@ export async function createVaultRecord(vaultId: string, userId: string, display
   );
 }
 
-export async function getVaultRecord(vaultId: string): Promise<{ vaultId: string; userId: string; displayName: string; createdAt: string } | null> {
+export async function getVaultRecord(vaultId: string): Promise<{ vaultId: string; userId: string; displayName: string; encryptionSalt: string; createdAt: string } | null> {
   const result = await docClient.send(
     new GetCommand({
       TableName: VAULTS_TABLE,
       Key: { vaultId },
     }),
   );
-  return (result.Item as { vaultId: string; userId: string; displayName: string; createdAt: string }) || null;
+  return (result.Item as { vaultId: string; userId: string; displayName: string; encryptionSalt: string; createdAt: string }) || null;
 }
 
 export async function listVaultsByUser(userId: string): Promise<VaultSummary[]> {

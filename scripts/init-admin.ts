@@ -6,7 +6,12 @@
  * Run once after the first `cdk deploy`.
  *
  * Usage:
- *   ENVIRONMENT=dev npx tsx scripts/init-admin.ts
+ *   ENVIRONMENT=dev ADMIN_EMAIL=you@example.com npx tsx scripts/init-admin.ts
+ *
+ * The admin email is also available from the CloudFormation AdminEmail output:
+ *   aws cloudformation describe-stacks --stack-name PassVault-Dev \
+ *     --query "Stacks[0].Outputs[?OutputKey=='AdminEmail'].OutputValue | [0]" \
+ *     --output text
  *
  * Requires AWS credentials in the environment (profile, EC2 role, etc.)
  * and the DynamoDB table to already exist.
@@ -25,6 +30,14 @@ const ENV = process.env.ENVIRONMENT ?? 'dev';
 const config = getEnvironmentConfig(ENV);
 const TABLE = process.env.DYNAMODB_TABLE ?? `passvault-users-${ENV}`;
 const REGION = config.region;
+
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
+if (!ADMIN_EMAIL) {
+  console.error('Error: ADMIN_EMAIL environment variable is required.');
+  console.error('  ENVIRONMENT=dev ADMIN_EMAIL=you@example.com npx tsx scripts/init-admin.ts');
+  console.error('  (The email is also in the CloudFormation AdminEmail output)');
+  process.exit(1);
+}
 
 const BCRYPT_ROUNDS = 12;
 const OTP_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
@@ -62,7 +75,7 @@ async function usernameExists(username: string): Promise<boolean> {
 // ---- Main -----------------------------------------------------------------
 
 async function main() {
-  const adminUsername = config.adminUsername;
+  const adminUsername = ADMIN_EMAIL!;
 
   console.log(`\nPassVault Admin Init`);
   console.log(`  Environment : ${ENV}`);
@@ -91,7 +104,7 @@ async function main() {
     passwordHash,
     role: 'admin',
     status: 'pending_first_login',
-    plan: 'free',
+    plan: 'administrator',
     oneTimePasswordHash: passwordHash,
     passkeyCredentialId: null,
     passkeyPublicKey: null,
@@ -105,6 +118,7 @@ async function main() {
     failedLoginAttempts: 0,
     lockedUntil: null,
     otpExpiresAt: null,
+    expiresAt: null,
   };
 
   await dynamo.send(

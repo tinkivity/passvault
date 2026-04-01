@@ -5,7 +5,7 @@ import { PassVaultStack } from '../../lib/passvault-stack.js';
 import { devConfig } from '@passvault/shared';
 
 function makeDevTemplate() {
-  const app = new App();
+  const app = new App({ context: { adminEmail: 'admin@example.com' } });
   const stack = new PassVaultStack(app, 'TestStack', devConfig, {
     env: { account: '123456789012', region: 'eu-central-1' },
   });
@@ -29,6 +29,10 @@ describe('PassVaultStack (dev)', () => {
 
   it('creates no SNS topic (killSwitchEnabled=false and monitoring disabled in dev)', () => {
     template.resourceCountIs('AWS::SNS::Topic', 0);
+  });
+
+  it('outputs the AdminEmail', () => {
+    template.hasOutput('AdminEmail', {});
   });
 
   it('outputs the ApiUrl', () => {

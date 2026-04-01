@@ -41,6 +41,8 @@ const pendingUser: UserSummary = {
   createdAt: '2024-01-15T00:00:00Z',
   lastLoginAt: null,
   vaultSizeBytes: 2048,
+  vaultCount: 1,
+  vaults: [{ vaultId: 'v1', displayName: 'Personal' }],
   expiresAt: '2026-12-31',
   firstName: 'Bob',
   lastName: 'Smith',
@@ -62,11 +64,11 @@ const activeUser: UserSummary = {
 function renderDetail(user?: UserSummary) {
   return render(
     <MemoryRouter
-      initialEntries={[{ pathname: `/admin/users/${user?.userId ?? 'u1'}`, state: user ? { user } : undefined }]}
+      initialEntries={[{ pathname: `/ui/admin/users/${user?.userId ?? 'u1'}`, state: user ? { user } : undefined }]}
     >
       <Routes>
-        <Route path="/admin/users/:userId" element={<UserDetailPage />} />
-        <Route path="/admin/users" element={<div>Users List</div>} />
+        <Route path="/ui/admin/users/:userId" element={<UserDetailPage />} />
+        <Route path="/ui/admin/users" element={<div>Users List</div>} />
       </Routes>
     </MemoryRouter>,
   );

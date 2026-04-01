@@ -115,7 +115,6 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
     token,
     role: user.role,
     username: user.username,
-    encryptionSalt: user.encryptionSalt,
     plan: user.plan,
     loginEventId,
     firstName: user.firstName ?? null,

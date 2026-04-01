@@ -38,12 +38,12 @@ export function useAdmin(token: string | null) {
     }
   }, [token]);
 
-  const downloadUserVault = useCallback(async (userId: string, username: string): Promise<void> => {
+  const downloadUserVault = useCallback(async (userId: string, username: string, vaultId?: string): Promise<void> => {
     if (!token) throw new Error('Not authenticated');
     setLoading(true);
     setError(null);
     try {
-      const res = await api.downloadUserVault(userId, token);
+      const res = await api.downloadUserVault(userId, token, vaultId);
       const blob = new Blob([JSON.stringify(res, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');

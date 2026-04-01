@@ -98,7 +98,7 @@ export function useVault(vaultId: string | null, token: string | null) {
       if (!res.encryptedContent) {
         return { version: 1, items: [] };
       }
-      const plaintext = await decrypt(res.encryptedContent);
+      const plaintext = await decrypt(vaultId, res.encryptedContent);
       const vaultFile = migrateToVaultFile(plaintext);
 
       // Recompute warnings on load in case any items are missing them
@@ -109,7 +109,7 @@ export function useVault(vaultId: string | null, token: string | null) {
         JSON.stringify(item.warningCodes) !== JSON.stringify(vaultFile.items[i]?.warningCodes),
       );
       if (warningsChanged) {
-        const encryptedContent = await encrypt(JSON.stringify(withWarnings));
+        const encryptedContent = await encrypt(vaultId, JSON.stringify(withWarnings));
         const putRes = await api.putVault(vaultId, { encryptedContent }, token);
         setLastModified(putRes.lastModified);
       }
@@ -130,7 +130,7 @@ export function useVault(vaultId: string | null, token: string | null) {
     setError(null);
     try {
       const withWarnings: VaultFile = { ...vaultFile, items: computeWarnings(vaultFile.items) };
-      const encryptedContent = await encrypt(JSON.stringify(withWarnings));
+      const encryptedContent = await encrypt(vaultId, JSON.stringify(withWarnings));
       const res = await api.putVault(vaultId, { encryptedContent }, token);
       setLastModified(res.lastModified);
       return withWarnings;

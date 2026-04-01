@@ -92,7 +92,6 @@ export async function adminLogin(request: LoginRequest): Promise<{ response?: Lo
     token,
     role: user.role,
     username: user.username,
-    encryptionSalt: user.encryptionSalt,
     loginEventId,
   };
 
@@ -141,6 +140,11 @@ export async function createUserInvitation(
   // Validate username as email
   if (!request.username || !LIMITS.EMAIL_PATTERN.test(request.username) || request.username.length > LIMITS.EMAIL_MAX_LENGTH) {
     return { error: ERRORS.INVALID_EMAIL, statusCode: 400 };
+  }
+
+  // Reject reserved plan value
+  if (request.plan === 'administrator') {
+    return { error: ERRORS.FORBIDDEN, statusCode: 400 };
   }
 
   // Check if username already exists (excluding retired users — their usernames are renamed)
@@ -235,18 +239,21 @@ export async function createUserInvitation(
 
 export async function listUsers(): Promise<ListUsersResponse> {
   const users = await listAllUsers();
-  // Filter out admin users and retired users
-  const regularUsers = users.filter((u) => u.role === 'user' && u.status !== 'retired');
+  // Filter out retired users
+  const regularUsers = users.filter((u) => u.status !== 'retired');
 
-  const vaultSizes = await Promise.all(
+  const { getVaultFileSize } = await import('../utils/s3.js');
+  const vaultData = await Promise.all(
     regularUsers.map(async (u) => {
       const vaults = await listVaultsByUser(u.userId);
-      if (vaults.length === 0) return null;
-      // Sum sizes across all vaults (for now return first vault size as proxy)
-      // In a future enhancement, sum all vault sizes
-      const { getVaultFileSize } = await import('../utils/s3.js');
+      if (vaults.length === 0) return { sizeBytes: null, count: 0, stubs: [] as { vaultId: string; displayName: string }[] };
       const sizes = await Promise.all(vaults.map((v) => getVaultFileSize(v.vaultId)));
-      return sizes.reduce<number>((sum, s) => sum + (s ?? 0), 0);
+      const totalSize = sizes.reduce<number>((sum, s) => sum + (s ?? 0), 0);
+      return {
+        sizeBytes: totalSize,
+        count: vaults.length,
+        stubs: vaults.map((v) => ({ vaultId: v.vaultId, displayName: v.displayName })),
+      };
     }),
   );
 
@@ -258,7 +265,9 @@ export async function listUsers(): Promise<ListUsersResponse> {
       plan: u.plan,
       createdAt: u.createdAt,
       lastLoginAt: u.lastLoginAt,
-      vaultSizeBytes: vaultSizes[i],
+      vaultSizeBytes: vaultData[i].sizeBytes,
+      vaultCount: vaultData[i].count,
+      vaults: vaultData[i].stubs,
       firstName: u.firstName ?? null,
       lastName: u.lastName ?? null,
       displayName: u.displayName ?? null,

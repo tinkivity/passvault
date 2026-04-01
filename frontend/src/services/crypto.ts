@@ -1,14 +1,14 @@
 import { argon2id } from 'hash-wasm';
 import { ARGON2_PARAMS, AES_PARAMS, SALT_LENGTH } from '@passvault/shared';
 
-// Derived key held in memory — never serialized
-let derivedKey: CryptoKey | null = null;
+// Per-vault derived keys — never serialized
+const derivedKeys = new Map<string, CryptoKey>();
 
 /**
- * Derive an AES-256-GCM key from the user's password and their stored salt.
+ * Derive an AES-256-GCM key from a vault password and its stored salt.
  * The salt is base64-encoded (as stored in DynamoDB).
  */
-export async function deriveKey(password: string, saltBase64: string): Promise<void> {
+export async function deriveKey(vaultId: string, password: string, saltBase64: string): Promise<void> {
   const salt = base64ToBytes(saltBase64);
 
   const hashBytes = await argon2id({
@@ -21,27 +21,30 @@ export async function deriveKey(password: string, saltBase64: string): Promise<v
     outputType: 'binary',
   });
 
-  derivedKey = await crypto.subtle.importKey(
+  const key = await crypto.subtle.importKey(
     'raw',
     hashBytes as Uint8Array<ArrayBuffer>,
     { name: AES_PARAMS.algorithm, length: AES_PARAMS.keyLength },
     false,
     ['encrypt', 'decrypt'],
   );
+
+  derivedKeys.set(vaultId, key);
 }
 
 /**
- * Encrypt plaintext string. Returns base64-encoded `iv || ciphertext`.
+ * Encrypt plaintext string for the given vault. Returns base64-encoded `iv || ciphertext`.
  */
-export async function encrypt(plaintext: string): Promise<string> {
-  if (!derivedKey) throw new Error('Encryption key not derived');
+export async function encrypt(vaultId: string, plaintext: string): Promise<string> {
+  const key = derivedKeys.get(vaultId);
+  if (!key) throw new Error('Encryption key not derived for vault');
 
   const iv = crypto.getRandomValues(new Uint8Array(AES_PARAMS.ivLength));
   const encoded = new TextEncoder().encode(plaintext);
 
   const ciphertext = await crypto.subtle.encrypt(
     { name: AES_PARAMS.algorithm, iv, tagLength: AES_PARAMS.tagLength },
-    derivedKey,
+    key,
     encoded,
   );
 
@@ -54,10 +57,11 @@ export async function encrypt(plaintext: string): Promise<string> {
 }
 
 /**
- * Decrypt base64-encoded `iv || ciphertext`. Returns plaintext string.
+ * Decrypt base64-encoded `iv || ciphertext` for the given vault. Returns plaintext string.
  */
-export async function decrypt(encryptedBase64: string): Promise<string> {
-  if (!derivedKey) throw new Error('Encryption key not derived');
+export async function decrypt(vaultId: string, encryptedBase64: string): Promise<string> {
+  const key = derivedKeys.get(vaultId);
+  if (!key) throw new Error('Encryption key not derived for vault');
 
   const combined = base64ToBytes(encryptedBase64);
   const iv = combined.slice(0, AES_PARAMS.ivLength);
@@ -65,7 +69,7 @@ export async function decrypt(encryptedBase64: string): Promise<string> {
 
   const plaintext = await crypto.subtle.decrypt(
     { name: AES_PARAMS.algorithm, iv, tagLength: AES_PARAMS.tagLength },
-    derivedKey,
+    key,
     ciphertext,
   );
 
@@ -74,7 +78,7 @@ export async function decrypt(encryptedBase64: string): Promise<string> {
 
 /**
  * Verify a password by attempting to decrypt a known encrypted blob.
- * Uses a temporary local key — does NOT overwrite the module-level derivedKey.
+ * Uses a temporary local key — does NOT overwrite any vault key.
  * Returns true if decryption succeeds, false if the password is wrong.
  */
 export async function verifyPassword(password: string, saltBase64: string, encryptedContent: string): Promise<boolean> {
@@ -116,14 +120,20 @@ export async function verifyPassword(password: string, saltBase64: string, encry
 }
 
 /**
- * Clear the in-memory key on logout.
+ * Clear the in-memory key(s) on logout or vault lock.
+ * If vaultId is provided, only that vault's key is removed.
+ * Otherwise all keys are cleared.
  */
-export function clearKey(): void {
-  derivedKey = null;
+export function clearKey(vaultId?: string): void {
+  if (vaultId !== undefined) {
+    derivedKeys.delete(vaultId);
+  } else {
+    derivedKeys.clear();
+  }
 }
 
-export function hasKey(): boolean {
-  return derivedKey !== null;
+export function hasKey(vaultId: string): boolean {
+  return derivedKeys.has(vaultId);
 }
 
 // ---- Helpers ----------------------------------------------------------------

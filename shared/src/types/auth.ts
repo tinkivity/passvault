@@ -9,7 +9,7 @@ export interface LoginResponse {
   token: string;
   role: 'admin' | 'user';
   username: string;
-  encryptionSalt: string;
+  encryptionSalt?: string;
   plan?: import('./user.js').UserPlan;
   requirePasswordChange?: boolean;
   requirePasskeySetup?: boolean;
@@ -65,7 +65,7 @@ export interface PasskeyVerifyRequest {
 export interface PasskeyVerifyResponse {
   passkeyToken: string;
   username: string;
-  encryptionSalt: string;
+  encryptionSalt?: string;
 }
 
 export interface PasskeyAuthenticatorAttestationResponse {

@@ -4,10 +4,10 @@ import { LoginPage } from './components/auth/LoginPage.js';
 import { PasswordChangePage } from './components/auth/PasswordChangePage.js';
 import { PasskeySetupPage } from './components/auth/PasskeySetupPage.js';
 import { VaultShell } from './components/vault/VaultShell.js';
+import { VaultUnlockPage } from './components/vault/pages/VaultUnlockPage.js';
 import { VaultItemsPage } from './components/vault/pages/VaultItemsPage.js';
 import { VaultItemNewPage } from './components/vault/pages/VaultItemNewPage.js';
 import { VaultItemDetailPage } from './components/vault/pages/VaultItemDetailPage.js';
-import { AdminShell } from './components/admin/AdminShell.js';
 import { DashboardPage } from './components/admin/pages/DashboardPage.js';
 import { UsersPage } from './components/admin/pages/UsersPage.js';
 import { UserDetailPage } from './components/admin/pages/UserDetailPage.js';
@@ -15,32 +15,38 @@ import { LoginsPage } from './components/admin/pages/LoginsPage.js';
 
 // ---- Guards ---------------------------------------------------------------
 
-function RequireAuth({ requiredRole }: { requiredRole?: 'admin' | 'user' }) {
+function RequireAuth() {
   const { token, role, status } = useAuthContext();
 
   if (!token) return <Navigate to="/login" replace />;
-  if (requiredRole && role !== requiredRole) return <Navigate to="/login" replace />;
 
   // Redirect users mid-onboarding to the right step
   if (status === 'pending_first_login') {
-    const path = role === 'admin' ? '/admin/change-password' : '/change-password';
-    return <Navigate to={path} replace />;
+    return <Navigate to="/change-password" replace />;
   }
   if (status === 'pending_passkey_setup') {
-    const path = role === 'admin' ? '/admin/passkey-setup' : '/passkey-setup';
-    return <Navigate to={path} replace />;
+    return <Navigate to="/passkey-setup" replace />;
   }
+
+  // Admin-only guard for admin sub-routes — handled via RequireAdmin below
+  void role;
 
   return <Outlet />;
 }
 
-function RequireOnboarding(props: { step: 'password' | 'passkey'; isAdmin?: boolean }) {
+function RequireAdmin() {
+  const { role } = useAuthContext();
+  if (role !== 'admin') return <Navigate to="/ui" replace />;
+  return <Outlet />;
+}
+
+function RequireOnboarding(props: { step: 'password' | 'passkey' }) {
   const { token, status } = useAuthContext();
   if (!token) return <Navigate to="/login" replace />;
 
   const expectedStatus = props.step === 'password' ? 'pending_first_login' : 'pending_passkey_setup';
   if (status !== expectedStatus) {
-    return <Navigate to={props.isAdmin ? '/admin/dashboard' : '/vault'} replace />;
+    return <Navigate to="/ui" replace />;
   }
 
   return <Outlet />;
@@ -51,10 +57,10 @@ function RequireOnboarding(props: { step: 'password' | 'passkey'; isAdmin?: bool
 export const router = createBrowserRouter([
   { index: true, element: <Navigate to="/login" replace /> },
 
-  // User login
+  // Login (both user and admin)
   { path: '/login', element: <LoginPage /> },
 
-  // User onboarding
+  // Onboarding (both user and admin share same routes)
   {
     path: '/change-password',
     element: <RequireOnboarding step="password" />,
@@ -66,48 +72,32 @@ export const router = createBrowserRouter([
     children: [{ index: true, element: <PasskeySetupPage /> }],
   },
 
-  // Vault (authenticated user)
+  // UI shell — unified for users and admins
   {
-    path: '/vault',
-    element: <RequireAuth requiredRole="user" />,
+    path: '/ui',
+    element: <RequireAuth />,
     children: [
       {
         element: <VaultShell />,
         children: [
-          { index: true, element: <></> },  // VaultShell auto-redirects to first vault on mount
+          { index: true, element: <></> },
+          { path: ':vaultId', element: <VaultUnlockPage /> },
           { path: ':vaultId/items', element: <VaultItemsPage /> },
           { path: ':vaultId/items/new', element: <VaultItemNewPage /> },
           { path: ':vaultId/items/:itemId', element: <VaultItemDetailPage /> },
-        ],
-      },
-    ],
-  },
 
-  // Admin onboarding
-  {
-    path: '/admin/change-password',
-    element: <RequireOnboarding step="password" isAdmin />,
-    children: [{ index: true, element: <PasswordChangePage isAdmin /> }],
-  },
-  {
-    path: '/admin/passkey-setup',
-    element: <RequireOnboarding step="passkey" isAdmin />,
-    children: [{ index: true, element: <PasskeySetupPage isAdmin /> }],
-  },
-
-  // Admin shell + pages (authenticated admin)
-  {
-    path: '/admin',
-    element: <RequireAuth requiredRole="admin" />,
-    children: [
-      { index: true, element: <Navigate to="/admin/dashboard" replace /> },
-      {
-        element: <AdminShell />,
-        children: [
-          { path: 'dashboard', element: <DashboardPage /> },
-          { path: 'users', element: <UsersPage /> },
-          { path: 'users/:userId', element: <UserDetailPage /> },
-          { path: 'logs/logins', element: <LoginsPage /> },
+          // Admin pages nested inside VaultShell
+          {
+            path: 'admin',
+            element: <RequireAdmin />,
+            children: [
+              { index: true, element: <Navigate to="/ui/admin/dashboard" replace /> },
+              { path: 'dashboard', element: <DashboardPage /> },
+              { path: 'users', element: <UsersPage /> },
+              { path: 'users/:userId', element: <UserDetailPage /> },
+              { path: 'logs/logins', element: <LoginsPage /> },
+            ],
+          },
         ],
       },
     ],

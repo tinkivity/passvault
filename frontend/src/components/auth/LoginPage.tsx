@@ -18,14 +18,9 @@ import logo from '../../assets/logo.png';
 const PASSKEY_REQUIRED = import.meta.env.VITE_PASSKEY_REQUIRED === 'true';
 
 function postLoginPath(role: string, requirePasswordChange?: boolean, requirePasskeySetup?: boolean): string {
-  if (role === 'admin') {
-    if (requirePasswordChange) return '/admin/change-password';
-    if (requirePasskeySetup) return '/admin/passkey-setup';
-    return '/admin/dashboard';
-  }
   if (requirePasswordChange) return '/change-password';
   if (requirePasskeySetup) return '/passkey-setup';
-  return '/vault';
+  return role === 'admin' ? '/ui/admin/dashboard' : '/ui';
 }
 
 export function LoginPage() {
@@ -33,7 +28,6 @@ export function LoginPage() {
   const { login, startPasskeyLogin, completeLogin, loading, error } = useAuth();
 
   const [passkeyToken, setPasskeyToken] = useState<string | null>(null);
-  const [encryptionSalt, setEncryptionSalt] = useState('');
   const [prefilledUsername, setPrefilledUsername] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -43,7 +37,6 @@ export function LoginPage() {
       const res = await startPasskeyLogin();
       setPasskeyToken(res.passkeyToken);
       setPrefilledUsername(res.username);
-      setEncryptionSalt(res.encryptionSalt);
     } catch {
       // error already set by useAuth
     }
@@ -53,7 +46,7 @@ export function LoginPage() {
     e.preventDefault();
     if (!passkeyToken) return;
     try {
-      const res = await completeLogin(passkeyToken, password, encryptionSalt);
+      const res = await completeLogin(passkeyToken, password);
       navigate(postLoginPath(res.role, res.requirePasswordChange, res.requirePasskeySetup));
     } catch {
       // error already set by useAuth

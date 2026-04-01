@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { NavLink, useNavigate, useParams } from 'react-router-dom';
-import { Vault, Plus, MoreHorizontal, Download, Mail, Pencil } from 'lucide-react';
+import { Vault, Plus, MoreHorizontal, Download, Mail, Pencil, Lock, LayoutDashboard, Users, ScrollText } from 'lucide-react';
 import type { VaultSummary } from '@passvault/shared';
 import { LIMITS } from '@passvault/shared';
 import logo from '../../assets/logo.png';
 import { NavUser } from '../shared/NavUser.js';
+import { useEncryptionContext } from '../../context/EncryptionContext.js';
 import {
   Sidebar,
   SidebarContent,
@@ -42,6 +43,7 @@ const isProd = import.meta.env.VITE_ENVIRONMENT === 'prod';
 interface VaultSidebarProps {
   vaults: VaultSummary[];
   plan: string;
+  role: 'user' | 'admin';
   onLogout: () => void;
   onCreateVault: (displayName: string) => Promise<void>;
   onRenameVault: (vaultId: string, displayName: string) => Promise<void>;
@@ -49,9 +51,10 @@ interface VaultSidebarProps {
   onEmailVault: (vaultId: string) => Promise<void>;
 }
 
-export function VaultSidebar({ vaults, plan, onLogout, onCreateVault, onRenameVault, onDownloadVault, onEmailVault }: VaultSidebarProps) {
+export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRenameVault, onDownloadVault, onEmailVault }: VaultSidebarProps) {
   const navigate = useNavigate();
   const { vaultId } = useParams<{ vaultId: string }>();
+  const { hasKey, clearKey } = useEncryptionContext();
   const [emailedVaultId, setEmailedVaultId] = useState<string | null>(null);
   const [renamingVault, setRenamingVault] = useState<VaultSummary | null>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -122,45 +125,56 @@ export function VaultSidebar({ vaults, plan, onLogout, onCreateVault, onRenameVa
             <SidebarGroupLabel>Vaults</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {vaults.map(vault => (
-                  <SidebarMenuItem key={vault.vaultId}>
-                    <SidebarMenuButton
-                      render={<NavLink to={`/vault/${vault.vaultId}/items`} />}
-                      isActive={vaultId === vault.vaultId}
-                      tooltip={vault.displayName}
-                    >
-                      <Vault className="h-4 w-4 shrink-0" />
-                      <span>{vault.displayName}</span>
-                    </SidebarMenuButton>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger render={<SidebarMenuAction showOnHover />}>
-                        <MoreHorizontal className="h-4 w-4" />
-                        <span className="sr-only">Vault actions</span>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent side="right" align="start">
-                        <DropdownMenuItem onClick={() => navigate(`/vault/${vault.vaultId}/items/new`)}>
-                          <Plus className="mr-2 h-4 w-4" />
-                          New item
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => openRename(vault)}>
-                          <Pencil className="mr-2 h-4 w-4" />
-                          Rename vault
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => onDownloadVault(vault.vaultId, vault.displayName)}>
-                          <Download className="mr-2 h-4 w-4" />
-                          Download vault
-                        </DropdownMenuItem>
-                        {isProd && (
-                          <DropdownMenuItem onClick={() => handleEmail(vault.vaultId)}>
-                            <Mail className="mr-2 h-4 w-4" />
-                            {emailedVaultId === vault.vaultId ? 'Email sent!' : 'Email vault'}
-                          </DropdownMenuItem>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </SidebarMenuItem>
-                ))}
+                {vaults.map(vault => {
+                  const unlocked = hasKey(vault.vaultId);
+                  const vaultTo = unlocked ? `/ui/${vault.vaultId}/items` : `/ui/${vault.vaultId}`;
+                  return (
+                    <SidebarMenuItem key={vault.vaultId}>
+                      <SidebarMenuButton
+                        render={<NavLink to={vaultTo} />}
+                        isActive={vaultId === vault.vaultId}
+                        tooltip={vault.displayName}
+                      >
+                        <Vault className="h-4 w-4 shrink-0" />
+                        <span>{vault.displayName}</span>
+                      </SidebarMenuButton>
+                      {unlocked && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger render={<SidebarMenuAction showOnHover />}>
+                            <MoreHorizontal className="h-4 w-4" />
+                            <span className="sr-only">Vault actions</span>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent side="right" align="start">
+                            <DropdownMenuItem onClick={() => navigate(`/ui/${vault.vaultId}/items/new`)}>
+                              <Plus className="mr-2 h-4 w-4" />
+                              New item
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openRename(vault)}>
+                              <Pencil className="mr-2 h-4 w-4" />
+                              Rename vault
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => { clearKey(vault.vaultId); navigate(`/ui/${vault.vaultId}`); }}>
+                              <Lock className="mr-2 h-4 w-4" />
+                              Close vault
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => onDownloadVault(vault.vaultId, vault.displayName)}>
+                              <Download className="mr-2 h-4 w-4" />
+                              Download vault
+                            </DropdownMenuItem>
+                            {isProd && (
+                              <DropdownMenuItem onClick={() => handleEmail(vault.vaultId)}>
+                                <Mail className="mr-2 h-4 w-4" />
+                                {emailedVaultId === vault.vaultId ? 'Email sent!' : 'Email vault'}
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      )}
+                    </SidebarMenuItem>
+                  );
+                })}
                 {canCreate && (
                   <SidebarMenuItem>
                     <SidebarMenuButton onClick={() => setShowDialog(true)} tooltip="New Vault">
@@ -172,10 +186,38 @@ export function VaultSidebar({ vaults, plan, onLogout, onCreateVault, onRenameVa
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
+
+          {role === 'admin' && (
+            <SidebarGroup>
+              <SidebarGroupLabel>Administration</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton render={<NavLink to="/ui/admin/dashboard" />} tooltip="Dashboard">
+                      <LayoutDashboard className="h-4 w-4 shrink-0" />
+                      <span>Dashboard</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton render={<NavLink to="/ui/admin/users" />} tooltip="Users">
+                      <Users className="h-4 w-4 shrink-0" />
+                      <span>Users</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton render={<NavLink to="/ui/admin/logs/logins" />} tooltip="Logins">
+                      <ScrollText className="h-4 w-4 shrink-0" />
+                      <span>Logins</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )}
         </SidebarContent>
 
         <SidebarFooter className="border-t border-sidebar-border">
-          <NavUser role="user" onLogout={onLogout} />
+          <NavUser onLogout={onLogout} />
         </SidebarFooter>
 
         <SidebarRail />

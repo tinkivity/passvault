@@ -13,6 +13,8 @@ const mockUsers: UserSummary[] = [
     createdAt: '2024-01-15T00:00:00Z',
     lastLoginAt: '2024-03-01T00:00:00Z',
     vaultSizeBytes: 1024,
+    vaultCount: 1,
+    vaults: [{ vaultId: 'v1', displayName: 'Personal' }],
     expiresAt: '2026-12-31',
   },
   {
@@ -23,6 +25,8 @@ const mockUsers: UserSummary[] = [
     createdAt: '2024-02-01T00:00:00Z',
     lastLoginAt: null,
     vaultSizeBytes: null,
+    vaultCount: 1,
+    vaults: [{ vaultId: 'v2', displayName: 'Personal' }],
     expiresAt: null,
   },
   {
@@ -33,6 +37,8 @@ const mockUsers: UserSummary[] = [
     createdAt: '2024-01-20T00:00:00Z',
     lastLoginAt: '2024-02-15T00:00:00Z',
     vaultSizeBytes: 512,
+    vaultCount: 1,
+    vaults: [{ vaultId: 'v3', displayName: 'Personal' }],
     expiresAt: '2025-06-30',
   },
 ];
@@ -208,7 +214,7 @@ describe('UserList', () => {
     );
     await userEvent.click(screen.getByRole('button', { name: "Actions for alice@example.com" }));
     await userEvent.click(await screen.findByText(/download vault/i));
-    expect(onDownload).toHaveBeenCalledWith('u2', 'alice@example.com');
+    expect(onDownload).toHaveBeenCalledWith('u2', 'alice@example.com', 'v2');
   });
 
   it('shows the email column with user emails', () => {

@@ -275,22 +275,22 @@ async function seedUser(user: SeedUser): Promise<CreatedUser> {
     }),
   );
 
-  const saltBuf = Buffer.from(encryptionSalt, 'base64');
-
   // Create each vault record + S3 file
   for (const vault of user.vaults) {
     const vaultId = uuidv4();
+    const vaultEncryptionSalt = randomBytes(SALT_BYTES).toString('base64');
+    const vaultSaltBuf = Buffer.from(vaultEncryptionSalt, 'base64');
 
     await dynamo.send(
       new PutCommand({
         TableName: VAULTS_TABLE,
-        Item: { vaultId, userId, displayName: vault.displayName, createdAt: now },
+        Item: { vaultId, userId, displayName: vault.displayName, encryptionSalt: vaultEncryptionSalt, createdAt: now },
         ConditionExpression: 'attribute_not_exists(vaultId)',
       }),
     );
 
     const vaultFile: VaultFile = { version: 1, items: vault.items as VaultFile['items'] };
-    const encryptedContent = await encryptVault(vaultFile, user.password, saltBuf);
+    const encryptedContent = await encryptVault(vaultFile, user.password, vaultSaltBuf);
 
     await s3.send(
       new PutObjectCommand({

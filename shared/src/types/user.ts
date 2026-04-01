@@ -17,7 +17,7 @@ export type UserStatus =
   | 'expired'                     // can login and read; cannot write
   | 'retired';                    // renamed username; effectively non-existent
 
-export type UserPlan = 'free' | 'pro';
+export type UserPlan = 'free' | 'pro' | 'administrator';
 
 export interface User {
   userId: string;

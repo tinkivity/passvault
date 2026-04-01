@@ -3,27 +3,27 @@ import { Breadcrumbs } from '../shared/Breadcrumbs.js';
 import type { Crumb } from '../shared/Breadcrumbs.js';
 
 function buildCrumbs(pathname: string, state: unknown): Crumb[] {
-  if (pathname === '/admin/dashboard' || pathname === '/admin' || pathname === '/admin/') {
+  if (pathname === '/ui/admin/dashboard' || pathname === '/ui/admin' || pathname === '/ui/admin/') {
     return [{ label: 'Admin' }];
   }
-  if (pathname === '/admin/users') {
+  if (pathname === '/ui/admin/users') {
     return [
-      { label: 'Admin', to: '/admin/dashboard' },
+      { label: 'Admin', to: '/ui/admin/dashboard' },
       { label: 'Users' },
     ];
   }
-  if (pathname.startsWith('/admin/users/')) {
+  if (pathname.startsWith('/ui/admin/users/')) {
     const username = (state as { user?: { username?: string } } | null)?.user?.username;
-    const userId = pathname.split('/admin/users/')[1];
+    const userId = pathname.split('/ui/admin/users/')[1];
     return [
-      { label: 'Admin', to: '/admin/dashboard' },
-      { label: 'Users', to: '/admin/users' },
+      { label: 'Admin', to: '/ui/admin/dashboard' },
+      { label: 'Users', to: '/ui/admin/users' },
       { label: username ?? userId },
     ];
   }
-  if (pathname === '/admin/logs/logins') {
+  if (pathname === '/ui/admin/logs/logins') {
     return [
-      { label: 'Admin', to: '/admin/dashboard' },
+      { label: 'Admin', to: '/ui/admin/dashboard' },
       { label: 'Logs' },
       { label: 'Logins' },
     ];

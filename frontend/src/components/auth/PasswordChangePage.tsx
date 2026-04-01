@@ -19,11 +19,7 @@ import logo from '../../assets/logo.png';
 
 const PASSKEY_REQUIRED = import.meta.env.VITE_PASSKEY_REQUIRED === 'true';
 
-interface PasswordChangePageProps {
-  isAdmin?: boolean;
-}
-
-export function PasswordChangePage({ isAdmin = false }: PasswordChangePageProps) {
+export function PasswordChangePage() {
   const navigate = useNavigate();
   const { changePassword, adminChangePassword, logout, loading, role } = useAuth();
   const { username } = useAuthContext();
@@ -48,7 +44,7 @@ export function PasswordChangePage({ isAdmin = false }: PasswordChangePageProps)
     }
 
     try {
-      if (isAdmin || role === 'admin') {
+      if (role === 'admin') {
         await adminChangePassword({ newPassword });
       } else {
         await changePassword({ newPassword });
@@ -61,10 +57,10 @@ export function PasswordChangePage({ isAdmin = false }: PasswordChangePageProps)
 
   const handleSuccessConfirm = () => {
     if (PASSKEY_REQUIRED) {
-      navigate(isAdmin || role === 'admin' ? '/admin/passkey-setup' : '/passkey-setup', { replace: true });
+      navigate('/passkey-setup', { replace: true });
     } else {
       logout();
-      navigate(isAdmin || role === 'admin' ? '/admin/login' : '/login', { replace: true });
+      navigate('/login', { replace: true });
     }
   };
 

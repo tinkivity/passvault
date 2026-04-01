@@ -96,11 +96,10 @@ export const LIMITS = {
   OTP_LENGTH: 16,
   USERNAME_MIN_LENGTH: 3,
   USERNAME_MAX_LENGTH: 30,
-  USERNAME_PATTERN: /^[a-zA-Z0-9_-]+$/,  // kept for admin username (legacy)
   EMAIL_PATTERN: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
   RATE_LIMIT_FAILED_ATTEMPTS: 5,
   RATE_LIMIT_WINDOW_MINUTES: 15,
   MAX_PASSWORD_LENGTH: 1024,
   EMAIL_MAX_LENGTH: 254,
-  VAULT_LIMITS: { free: 1, pro: 10 } as Record<string, number>,
+  VAULT_LIMITS: { free: 1, pro: 10, administrator: 10 } as Record<string, number>,
 } as const;

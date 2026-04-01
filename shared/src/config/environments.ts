@@ -5,7 +5,6 @@ export const devConfig: EnvironmentConfig = {
   environment: 'dev',
   region: 'eu-central-1',
   subdomain: 'dev.pv',
-  adminUsername: 'admin',
   features: {
     passkeyRequired: false,
     powEnabled: false,
@@ -30,7 +29,6 @@ export const betaConfig: EnvironmentConfig = {
   environment: 'beta',
   region: 'eu-central-1',
   subdomain: 'beta.pv',
-  adminUsername: 'admin',
   features: {
     passkeyRequired: false,
     powEnabled: true,
@@ -55,7 +53,6 @@ export const prodConfig: EnvironmentConfig = {
   environment: 'prod',
   region: 'eu-central-1',
   subdomain: 'pv',
-  adminUsername: 'admin',
   features: {
     passkeyRequired: true,
     powEnabled: true,

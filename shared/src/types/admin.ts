@@ -25,6 +25,11 @@ export interface CreateUserResponse {
   userId: string;
 }
 
+export interface UserVaultStub {
+  vaultId: string;
+  displayName: string;
+}
+
 export interface UserSummary {
   userId: string;
   username: string;
@@ -33,6 +38,8 @@ export interface UserSummary {
   createdAt: string;
   lastLoginAt: string | null;
   vaultSizeBytes: number | null;
+  vaultCount: number;
+  vaults: UserVaultStub[];
   firstName?: string | null;
   lastName?: string | null;
   displayName?: string | null;

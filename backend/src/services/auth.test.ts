@@ -101,12 +101,6 @@ describe('login — user not found (dev/beta)', () => {
     expect(result.statusCode).toBe(401);
   });
 
-  it('returns 401 when account has admin role', async () => {
-    mockGetUserByUsername.mockResolvedValue(makeUser({ role: 'admin' }));
-    const result = await login({ username: 'admin', password: 'pass' });
-    expect(result.error).toBe(ERRORS.INVALID_CREDENTIALS);
-    expect(result.statusCode).toBe(401);
-  });
 });
 
 describe('login — pending_first_login (dev/beta)', () => {

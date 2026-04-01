@@ -4,7 +4,7 @@ import { RefreshCw, Loader2 } from 'lucide-react';
 import Markdown from 'react-markdown';
 import type { VaultFile, VaultItem, VaultItemCategory, VaultSummary } from '@passvault/shared';
 import { useAuth } from '../../../hooks/useAuth.js';
-import { useAuthContext } from '../../../context/AuthContext.js';
+import { useVaultShellContext } from '../VaultShell.js';
 import { useVault } from '../../../hooks/useVault.js';
 import { verifyPassword } from '../../../services/crypto.js';
 import { generateSecurePassword } from '../../../lib/password-gen.js';
@@ -249,7 +249,8 @@ export function VaultItemDetailPage() {
   const { state } = useLocation();
   const vault = (state as { vault?: VaultSummary; item?: VaultItem } | null)?.vault;
   const { token, status } = useAuth();
-  const { encryptionSalt } = useAuthContext();
+  const { vaults } = useVaultShellContext();
+  const vaultSalt = vaults.find(v => v.vaultId === vaultId)?.encryptionSalt ?? null;
   const { fetchAndDecrypt, updateItem, deleteItem, rawEncryptedContent } = useVault(vaultId ?? null, token);
 
   const [vaultFile, setVaultFile] = useState<VaultFile | null>(null);
@@ -287,14 +288,14 @@ export function VaultItemDetailPage() {
 
   const handleDelete = async () => {
     if (!vaultFile || !item) return;
-    if (!encryptionSalt || !rawEncryptedContent) {
+    if (!vaultSalt || !rawEncryptedContent) {
       setDeleteError('Cannot verify password — vault not loaded.');
       return;
     }
     setDeleteVerifying(true);
     setDeleteError(null);
     try {
-      const ok = await verifyPassword(deletePassword, encryptionSalt, rawEncryptedContent);
+      const ok = await verifyPassword(deletePassword, vaultSalt, rawEncryptedContent);
       if (!ok) {
         setDeleteError('Incorrect password.');
         return;
@@ -309,7 +310,7 @@ export function VaultItemDetailPage() {
     try {
       const newFile = await deleteItem(vaultFile, item.id);
       setVaultFile(newFile);
-      navigate(`/vault/${vaultId}/items`, { state: { vault } });
+      navigate(`/ui/${vaultId}/items`, { state: { vault } });
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : 'Failed to delete');
     } finally {
@@ -322,7 +323,7 @@ export function VaultItemDetailPage() {
   if (!item) {
     return (
       <div className="space-y-4">
-        <Button variant="outline" size="sm" onClick={() => navigate(`/vault/${vaultId}/items`, { state: { vault } })}>
+        <Button variant="outline" size="sm" onClick={() => navigate(`/ui/${vaultId}/items`, { state: { vault } })}>
           ← Back
         </Button>
         {error && <p className="text-sm text-destructive">{error}</p>}
@@ -335,7 +336,7 @@ export function VaultItemDetailPage() {
   return (
     <div className="max-w-lg space-y-4">
       <div className="flex items-center gap-2">
-        <Button variant="outline" size="sm" onClick={() => navigate(`/vault/${vaultId}/items`, { state: { vault } })}>
+        <Button variant="outline" size="sm" onClick={() => navigate(`/ui/${vaultId}/items`, { state: { vault } })}>
           ← Back
         </Button>
         <h1 className="text-xl font-semibold truncate">{item.name}</h1>

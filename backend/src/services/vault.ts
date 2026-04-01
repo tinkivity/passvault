@@ -1,10 +1,12 @@
 import { v4 as uuidv4 } from 'uuid';
+import { randomBytes } from 'crypto';
 import {
   ERRORS,
   LIMITS,
   ARGON2_PARAMS,
   AES_PARAMS,
   ENCRYPTION_ALGORITHM,
+  SALT_LENGTH,
   type VaultGetResponse,
   type VaultPutRequest,
   type VaultPutResponse,
@@ -66,13 +68,15 @@ export async function createVault(
   }
 
   const vaultId = uuidv4();
-  await createVaultRecord(vaultId, userId, request.displayName);
+  const encryptionSalt = randomBytes(SALT_LENGTH).toString('base64');
+  await createVaultRecord(vaultId, userId, request.displayName, encryptionSalt);
   await putVaultFile(vaultId, '');
 
   const vault: VaultSummary = {
     vaultId,
     displayName: request.displayName,
     createdAt: new Date().toISOString(),
+    encryptionSalt,
   };
   return { response: vault };
 }
@@ -167,7 +171,7 @@ export async function downloadVault(
   return {
     response: {
       encryptedContent: file?.content || '',
-      encryptionSalt: user.encryptionSalt,
+      encryptionSalt: vault.encryptionSalt,
       algorithm: ENCRYPTION_ALGORITHM,
       parameters: {
         argon2: {
@@ -252,7 +256,8 @@ export async function getWarningCodes(): Promise<{ response?: WarningCodeDefinit
 /** Create the first vault for a newly invited user. Called from admin service. */
 export async function createFirstVault(userId: string): Promise<string> {
   const vaultId = uuidv4();
-  await createVaultRecord(vaultId, userId, 'Personal Vault');
+  const encryptionSalt = randomBytes(SALT_LENGTH).toString('base64');
+  await createVaultRecord(vaultId, userId, 'Personal Vault', encryptionSalt);
   await putVaultFile(vaultId, '');
   return vaultId;
 }

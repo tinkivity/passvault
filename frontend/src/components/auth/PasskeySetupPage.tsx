@@ -15,18 +15,14 @@ import {
 } from '@/components/ui/card';
 import logo from '../../assets/logo.png';
 
-interface PasskeySetupPageProps {
-  isAdmin?: boolean;
-}
-
 function getUserIdFromToken(token: string): string {
   const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
   return payload.userId as string;
 }
 
-export function PasskeySetupPage({ isAdmin = false }: PasskeySetupPageProps) {
+export function PasskeySetupPage() {
   const navigate = useNavigate();
-  const { token, username } = useAuthContext();
+  const { token, username, role } = useAuthContext();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,20 +31,19 @@ export function PasskeySetupPage({ isAdmin = false }: PasskeySetupPageProps) {
     setLoading(true);
     setError(null);
     try {
-      const { challengeJwt } = isAdmin
+      const { challengeJwt } = role === 'admin'
         ? await api.getAdminPasskeyRegisterChallenge(token)
         : await api.getPasskeyRegisterChallenge(token);
 
       const userId = getUserIdFromToken(token);
       const attestation = await registerPasskey(challengeJwt, userId, username);
 
-      if (isAdmin) {
+      if (role === 'admin') {
         await api.registerAdminPasskey({ challengeJwt, attestation }, token);
-        navigate('/admin/dashboard', { replace: true });
       } else {
         await api.registerPasskey({ challengeJwt, attestation }, token);
-        navigate('/vault', { replace: true });
       }
+      navigate('/ui', { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Passkey registration failed');
     } finally {

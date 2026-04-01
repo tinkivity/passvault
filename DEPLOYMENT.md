@@ -480,7 +480,7 @@ For full details on all defense layers and worst-case attack cost analysis, see 
 - HTTP/2 and HTTP/3 enabled
 - Compression: Enabled (gzip, brotli)
 - Default root object: `index.html`
-- SPA routing: A CloudFront Function (`passvault-spa-{env}`) on the default behavior rewrites all paths without a file extension to `/index.html`, so React Router routes (`/admin/login`, `/vault`, etc.) are served correctly. API paths (`/api/*`) are matched by the more-specific behavior first and never reach this function.
+- SPA routing: A CloudFront Function (`passvault-spa-{env}`) on the default behavior rewrites all paths without a file extension to `/index.html`, so React Router routes (`/login`, `/ui`, `/ui/admin/dashboard`, etc.) are served correctly. API paths (`/api/*`) are matched by the more-specific behavior first and never reach this function.
 
 **Custom domain (optional):** When `--context domain=example.com` is provided, the distribution is configured with a custom subdomain and an ACM certificate. Subdomains per environment:
 
@@ -516,13 +516,13 @@ All `cdk` commands accept context variables via `--context key=value`:
 |---|---|---|---|
 | `env` | **Yes** | All commands | Deployment environment. Must be `dev`, `beta`, or `prod`. Selects the environment config from `shared/src/config/environments.ts` and names the CloudFormation stack (`PassVault-Dev`, `PassVault-Beta`, `PassVault-Prod`). |
 | `domain` | No | `env=beta` or `env=prod` | Root domain name of an existing Route 53 hosted zone (e.g. `example.com`). When provided, CDK creates a `CertificateStack` in `us-east-1` and configures CloudFront with a custom subdomain (`pv.example.com` for prod, `beta.pv.example.com` for beta). Has no effect in dev (`cloudFrontEnabled` is false). Omit to use the auto-generated CloudFront URL. |
-| `alertEmail` | No | `env=beta` or `env=prod` | Email address to subscribe to the SNS alert topic. In prod: receives traffic spike alarms and daily cost alerts. In beta: receives kill switch activation notifications (useful when testing the kill switch manually). After deploy, AWS sends a confirmation email — the subscription is inactive until the link is clicked. Has no effect in dev (no SNS topic is created). |
+| `adminEmail` | **Yes** | All environments | Email address used as the initial administrator username. Also subscribes to the SNS alert topic in beta/prod: receives traffic spike alarms and cost alerts (prod) or kill switch activation notifications (beta). After deploy, AWS sends a confirmation email for the SNS subscription — inactive until clicked. |
 | `passkeyRpId` | `env=prod` | `env=prod` | WebAuthn relying party ID — the domain users will authenticate from (e.g. `vault.example.com`). Required when `passkeyRequired=true`. Can also be set via the `PASSKEY_RP_ID` environment variable before running `cdk deploy`. |
 | `passkeyOrigin` | `env=prod` | `env=prod` | WebAuthn relying party origin — the full origin URL (e.g. `https://vault.example.com`). Required when `passkeyRequired=true`. Can also be set via `PASSKEY_ORIGIN` environment variable. |
 
 **Minimal (dev):**
 ```bash
-cdk deploy PassVault-Dev --context env=dev
+cdk deploy PassVault-Dev --context env=dev --context adminEmail=you@example.com
 ```
 
 **With custom domain (beta):**
@@ -531,13 +531,10 @@ When `domain` is provided and `cloudFrontEnabled` is `true` (beta and prod), CDK
 
 ```bash
 # Recommended — CDK resolves the dependency order automatically
-cdk deploy --all --context env=beta --context domain=example.com
-
-# With alert emails for kill switch notifications (optional)
-cdk deploy --all --context env=beta --context domain=example.com --context alertEmail=you@example.com
+cdk deploy --all --context env=beta --context domain=example.com --context adminEmail=you@example.com
 
 # Equivalent explicit form
-cdk deploy PassVault-Beta-Cert PassVault-Beta --context env=beta --context domain=example.com
+cdk deploy PassVault-Beta-Cert PassVault-Beta --context env=beta --context domain=example.com --context adminEmail=you@example.com
 ```
 
 **Full production:**
@@ -545,7 +542,7 @@ cdk deploy PassVault-Beta-Cert PassVault-Beta --context env=beta --context domai
 cdk deploy --all \
   --context env=prod \
   --context domain=example.com \
-  --context alertEmail=you@example.com \
+  --context adminEmail=you@example.com \
   --context passkeyRpId=vault.example.com \
   --context passkeyOrigin=https://vault.example.com
 ```
@@ -619,7 +616,6 @@ export const prodConfig: EnvironmentConfig = {
   stackName: 'PassVault-Prod',
   environment: 'prod',
   region: 'eu-central-1',
-  adminUsername: 'admin',
 
   features: {
     passkeyRequired: true,   // Mandatory in prod
@@ -667,9 +663,9 @@ cdk doctor
 
 **Without custom domain:**
 ```bash
-cdk deploy PassVault-Dev --context env=dev
-cdk deploy PassVault-Beta --context env=beta
-cdk deploy PassVault-Prod --context env=prod --context alertEmail=you@example.com --require-approval broadening
+cdk deploy PassVault-Dev --context env=dev --context adminEmail=you@example.com
+cdk deploy PassVault-Beta --context env=beta --context adminEmail=you@example.com
+cdk deploy PassVault-Prod --context env=prod --context adminEmail=you@example.com --require-approval broadening
 ```
 
 **With custom domain** (requires an existing Route 53 hosted zone for the domain):
@@ -678,13 +674,13 @@ Providing `--context domain=...` when `cloudFrontEnabled` is `true` causes CDK t
 
 ```bash
 # Beta with custom domain — deploys PassVault-Beta-Cert (us-east-1) then PassVault-Beta (eu-central-1)
-cdk deploy --all --context env=beta --context domain=example.com
+cdk deploy --all --context env=beta --context domain=example.com --context adminEmail=you@example.com
 
 # Prod with custom domain — deploys PassVault-Prod-Cert (us-east-1) then PassVault-Prod (eu-central-1)
 cdk deploy --all \
   --context env=prod \
   --context domain=example.com \
-  --context alertEmail=you@example.com \
+  --context adminEmail=you@example.com \
   --require-approval broadening
 ```
 
@@ -712,11 +708,11 @@ The application will be accessible at `https://pv.example.com` once DNS propagat
 After infrastructure deployment, initialize the admin account:
 
 ```bash
-# Run from the repo root. ENVIRONMENT selects the config (admin username, region, table name).
-ENVIRONMENT=prod npx tsx scripts/init-admin.ts
+# Run from the repo root. ADMIN_EMAIL must match the adminEmail CDK context variable.
+ENVIRONMENT=prod ADMIN_EMAIL=you@example.com npx tsx scripts/init-admin.ts
 
 # If your AWS CLI default profile lacks access, export AWS_PROFILE first:
-AWS_PROFILE=my-profile ENVIRONMENT=prod npx tsx scripts/init-admin.ts
+AWS_PROFILE=my-profile ENVIRONMENT=prod ADMIN_EMAIL=you@example.com npx tsx scripts/init-admin.ts
 ```
 
 The script:
@@ -728,10 +724,10 @@ The script:
 ```
 ✓ Admin user created successfully.
 
-  Username          : admin
+  Username          : you@example.com
   One-time password : Xy9$mK2#pL4&nQ8@rT6
 
-Use these credentials to log in at /admin/login.
+Use these credentials to log in at /login.
 You will be prompted to set a new password on first login.
 ```
 
@@ -851,7 +847,7 @@ While still in sandbox, you can test by verifying individual recipient addresses
 **Domain verification** is handled automatically by the `SesNotifierConstruct` via DKIM CNAME records in Route 53 (when `--context domain=...` is provided). DKIM propagation can take a few minutes after first deploy — SES will not send until the identity shows **Verified** in the console. If you are not using a custom domain, verify the sender address manually in the SES console before deploying.
 
 **Alerts email vs transactional email:**
-- `alerts@{domain}` (via `--context alertEmail`) — SNS topic subscription. In prod: CloudWatch alarms and daily cost alerts. In beta: kill switch activation notifications. Requires `--context domain=...`.
+- `alerts@{domain}` (via `--context adminEmail`) — SNS topic subscription. In prod: CloudWatch alarms and daily cost alerts. In beta: kill switch activation notifications. Requires `--context domain=...`.
 - `noreply@{domain}` — `SENDER_EMAIL`; used for OTP delivery, vault email, and email-change verification codes
 
 **Troubleshooting email not sending:**
@@ -891,7 +887,7 @@ Work through these checks in order:
    If the attribute is absent, the Lambda code is stale. Rebuild and redeploy:
    ```bash
    cd backend && npm run build && cd ..
-   cdk deploy --all --context env=beta --context domain=example.com --context alertEmail=you@example.com
+   cdk deploy --all --context env=beta --context domain=example.com --context adminEmail=you@example.com
    ```
 
 5. **Check that `SENDER_EMAIL` is set on the Lambda.**
@@ -913,7 +909,7 @@ All CloudWatch alarms, the SNS alert topic, and the kill switch are deployed aut
 - **AWS Budget** — `$5/day` daily cost budget; sends alert to SNS topic at 100% threshold
 - **Kill switch Lambda** `passvault-kill-switch-prod` — subscribed to the SNS topic; on ALARM, sets all Lambda concurrency to 0 (API Gateway returns 429) and schedules auto-recovery via EventBridge Scheduler in 4 hours
 - **Re-enable Lambda** `passvault-kill-switch-reenable-prod` — invoked by EventBridge Scheduler 4 hours after kill switch fires; restores original Lambda reserved concurrency
-- **Email subscription** (optional) — pass `--context alertEmail=you@example.com` during `cdk deploy` to receive email alerts. Beta has an equivalent: the same context variable subscribes to the beta kill switch topic instead (see §7.3)
+- **Email subscription** (optional) — pass `--context adminEmail=you@example.com` during `cdk deploy` to receive email alerts. Beta has an equivalent: the same context variable subscribes to the beta kill switch topic instead (see §7.3)
 
 **Kill switch automatic recovery:** EventBridge Scheduler automatically re-enables Lambda functions 4 hours after the kill switch fires.
 

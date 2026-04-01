@@ -434,14 +434,15 @@ describe('createUserInvitation', () => {
 describe('listUsers', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('returns only regular users, not admins', async () => {
+  it('returns all non-retired users including admins', async () => {
     mockListAllUsers.mockResolvedValue([
       makeAdmin({ userId: 'admin-1', role: 'admin' }),
       makeAdmin({ userId: 'user-1', username: 'alice', role: 'user' }),
     ]);
     const result = await listUsers();
-    expect(result.users).toHaveLength(1);
-    expect(result.users[0].username).toBe('alice');
+    expect(result.users).toHaveLength(2);
+    const usernames = result.users.map(u => u.username);
+    expect(usernames).toContain('alice');
   });
 
   it('includes vault size for each user', async () => {

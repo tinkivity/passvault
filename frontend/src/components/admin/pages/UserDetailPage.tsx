@@ -69,7 +69,7 @@ export function UserDetailPage() {
   const [editExpiresAt, setEditExpiresAt] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
 
-  const handleBack = () => navigate('/admin/users');
+  const handleBack = () => navigate('/ui/admin/users');
 
   function startEdit() {
     if (!user) return;
@@ -149,7 +149,7 @@ export function UserDetailPage() {
 
   const handleDelete = async () => {
     await admin.deleteUser(user.userId);
-    navigate('/admin/users', { replace: true });
+    navigate('/ui/admin/users', { replace: true });
   };
 
   const handleLock = async () => {
@@ -169,7 +169,7 @@ export function UserDetailPage() {
 
   const handleRetire = async () => {
     await admin.retireUser(user.userId);
-    navigate('/admin/users', { replace: true });
+    navigate('/ui/admin/users', { replace: true });
   };
 
   const displayedName = user.displayName

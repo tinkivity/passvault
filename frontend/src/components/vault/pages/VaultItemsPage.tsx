@@ -87,7 +87,7 @@ export function VaultItemsPage() {
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-xl font-semibold truncate">{vault?.displayName ?? 'Vault'}</h1>
         {!isExpired && (
-          <Button size="sm" onClick={() => navigate(`/vault/${vaultId}/items/new`, { state: { vault } })}>
+          <Button size="sm" onClick={() => navigate(`/ui/${vaultId}/items/new`, { state: { vault } })}>
             <Plus className="h-4 w-4 mr-1" />
             New Item
           </Button>
@@ -153,7 +153,7 @@ export function VaultItemsPage() {
                   <TableRow
                     key={item.id}
                     className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => navigate(`/vault/${vaultId}/items/${item.id}`, { state: { vault, item } })}
+                    onClick={() => navigate(`/ui/${vaultId}/items/${item.id}`, { state: { vault, item } })}
                   >
                     <TableCell className="w-8">
                       {item.warningCodes.length > 0 && (

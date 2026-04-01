@@ -223,11 +223,11 @@ export class ApiClient {
     });
   }
 
-  async downloadUserVault(userId: string, token: string): Promise<VaultDownloadResponse> {
-    return this.request<VaultDownloadResponse>(
-      `${API_PATHS.ADMIN_USER_VAULT}?userId=${encodeURIComponent(userId)}`,
-      { method: 'GET', token, powDifficulty: POW_CONFIG.DIFFICULTY.HIGH },
-    );
+  async downloadUserVault(userId: string, token: string, vaultId?: string): Promise<VaultDownloadResponse> {
+    const url = vaultId
+      ? `${API_PATHS.ADMIN_USER_VAULT}?userId=${encodeURIComponent(userId)}&vaultId=${encodeURIComponent(vaultId)}`
+      : `${API_PATHS.ADMIN_USER_VAULT}?userId=${encodeURIComponent(userId)}`;
+    return this.request<VaultDownloadResponse>(url, { method: 'GET', token, powDifficulty: POW_CONFIG.DIFFICULTY.HIGH });
   }
 
   async refreshOtp(userId: string, token: string): Promise<{ username: string; oneTimePassword: string; userId: string }> {

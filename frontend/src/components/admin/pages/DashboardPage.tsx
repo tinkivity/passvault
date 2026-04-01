@@ -145,7 +145,7 @@ export function DashboardPage() {
         <MetricCard
           label="Users"
           value={statsLoading ? null : String(stats?.totalUsers ?? 0)}
-          linkTo="/admin/users"
+          linkTo="/ui/admin/users"
         />
         <MetricCard
           label="Vault Storage"
@@ -154,7 +154,7 @@ export function DashboardPage() {
         <MetricCard
           label="Logins (last 7 days)"
           value={statsLoading ? null : String(stats?.loginsLast7Days ?? 0)}
-          linkTo="/admin/logs/logins"
+          linkTo="/ui/admin/logs/logins"
         />
       </div>
 

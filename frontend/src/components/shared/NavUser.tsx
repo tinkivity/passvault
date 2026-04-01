@@ -31,12 +31,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
 interface NavUserProps {
-  role: 'user' | 'admin';
   onLogout: () => void;
 }
 
-export function NavUser({ role, onLogout }: NavUserProps) {
-  const { username, firstName, displayName, plan, adminChangePassword, loading } = useAuth();
+export function NavUser({ onLogout }: NavUserProps) {
+  const { username, firstName, displayName, role, plan, adminChangePassword, loading } = useAuth();
   const { isMobile } = useSidebar();
 
   const [accountOpen, setAccountOpen] = useState(false);
@@ -71,7 +70,7 @@ export function NavUser({ role, onLogout }: NavUserProps) {
 
   const label = displayName ?? firstName ?? username ?? '';
   const initials = label[0]?.toUpperCase() ?? '?';
-  const planLabel = plan === 'pro' ? 'Pro Plan' : 'Free Plan';
+  const planLabel = plan === 'administrator' ? 'Administrator' : (plan === 'pro' ? 'Pro Plan' : 'Free Plan');
 
   return (
     <>

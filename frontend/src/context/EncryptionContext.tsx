@@ -2,18 +2,18 @@ import React, { createContext, useContext, useCallback } from 'react';
 import { deriveKey, encrypt, decrypt, clearKey, hasKey } from '../services/crypto.js';
 
 interface EncryptionContextValue {
-  deriveKey: (password: string, salt: string) => Promise<void>;
-  encrypt: (plaintext: string) => Promise<string>;
-  decrypt: (ciphertext: string) => Promise<string>;
-  clearKey: () => void;
-  hasKey: () => boolean;
+  deriveKey: (vaultId: string, password: string, salt: string) => Promise<void>;
+  encrypt: (vaultId: string, plaintext: string) => Promise<string>;
+  decrypt: (vaultId: string, ciphertext: string) => Promise<string>;
+  clearKey: (vaultId?: string) => void;
+  hasKey: (vaultId: string) => boolean;
 }
 
 const EncryptionContext = createContext<EncryptionContextValue | null>(null);
 
 export function EncryptionProvider({ children }: { children: React.ReactNode }) {
   const derive = useCallback(
-    (password: string, salt: string) => deriveKey(password, salt),
+    (vaultId: string, password: string, salt: string) => deriveKey(vaultId, password, salt),
     [],
   );
 

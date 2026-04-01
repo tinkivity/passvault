@@ -12,7 +12,6 @@ const sampleAuth = {
   displayName: null,
   status: 'active' as const,
   plan: 'free' as const,
-  encryptionSalt: 'salt-abc',
   loginEventId: null,
 };
 

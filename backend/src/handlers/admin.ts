@@ -343,7 +343,7 @@ async function handleDownloadUserVault(event: APIGatewayProxyEvent): Promise<API
     return error('Missing userId query parameter', 400);
   }
 
-  // Get user's first vault
+  const requestedVaultId = event.queryStringParameters?.vaultId;
   const vaultsResult = await listVaults(userId);
   if (vaultsResult.error) {
     return error(vaultsResult.error, vaultsResult.statusCode || 500);
@@ -352,7 +352,13 @@ async function handleDownloadUserVault(event: APIGatewayProxyEvent): Promise<API
   if (vaults.length === 0) {
     return error(ERRORS.VAULT_NOT_FOUND, 404);
   }
-  const result = await downloadVault(userId, vaults[0].vaultId);
+  const targetVault = requestedVaultId
+    ? vaults.find((v) => v.vaultId === requestedVaultId)
+    : vaults[0];
+  if (!targetVault) {
+    return error(ERRORS.VAULT_NOT_FOUND, 404);
+  }
+  const result = await downloadVault(userId, targetVault.vaultId);
   if (result.error) {
     return error(result.error, result.statusCode || 500);
   }

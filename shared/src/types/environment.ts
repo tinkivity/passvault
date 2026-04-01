@@ -40,7 +40,6 @@ export interface EnvironmentConfig {
   environment: EnvironmentName;
   region: string;
   subdomain: string;
-  adminUsername: string;
   features: FeatureFlags;
   session: SessionConfig;
   lambda: LambdaConfig;

@@ -10,7 +10,6 @@ export interface AuthState {
   displayName: string | null;
   status: UserStatus | null;
   plan: UserPlan | null;
-  encryptionSalt: string | null;
   loginEventId: string | null;
 }
 
@@ -29,7 +28,6 @@ const initialState: AuthState = {
   displayName: null,
   status: null,
   plan: null,
-  encryptionSalt: null,
   loginEventId: null,
 };
 
