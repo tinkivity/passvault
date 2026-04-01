@@ -45,7 +45,7 @@ interface VaultSidebarProps {
   plan: string;
   role: 'user' | 'admin';
   onLogout: () => void;
-  onCreateVault: (displayName: string) => Promise<void>;
+  onCreateVault: (displayName: string, password: string) => Promise<void>;
   onRenameVault: (vaultId: string, displayName: string) => Promise<void>;
   onDownloadVault: (vaultId: string, displayName: string) => Promise<void>;
   onEmailVault: (vaultId: string) => Promise<void>;
@@ -89,6 +89,8 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
 
   const [showDialog, setShowDialog] = useState(false);
   const [newName, setNewName] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newConfirm, setNewConfirm] = useState('');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -97,12 +99,16 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
 
   const handleCreate = async () => {
     if (!newName.trim()) return;
+    if (!newPassword) { setCreateError('Password is required'); return; }
+    if (newPassword !== newConfirm) { setCreateError('Passwords do not match'); return; }
     setCreating(true);
     setCreateError(null);
     try {
-      await onCreateVault(newName.trim());
+      await onCreateVault(newName.trim(), newPassword);
       setShowDialog(false);
       setNewName('');
+      setNewPassword('');
+      setNewConfirm('');
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : 'Failed to create vault');
     } finally {
@@ -138,40 +144,58 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
                         <Vault className="h-4 w-4 shrink-0" />
                         <span>{vault.displayName}</span>
                       </SidebarMenuButton>
-                      {unlocked && (
-                        <DropdownMenu>
-                          <DropdownMenuTrigger render={<SidebarMenuAction showOnHover />}>
-                            <MoreHorizontal className="h-4 w-4" />
-                            <span className="sr-only">Vault actions</span>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent side="right" align="start">
-                            <DropdownMenuItem onClick={() => navigate(`/ui/${vault.vaultId}/items/new`)}>
-                              <Plus className="mr-2 h-4 w-4" />
-                              New item
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => openRename(vault)}>
-                              <Pencil className="mr-2 h-4 w-4" />
-                              Rename vault
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => { clearKey(vault.vaultId); navigate(`/ui/${vault.vaultId}`); }}>
-                              <Lock className="mr-2 h-4 w-4" />
-                              Close vault
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => onDownloadVault(vault.vaultId, vault.displayName)}>
-                              <Download className="mr-2 h-4 w-4" />
-                              Download vault
-                            </DropdownMenuItem>
-                            {isProd && (
-                              <DropdownMenuItem onClick={() => handleEmail(vault.vaultId)}>
-                                <Mail className="mr-2 h-4 w-4" />
-                                {emailedVaultId === vault.vaultId ? 'Email sent!' : 'Email vault'}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger render={<SidebarMenuAction showOnHover />}>
+                          <MoreHorizontal className="h-4 w-4" />
+                          <span className="sr-only">Vault actions</span>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent side="right" align="start">
+                          {unlocked ? (
+                            <>
+                              <DropdownMenuItem onClick={() => { clearKey(vault.vaultId); navigate(`/ui/${vault.vaultId}`); }}>
+                                <Lock className="mr-2 h-4 w-4" />
+                                Close vault
                               </DropdownMenuItem>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      )}
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => openRename(vault)}>
+                                <Pencil className="mr-2 h-4 w-4" />
+                                Rename vault
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => onDownloadVault(vault.vaultId, vault.displayName)}>
+                                <Download className="mr-2 h-4 w-4" />
+                                Download vault
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => navigate(`/ui/${vault.vaultId}/items/new`)}>
+                                <Plus className="mr-2 h-4 w-4" />
+                                New item
+                              </DropdownMenuItem>
+                              {isProd && (
+                                <DropdownMenuItem onClick={() => handleEmail(vault.vaultId)}>
+                                  <Mail className="mr-2 h-4 w-4" />
+                                  {emailedVaultId === vault.vaultId ? 'Email sent!' : 'Email vault'}
+                                </DropdownMenuItem>
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <DropdownMenuItem onClick={() => navigate(`/ui/${vault.vaultId}`)}>
+                                <Vault className="mr-2 h-4 w-4" />
+                                Open vault
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => openRename(vault)}>
+                                <Pencil className="mr-2 h-4 w-4" />
+                                Rename vault
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => onDownloadVault(vault.vaultId, vault.displayName)}>
+                                <Download className="mr-2 h-4 w-4" />
+                                Download vault
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </SidebarMenuItem>
                   );
                 })}
@@ -251,7 +275,10 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showDialog} onOpenChange={setShowDialog}>
+      <Dialog open={showDialog} onOpenChange={(open) => {
+        setShowDialog(open);
+        if (!open) { setNewName(''); setNewPassword(''); setNewConfirm(''); setCreateError(null); }
+      }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>New Vault</DialogTitle>
@@ -263,17 +290,37 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
                 id="vault-name"
                 value={newName}
                 onChange={e => setNewName(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleCreate()}
                 placeholder="My Vault"
                 maxLength={64}
                 autoFocus
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="vault-password">Password</Label>
+              <Input
+                id="vault-password"
+                type="password"
+                autoComplete="new-password"
+                value={newPassword}
+                onChange={e => setNewPassword(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="vault-confirm">Confirm Password</Label>
+              <Input
+                id="vault-confirm"
+                type="password"
+                autoComplete="new-password"
+                value={newConfirm}
+                onChange={e => setNewConfirm(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleCreate()}
               />
             </div>
             {createError && <p className="text-sm text-destructive">{createError}</p>}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDialog(false)}>Cancel</Button>
-            <Button onClick={handleCreate} disabled={creating || !newName.trim()}>
+            <Button onClick={handleCreate} disabled={creating || !newName.trim() || !newPassword}>
               {creating ? 'Creating…' : 'Create'}
             </Button>
           </DialogFooter>

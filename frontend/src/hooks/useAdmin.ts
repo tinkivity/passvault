@@ -181,12 +181,12 @@ export function useAdmin(token: string | null) {
     }
   }, [token]);
 
-  const emailUserVault = useCallback(async (userId: string): Promise<void> => {
+  const emailUserVault = useCallback(async (userId: string, vaultId?: string): Promise<void> => {
     if (!token) throw new Error('Not authenticated');
     setLoading(true);
     setError(null);
     try {
-      await api.emailUserVault(userId, token);
+      await api.emailUserVault(userId, token, vaultId);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to send vault email';
       setError(msg);

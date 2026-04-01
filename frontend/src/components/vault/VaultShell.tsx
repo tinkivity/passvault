@@ -3,6 +3,7 @@ import { api } from '../../services/api.js';
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import type { VaultSummary, WarningCodeDefinition } from '@passvault/shared';
 import { useAuth } from '../../hooks/useAuth.js';
+import { useEncryptionContext } from '../../context/EncryptionContext.js';
 import { useAutoLogout } from '../../hooks/useAutoLogout.js';
 import { useVaults } from '../../hooks/useVaults.js';
 import { useWarningCatalog } from '../../hooks/useWarningCatalog.js';
@@ -37,6 +38,7 @@ export function VaultShell() {
   const { pathname } = useLocation();
   const { vaultId } = useParams<{ vaultId: string }>();
   const { token, role, plan, logout } = useAuth();
+  const { deriveKey } = useEncryptionContext();
   const { fetchVaults, createVault } = useVaults(token);
   const { catalog, fetchCatalog } = useWarningCatalog();
 
@@ -86,12 +88,12 @@ export function VaultShell() {
     await api.sendVaultEmail(vaultId, token!);
   }, [token]);
 
-  const handleCreateVault = useCallback(async (displayName: string) => {
+  const handleCreateVault = useCallback(async (displayName: string, password: string) => {
     const newVault = await createVault(displayName);
-    const updated = [...vaults, newVault];
-    setVaults(updated);
-    navigate(`/ui/${newVault.vaultId}`);
-  }, [createVault, vaults, navigate]);
+    setVaults(prev => [...prev, newVault]);
+    await deriveKey(newVault.vaultId, password, newVault.encryptionSalt);
+    navigate(`/ui/${newVault.vaultId}/items`);
+  }, [createVault, deriveKey, navigate]);
 
   const isAdminRoute = pathname.startsWith('/ui/admin');
   const shellContext: VaultShellContext = { vaults, catalog, refreshVaults };

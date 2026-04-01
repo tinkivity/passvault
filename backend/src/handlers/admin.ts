@@ -584,10 +584,10 @@ async function handleEmailUserVault(event: APIGatewayProxyEvent): Promise<APIGat
 
   const parsed = parseBody(event);
   if ('parseError' in parsed) return parsed.parseError;
-  const { userId } = parsed.body as { userId: string };
+  const { userId, vaultId } = parsed.body as { userId: string; vaultId?: string };
   if (!userId) return error('Missing userId', 400);
 
-  const result = await adminEmailUserVault(userId);
+  const result = await adminEmailUserVault(userId, vaultId);
   if (result.error) return error(result.error, result.statusCode || 400);
   return success(result.response);
 }

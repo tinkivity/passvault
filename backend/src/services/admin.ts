@@ -252,7 +252,7 @@ export async function listUsers(): Promise<ListUsersResponse> {
       return {
         sizeBytes: totalSize,
         count: vaults.length,
-        stubs: vaults.map((v) => ({ vaultId: v.vaultId, displayName: v.displayName })),
+        stubs: vaults.map((v, idx) => ({ vaultId: v.vaultId, displayName: v.displayName, sizeBytes: sizes[idx] ?? null })),
       };
     }),
   );
@@ -486,6 +486,7 @@ export async function updateUserProfile(
 
 export async function adminEmailUserVault(
   userId: string,
+  vaultId?: string,
 ): Promise<{ response?: { success: true }; error?: string; statusCode?: number }> {
   if (!process.env.SENDER_EMAIL) {
     return { error: 'Email sending is not available in this environment', statusCode: 503 };
@@ -499,7 +500,10 @@ export async function adminEmailUserVault(
   const vaults = await listVaultsByUser(userId);
   if (vaults.length === 0) return { error: ERRORS.VAULT_NOT_FOUND, statusCode: 404 };
 
-  for (const vault of vaults) {
+  const targets = vaultId ? vaults.filter((v) => v.vaultId === vaultId) : vaults;
+  if (targets.length === 0) return { error: ERRORS.VAULT_NOT_FOUND, statusCode: 404 };
+
+  for (const vault of targets) {
     const result = await sendVaultEmail(userId, vault.vaultId);
     if (result.error) return { error: result.error, statusCode: result.statusCode };
   }

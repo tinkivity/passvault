@@ -283,10 +283,10 @@ export class ApiClient {
     });
   }
 
-  async emailUserVault(userId: string, token: string): Promise<void> {
+  async emailUserVault(userId: string, token: string, vaultId?: string): Promise<void> {
     return this.request(API_PATHS.ADMIN_USERS_EMAIL_VAULT, {
       method: 'POST',
-      body: { userId },
+      body: vaultId ? { userId, vaultId } : { userId },
       token,
       powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
     });

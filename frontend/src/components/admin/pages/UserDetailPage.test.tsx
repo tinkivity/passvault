@@ -152,15 +152,15 @@ describe('UserDetailPage', () => {
     expect(screen.queryByText('Delete user')).not.toBeInTheDocument();
   });
 
-  it('always shows Download vault button', () => {
+  it('shows a Download button for each vault', () => {
     renderDetail(activeUser);
-    expect(screen.getByText('Download vault')).toBeInTheDocument();
+    expect(screen.getByText('Download')).toBeInTheDocument();
   });
 
-  it('calls downloadUserVault when Download vault is clicked', async () => {
+  it('calls downloadUserVault with vaultId when Download is clicked', async () => {
     renderDetail(pendingUser);
-    await userEvent.click(screen.getByText('Download vault'));
-    expect(mockAdmin.downloadUserVault).toHaveBeenCalledWith('u1', 'bob@example.com');
+    await userEvent.click(screen.getByText('Download'));
+    expect(mockAdmin.downloadUserVault).toHaveBeenCalledWith('u1', 'bob@example.com', 'v1');
   });
 
   it('shows Confirm delete / Cancel buttons before deleting', async () => {

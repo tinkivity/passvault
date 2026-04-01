@@ -28,6 +28,7 @@ export interface CreateUserResponse {
 export interface UserVaultStub {
   vaultId: string;
   displayName: string;
+  sizeBytes: number | null;
 }
 
 export interface UserSummary {

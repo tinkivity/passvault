@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import type { UpdateUserRequest, UserPlan, UserSummary, UserStatus } from '@passvault/shared';
+import type { UpdateUserRequest, UserPlan, UserSummary, UserStatus, UserVaultStub } from '@passvault/shared';
 import { useAuth } from '../../../hooks/useAuth.js';
 import { useAdmin } from '../../../hooks/useAdmin.js';
 import { OtpDisplay } from '../OtpDisplay.js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { ArrowDownTrayIcon, EnvelopeIcon, ArchiveBoxIcon } from '@heroicons/react/24/outline';
+
+const isDev = import.meta.env.VITE_ENVIRONMENT === 'dev';
 
 const statusLabel: Record<UserStatus, string> = {
   pending_email_verification: 'Awaiting email verification',
@@ -58,6 +61,7 @@ export function UserDetailPage() {
   const [refreshedOtp, setRefreshedOtp] = useState<{ username: string; oneTimePassword: string } | null>(null);
   const [retireConfirm, setRetireConfirm] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [emailedVaultId, setEmailedVaultId] = useState<string | null>(null);
 
   // Edit state
   const [editing, setEditing] = useState(false);
@@ -177,8 +181,8 @@ export function UserDetailPage() {
     || null;
 
   return (
-    <div className="max-w-xl">
-      <Button variant="ghost" size="sm" className="mb-6" onClick={handleBack}>
+    <div className="max-w-xl space-y-4">
+      <Button variant="ghost" size="sm" onClick={handleBack}>
         ← Users
       </Button>
 
@@ -215,8 +219,6 @@ export function UserDetailPage() {
               ? new Date(user.lastLoginAt).toISOString().slice(0, 10)
               : '—'}
           </dd>
-          <dt className="text-muted-foreground">Vault size</dt>
-          <dd>{formatBytes(user.vaultSizeBytes)}</dd>
           <dt className="text-muted-foreground">User ID</dt>
           <dd className="font-mono text-xs text-muted-foreground break-all">{user.userId}</dd>
         </dl>
@@ -312,15 +314,6 @@ export function UserDetailPage() {
 
         {/* Actions */}
         <div className="border-t border-border pt-4 flex flex-wrap gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => admin.downloadUserVault(user.userId, user.username)}
-            disabled={admin.loading}
-          >
-            Download vault
-          </Button>
-
           {user.status === 'pending_first_login' && (
             <Button variant="ghost" size="sm" onClick={handleRefreshOtp} disabled={admin.loading}>
               Refresh OTP
@@ -396,6 +389,76 @@ export function UserDetailPage() {
             )
           )}
         </div>
+      </div>
+
+      {/* Vault cards */}
+      {user.vaults.length === 0 ? (
+        <div className="bg-card rounded-xl border border-border p-6 flex items-center gap-3 text-muted-foreground text-sm">
+          <ArchiveBoxIcon className="h-5 w-5 shrink-0" />
+          No vaults
+        </div>
+      ) : (
+        user.vaults.map((vault: UserVaultStub) => (
+          <VaultCard
+            key={vault.vaultId}
+            vault={vault}
+            userId={user.userId}
+            username={user.username}
+            emailedVaultId={emailedVaultId}
+            onDownload={(vaultId) => admin.downloadUserVault(user.userId, user.username, vaultId)}
+            onEmail={async (vaultId) => {
+              await admin.emailUserVault(user.userId, vaultId);
+              setEmailedVaultId(vaultId);
+              setTimeout(() => setEmailedVaultId(null), 4000);
+            }}
+            loading={admin.loading}
+          />
+        ))
+      )}
+    </div>
+  );
+}
+
+interface VaultCardProps {
+  vault: UserVaultStub;
+  userId: string;
+  username: string;
+  emailedVaultId: string | null;
+  onDownload: (vaultId: string) => void;
+  onEmail: (vaultId: string) => Promise<void>;
+  loading: boolean;
+}
+
+function VaultCard({ vault, emailedVaultId, onDownload, onEmail, loading }: VaultCardProps) {
+  return (
+    <div className="bg-card rounded-xl border border-border p-5 space-y-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <ArchiveBoxIcon className="h-4 w-4 text-muted-foreground shrink-0" />
+          <span className="font-medium text-sm">{vault.displayName}</span>
+        </div>
+        <span className="text-xs text-muted-foreground tabular-nums">{formatBytes(vault.sizeBytes)}</span>
+      </div>
+      <div className="flex gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onDownload(vault.vaultId)}
+          disabled={loading}
+        >
+          <ArrowDownTrayIcon className="mr-1.5 h-3.5 w-3.5" />
+          Download
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={isDev || loading}
+          onClick={() => onEmail(vault.vaultId)}
+          title={isDev ? 'Email sending is disabled in dev' : undefined}
+        >
+          <EnvelopeIcon className="mr-1.5 h-3.5 w-3.5" />
+          {emailedVaultId === vault.vaultId ? 'Sent!' : 'Email to user'}
+        </Button>
       </div>
     </div>
   );
