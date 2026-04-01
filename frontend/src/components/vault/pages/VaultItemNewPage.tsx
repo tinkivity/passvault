@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { ROUTES } from '../../../routes.js';
 
 const CATEGORIES: { value: VaultItemCategory; label: string }[] = [
   { value: 'login', label: 'Login' },
@@ -62,7 +63,7 @@ export function VaultItemNewPage() {
       const vaultFile = await fetchAndDecrypt();
       const partial = buildPartial(category, fields);
       await addItem(vaultFile, { name: get('name'), category, ...partial } as Omit<VaultItem, 'id' | 'createdAt' | 'updatedAt' | 'warningCodes'>);
-      navigate(`/ui/${vaultId}/items`, { state: { vault } });
+      navigate(ROUTES.UI.ITEMS(vaultId!), { state: { vault } });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save');
     } finally {
@@ -98,7 +99,7 @@ export function VaultItemNewPage() {
 
         <div className="flex gap-2 pt-2">
           <Button type="submit" disabled={saving}>{saving ? 'Saving…' : 'Create'}</Button>
-          <Button type="button" variant="outline" onClick={() => navigate(`/ui/${vaultId}/items`, { state: { vault } })}>
+          <Button type="button" variant="outline" onClick={() => navigate(ROUTES.UI.ITEMS(vaultId!), { state: { vault } })}>
             Cancel
           </Button>
         </div>

@@ -10,6 +10,7 @@ import { decrypt } from '../../../services/crypto.js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { ROUTES } from '../../../routes.js';
 
 export function VaultUnlockPage() {
   const { vaultId } = useParams<{ vaultId: string }>();
@@ -44,7 +45,7 @@ export function VaultUnlockPage() {
         }
       }
 
-      navigate(`/ui/${vaultId}/items`);
+      navigate(ROUTES.UI.ITEMS(vaultId));
     } catch (err) {
       if (!unlockError) {
         setUnlockError(err instanceof Error ? err.message : 'Failed to unlock vault.');
@@ -94,7 +95,7 @@ export function VaultUnlockPage() {
           <button
             type="button"
             className="text-xs text-muted-foreground hover:underline"
-            onClick={() => { logout(); navigate('/login', { replace: true }); }}
+            onClick={() => { logout(); navigate(ROUTES.LOGIN, { replace: true }); }}
           >
             Sign out instead
           </button>

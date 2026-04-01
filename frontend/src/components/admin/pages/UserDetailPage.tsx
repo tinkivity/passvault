@@ -8,8 +8,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ArrowDownTrayIcon, EnvelopeIcon, ArchiveBoxIcon } from '@heroicons/react/24/outline';
+import { config } from '../../../config.js';
+import { ROUTES } from '../../../routes.js';
 
-const isDev = import.meta.env.VITE_ENVIRONMENT === 'dev';
+const isDev = config.isDev;
 
 const statusLabel: Record<UserStatus, string> = {
   pending_email_verification: 'Awaiting email verification',
@@ -73,7 +75,7 @@ export function UserDetailPage() {
   const [editExpiresAt, setEditExpiresAt] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
 
-  const handleBack = () => navigate('/ui/admin/users');
+  const handleBack = () => navigate(ROUTES.UI.ADMIN.USERS);
 
   function startEdit() {
     if (!user) return;
@@ -153,7 +155,7 @@ export function UserDetailPage() {
 
   const handleDelete = async () => {
     await admin.deleteUser(user.userId);
-    navigate('/ui/admin/users', { replace: true });
+    navigate(ROUTES.UI.ADMIN.USERS, { replace: true });
   };
 
   const handleLock = async () => {
@@ -173,7 +175,7 @@ export function UserDetailPage() {
 
   const handleRetire = async () => {
     await admin.retireUser(user.userId);
-    navigate('/ui/admin/users', { replace: true });
+    navigate(ROUTES.UI.ADMIN.USERS, { replace: true });
   };
 
   const displayedName = user.displayName

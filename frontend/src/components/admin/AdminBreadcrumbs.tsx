@@ -1,29 +1,30 @@
 import { useLocation } from 'react-router-dom';
 import { Breadcrumbs } from '../shared/Breadcrumbs.js';
 import type { Crumb } from '../shared/Breadcrumbs.js';
+import { ROUTES } from '../../routes.js';
 
 function buildCrumbs(pathname: string, state: unknown): Crumb[] {
-  if (pathname === '/ui/admin/dashboard' || pathname === '/ui/admin' || pathname === '/ui/admin/') {
+  if (pathname === ROUTES.UI.ADMIN.DASHBOARD || pathname === ROUTES.UI.ADMIN.ROOT || pathname === `${ROUTES.UI.ADMIN.ROOT}/`) {
     return [{ label: 'Admin' }];
   }
-  if (pathname === '/ui/admin/users') {
+  if (pathname === ROUTES.UI.ADMIN.USERS) {
     return [
-      { label: 'Admin', to: '/ui/admin/dashboard' },
+      { label: 'Admin', to: ROUTES.UI.ADMIN.DASHBOARD },
       { label: 'Users' },
     ];
   }
-  if (pathname.startsWith('/ui/admin/users/')) {
+  if (pathname.startsWith(`${ROUTES.UI.ADMIN.USERS}/`)) {
     const username = (state as { user?: { username?: string } } | null)?.user?.username;
-    const userId = pathname.split('/ui/admin/users/')[1];
+    const userId = pathname.split(`${ROUTES.UI.ADMIN.USERS}/`)[1];
     return [
-      { label: 'Admin', to: '/ui/admin/dashboard' },
-      { label: 'Users', to: '/ui/admin/users' },
+      { label: 'Admin', to: ROUTES.UI.ADMIN.DASHBOARD },
+      { label: 'Users', to: ROUTES.UI.ADMIN.USERS },
       { label: username ?? userId },
     ];
   }
-  if (pathname === '/ui/admin/logs/logins') {
+  if (pathname === ROUTES.UI.ADMIN.LOGINS) {
     return [
-      { label: 'Admin', to: '/ui/admin/dashboard' },
+      { label: 'Admin', to: ROUTES.UI.ADMIN.DASHBOARD },
       { label: 'Logs' },
       { label: 'Logins' },
     ];

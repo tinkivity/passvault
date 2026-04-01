@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../services/api.js';
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
-import type { VaultSummary, WarningCodeDefinition } from '@passvault/shared';
+import type { VaultSummary } from '@passvault/shared';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useEncryptionContext } from '../../context/EncryptionContext.js';
 import { useAutoLogout } from '../../hooks/useAutoLogout.js';
@@ -13,25 +13,15 @@ import { VaultBreadcrumbs } from './VaultBreadcrumbs.js';
 import { AdminBreadcrumbs } from '../admin/AdminBreadcrumbs.js';
 import { ShellHeader } from '../shared/ShellHeader.js';
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
+import { config } from '../../config.js';
+import { ROUTES } from '../../routes.js';
+import { ShellContext } from '../../context/VaultShellContext.js';
 
-const VIEW_TIMEOUT = Number(import.meta.env.VITE_VIEW_TIMEOUT_SECONDS ?? 900);
-const ADMIN_TIMEOUT = Number(import.meta.env.VITE_ADMIN_TIMEOUT_SECONDS ?? 900);
+export type { VaultShellContext } from '../../context/VaultShellContext.js';
+export { useVaultShellContext } from '../../context/VaultShellContext.js';
 
-export interface VaultShellContext {
-  vaults: VaultSummary[];
-  catalog: WarningCodeDefinition[];
-  refreshVaults: () => Promise<void>;
-}
-
-import { createContext, useContext } from 'react';
-
-const ShellContext = createContext<VaultShellContext | null>(null);
-
-export function useVaultShellContext(): VaultShellContext {
-  const ctx = useContext(ShellContext);
-  if (!ctx) throw new Error('useVaultShellContext must be used within VaultShell');
-  return ctx;
-}
+const VIEW_TIMEOUT = config.timeouts.view;
+const ADMIN_TIMEOUT = config.timeouts.admin;
 
 export function VaultShell() {
   const navigate = useNavigate();
@@ -46,7 +36,7 @@ export function VaultShell() {
 
   const handleLogout = useCallback(() => {
     logout();
-    navigate('/login', { replace: true });
+    navigate(ROUTES.LOGIN, { replace: true });
   }, [logout, navigate]);
 
   const timeoutSeconds = role === 'admin' ? ADMIN_TIMEOUT : VIEW_TIMEOUT;
@@ -92,11 +82,11 @@ export function VaultShell() {
     const newVault = await createVault(displayName);
     setVaults(prev => [...prev, newVault]);
     await deriveKey(newVault.vaultId, password, newVault.encryptionSalt);
-    navigate(`/ui/${newVault.vaultId}/items`);
+    navigate(ROUTES.UI.ITEMS(newVault.vaultId));
   }, [createVault, deriveKey, navigate]);
 
-  const isAdminRoute = pathname.startsWith('/ui/admin');
-  const shellContext: VaultShellContext = { vaults, catalog, refreshVaults };
+  const isAdminRoute = pathname.startsWith(ROUTES.UI.ADMIN.ROOT);
+  const shellContext = { vaults, catalog, refreshVaults };
 
   return (
     <ShellContext.Provider value={shellContext}>

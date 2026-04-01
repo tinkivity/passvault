@@ -16,8 +16,10 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import logo from '../../assets/logo.png';
+import { config } from '../../config.js';
+import { ROUTES } from '../../routes.js';
 
-const PASSKEY_REQUIRED = import.meta.env.VITE_PASSKEY_REQUIRED === 'true';
+const PASSKEY_REQUIRED = config.passkeyRequired;
 
 export function PasswordChangePage() {
   const navigate = useNavigate();
@@ -57,10 +59,10 @@ export function PasswordChangePage() {
 
   const handleSuccessConfirm = () => {
     if (PASSKEY_REQUIRED) {
-      navigate('/passkey-setup', { replace: true });
+      navigate(ROUTES.PASSKEY_SETUP, { replace: true });
     } else {
       logout();
-      navigate('/login', { replace: true });
+      navigate(ROUTES.LOGIN, { replace: true });
     }
   };
 

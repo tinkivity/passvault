@@ -14,13 +14,15 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import logo from '../../assets/logo.png';
+import { config } from '../../config.js';
+import { ROUTES } from '../../routes.js';
 
-const PASSKEY_REQUIRED = import.meta.env.VITE_PASSKEY_REQUIRED === 'true';
+const PASSKEY_REQUIRED = config.passkeyRequired;
 
 function postLoginPath(role: string, requirePasswordChange?: boolean, requirePasskeySetup?: boolean): string {
-  if (requirePasswordChange) return '/change-password';
-  if (requirePasskeySetup) return '/passkey-setup';
-  return role === 'admin' ? '/ui/admin/dashboard' : '/ui';
+  if (requirePasswordChange) return ROUTES.CHANGE_PASSWORD;
+  if (requirePasskeySetup) return ROUTES.PASSKEY_SETUP;
+  return role === 'admin' ? ROUTES.UI.ADMIN.DASHBOARD : ROUTES.UI.ROOT;
 }
 
 export function LoginPage() {

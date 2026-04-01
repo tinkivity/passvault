@@ -14,6 +14,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import logo from '../../assets/logo.png';
+import { ROUTES } from '../../routes.js';
 
 function getUserIdFromToken(token: string): string {
   const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
@@ -43,7 +44,7 @@ export function PasskeySetupPage() {
       } else {
         await api.registerPasskey({ challengeJwt, attestation }, token);
       }
-      navigate('/ui', { replace: true });
+      navigate(ROUTES.UI.ROOT, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Passkey registration failed');
     } finally {

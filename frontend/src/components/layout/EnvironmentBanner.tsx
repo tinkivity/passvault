@@ -1,4 +1,6 @@
-const ENV = import.meta.env.VITE_ENVIRONMENT ?? 'dev';
+import { config } from '../../config.js';
+
+const ENV = config.environment ?? 'dev';
 
 const bannerConfig: Record<string, { label: string; className: string } | undefined> = {
   dev: { label: 'DEV ENVIRONMENT', className: 'bg-amber-400 text-amber-900' },

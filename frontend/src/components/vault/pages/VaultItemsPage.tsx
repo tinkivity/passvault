@@ -5,6 +5,7 @@ import type { VaultFile, VaultItem, VaultItemCategory } from '@passvault/shared'
 import { useAuth } from '../../../hooks/useAuth.js';
 import { useVault } from '../../../hooks/useVault.js';
 import { useVaultShellContext } from '../VaultShell.js';
+import { ROUTES } from '../../../routes.js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -87,7 +88,7 @@ export function VaultItemsPage() {
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-xl font-semibold truncate">{vault?.displayName ?? 'Vault'}</h1>
         {!isExpired && (
-          <Button size="sm" onClick={() => navigate(`/ui/${vaultId}/items/new`, { state: { vault } })}>
+          <Button size="sm" onClick={() => navigate(ROUTES.UI.ITEM_NEW(vaultId!), { state: { vault } })}>
             <Plus className="h-4 w-4 mr-1" />
             New Item
           </Button>
@@ -153,7 +154,7 @@ export function VaultItemsPage() {
                   <TableRow
                     key={item.id}
                     className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => navigate(`/ui/${vaultId}/items/${item.id}`, { state: { vault, item } })}
+                    onClick={() => navigate(ROUTES.UI.ITEM(vaultId!, item.id), { state: { vault, item } })}
                   >
                     <TableCell className="w-8">
                       {item.warningCodes.length > 0 && (

@@ -56,6 +56,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { OtpDisplay } from './OtpDisplay.js';
 import { DateRangeFilter } from './DateRangeFilter.js';
 import { DataTable } from './DataTable.js';
+import { config } from '../../config.js';
 
 function formatBytes(bytes: number | null): string {
   if (bytes === null || bytes === 0) return 'empty';
@@ -422,7 +423,7 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUse
   const [reactivatePerpetual, setReactivatePerpetual] = useState(false);
   const [vaultPickerUser, setVaultPickerUser] = useState<UserSummary | null>(null);
 
-  const isProd = import.meta.env.VITE_ENVIRONMENT === 'prod';
+  const isProd = config.isProd;
 
   const handlePickVault = useCallback((user: UserSummary) => {
     setVaultPickerUser(user);

@@ -2,6 +2,7 @@ import { useLocation } from 'react-router-dom';
 import type { VaultSummary, VaultItem } from '@passvault/shared';
 import { Breadcrumbs } from '../shared/Breadcrumbs.js';
 import type { Crumb } from '../shared/Breadcrumbs.js';
+import { ROUTES } from '../../routes.js';
 
 function buildCrumbs(pathname: string, state: unknown): Crumb[] {
   const vaultMatch = pathname.match(/^\/ui\/([^/]+)(\/(.*))?$/);
@@ -11,7 +12,7 @@ function buildCrumbs(pathname: string, state: unknown): Crumb[] {
   const rest = vaultMatch[3] ?? '';
   const s = state as { vault?: VaultSummary; item?: VaultItem } | null;
   const vaultName = s?.vault?.displayName ?? 'Vault';
-  const vaultBase = `/ui/${vaultId}/items`;
+  const vaultBase = ROUTES.UI.ITEMS(vaultId);
 
   if (rest === '' || rest === 'items') {
     return [{ label: vaultName }];

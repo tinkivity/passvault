@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { ROUTES } from '../../../routes.js';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -310,7 +311,7 @@ export function VaultItemDetailPage() {
     try {
       const newFile = await deleteItem(vaultFile, item.id);
       setVaultFile(newFile);
-      navigate(`/ui/${vaultId}/items`, { state: { vault } });
+      navigate(ROUTES.UI.ITEMS(vaultId!), { state: { vault } });
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : 'Failed to delete');
     } finally {

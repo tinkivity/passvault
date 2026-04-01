@@ -42,7 +42,7 @@ const pendingUser: UserSummary = {
   lastLoginAt: null,
   vaultSizeBytes: 2048,
   vaultCount: 1,
-  vaults: [{ vaultId: 'v1', displayName: 'Personal' }],
+  vaults: [{ vaultId: 'v1', displayName: 'Personal', sizeBytes: null }],
   expiresAt: '2026-12-31',
   firstName: 'Bob',
   lastName: 'Smith',

@@ -14,7 +14,7 @@ const mockUsers: UserSummary[] = [
     lastLoginAt: '2024-03-01T00:00:00Z',
     vaultSizeBytes: 1024,
     vaultCount: 1,
-    vaults: [{ vaultId: 'v1', displayName: 'Personal' }],
+    vaults: [{ vaultId: 'v1', displayName: 'Personal', sizeBytes: null }],
     expiresAt: '2026-12-31',
   },
   {
@@ -26,7 +26,7 @@ const mockUsers: UserSummary[] = [
     lastLoginAt: null,
     vaultSizeBytes: null,
     vaultCount: 1,
-    vaults: [{ vaultId: 'v2', displayName: 'Personal' }],
+    vaults: [{ vaultId: 'v2', displayName: 'Personal', sizeBytes: null }],
     expiresAt: null,
   },
   {
@@ -38,7 +38,7 @@ const mockUsers: UserSummary[] = [
     lastLoginAt: '2024-02-15T00:00:00Z',
     vaultSizeBytes: 512,
     vaultCount: 1,
-    vaults: [{ vaultId: 'v3', displayName: 'Personal' }],
+    vaults: [{ vaultId: 'v3', displayName: 'Personal', sizeBytes: null }],
     expiresAt: '2025-06-30',
   },
 ];

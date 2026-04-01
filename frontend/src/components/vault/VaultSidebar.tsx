@@ -37,8 +37,10 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { config } from '../../config.js';
+import { ROUTES } from '../../routes.js';
 
-const isProd = import.meta.env.VITE_ENVIRONMENT === 'prod';
+const isProd = config.isProd;
 
 interface VaultSidebarProps {
   vaults: VaultSummary[];
@@ -152,7 +154,7 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
                         <DropdownMenuContent side="right" align="start">
                           {unlocked ? (
                             <>
-                              <DropdownMenuItem onClick={() => { clearKey(vault.vaultId); navigate(`/ui/${vault.vaultId}`); }}>
+                              <DropdownMenuItem onClick={() => { clearKey(vault.vaultId); navigate(ROUTES.UI.VAULT(vault.vaultId)); }}>
                                 <Lock className="mr-2 h-4 w-4" />
                                 Close vault
                               </DropdownMenuItem>
@@ -166,7 +168,7 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
                                 Download vault
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
-                              <DropdownMenuItem onClick={() => navigate(`/ui/${vault.vaultId}/items/new`)}>
+                              <DropdownMenuItem onClick={() => navigate(ROUTES.UI.ITEM_NEW(vault.vaultId))}>
                                 <Plus className="mr-2 h-4 w-4" />
                                 New item
                               </DropdownMenuItem>
@@ -179,7 +181,7 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
                             </>
                           ) : (
                             <>
-                              <DropdownMenuItem onClick={() => navigate(`/ui/${vault.vaultId}`)}>
+                              <DropdownMenuItem onClick={() => navigate(ROUTES.UI.VAULT(vault.vaultId))}>
                                 <Vault className="mr-2 h-4 w-4" />
                                 Open vault
                               </DropdownMenuItem>
@@ -217,19 +219,19 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
               <SidebarGroupContent>
                 <SidebarMenu>
                   <SidebarMenuItem>
-                    <SidebarMenuButton render={<NavLink to="/ui/admin/dashboard" />} tooltip="Dashboard">
+                    <SidebarMenuButton render={<NavLink to={ROUTES.UI.ADMIN.DASHBOARD} />} tooltip="Dashboard">
                       <LayoutDashboard className="h-4 w-4 shrink-0" />
                       <span>Dashboard</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
-                    <SidebarMenuButton render={<NavLink to="/ui/admin/users" />} tooltip="Users">
+                    <SidebarMenuButton render={<NavLink to={ROUTES.UI.ADMIN.USERS} />} tooltip="Users">
                       <Users className="h-4 w-4 shrink-0" />
                       <span>Users</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
-                    <SidebarMenuButton render={<NavLink to="/ui/admin/logs/logins" />} tooltip="Logins">
+                    <SidebarMenuButton render={<NavLink to={ROUTES.UI.ADMIN.LOGINS} />} tooltip="Logins">
                       <ScrollText className="h-4 w-4 shrink-0" />
                       <span>Logins</span>
                     </SidebarMenuButton>

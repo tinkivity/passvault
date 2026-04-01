@@ -8,6 +8,7 @@ import { UserList } from '../UserList.js';
 import { CreateUserForm } from '../CreateUserForm.js';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { ROUTES } from '../../../routes.js';
 
 export function UsersPage() {
   const navigate = useNavigate();
@@ -75,7 +76,7 @@ export function UsersPage() {
   };
 
   const handleRowClick = (user: UserSummary) => {
-    navigate(`/ui/admin/users/${user.userId}`, { state: { user } });
+    navigate(ROUTES.UI.ADMIN.USER(user.userId), { state: { user } });
   };
 
   return (

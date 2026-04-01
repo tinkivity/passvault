@@ -1,5 +1,6 @@
 import { Navigate, Outlet, createBrowserRouter } from 'react-router-dom';
 import { useAuthContext } from './context/AuthContext.js';
+import { ROUTES } from './routes.js';
 import { LoginPage } from './components/auth/LoginPage.js';
 import { PasswordChangePage } from './components/auth/PasswordChangePage.js';
 import { PasskeySetupPage } from './components/auth/PasskeySetupPage.js';
@@ -18,14 +19,14 @@ import { LoginsPage } from './components/admin/pages/LoginsPage.js';
 function RequireAuth() {
   const { token, role, status } = useAuthContext();
 
-  if (!token) return <Navigate to="/login" replace />;
+  if (!token) return <Navigate to={ROUTES.LOGIN} replace />;
 
   // Redirect users mid-onboarding to the right step
   if (status === 'pending_first_login') {
-    return <Navigate to="/change-password" replace />;
+    return <Navigate to={ROUTES.CHANGE_PASSWORD} replace />;
   }
   if (status === 'pending_passkey_setup') {
-    return <Navigate to="/passkey-setup" replace />;
+    return <Navigate to={ROUTES.PASSKEY_SETUP} replace />;
   }
 
   // Admin-only guard for admin sub-routes — handled via RequireAdmin below
@@ -36,17 +37,17 @@ function RequireAuth() {
 
 function RequireAdmin() {
   const { role } = useAuthContext();
-  if (role !== 'admin') return <Navigate to="/ui" replace />;
+  if (role !== 'admin') return <Navigate to={ROUTES.UI.ROOT} replace />;
   return <Outlet />;
 }
 
 function RequireOnboarding(props: { step: 'password' | 'passkey' }) {
   const { token, status } = useAuthContext();
-  if (!token) return <Navigate to="/login" replace />;
+  if (!token) return <Navigate to={ROUTES.LOGIN} replace />;
 
   const expectedStatus = props.step === 'password' ? 'pending_first_login' : 'pending_passkey_setup';
   if (status !== expectedStatus) {
-    return <Navigate to="/ui" replace />;
+    return <Navigate to={ROUTES.UI.ROOT} replace />;
   }
 
   return <Outlet />;
@@ -55,26 +56,26 @@ function RequireOnboarding(props: { step: 'password' | 'passkey' }) {
 // ---- Router ---------------------------------------------------------------
 
 export const router = createBrowserRouter([
-  { index: true, element: <Navigate to="/login" replace /> },
+  { index: true, element: <Navigate to={ROUTES.LOGIN} replace /> },
 
   // Login (both user and admin)
-  { path: '/login', element: <LoginPage /> },
+  { path: ROUTES.LOGIN, element: <LoginPage /> },
 
   // Onboarding (both user and admin share same routes)
   {
-    path: '/change-password',
+    path: ROUTES.CHANGE_PASSWORD,
     element: <RequireOnboarding step="password" />,
     children: [{ index: true, element: <PasswordChangePage /> }],
   },
   {
-    path: '/passkey-setup',
+    path: ROUTES.PASSKEY_SETUP,
     element: <RequireOnboarding step="passkey" />,
     children: [{ index: true, element: <PasskeySetupPage /> }],
   },
 
   // UI shell — unified for users and admins
   {
-    path: '/ui',
+    path: ROUTES.UI.ROOT,
     element: <RequireAuth />,
     children: [
       {
@@ -91,7 +92,7 @@ export const router = createBrowserRouter([
             path: 'admin',
             element: <RequireAdmin />,
             children: [
-              { index: true, element: <Navigate to="/ui/admin/dashboard" replace /> },
+              { index: true, element: <Navigate to={ROUTES.UI.ADMIN.DASHBOARD} replace /> },
               { path: 'dashboard', element: <DashboardPage /> },
               { path: 'users', element: <UsersPage /> },
               { path: 'users/:userId', element: <UserDetailPage /> },
@@ -104,5 +105,5 @@ export const router = createBrowserRouter([
   },
 
   // Fallback
-  { path: '*', element: <Navigate to="/login" replace /> },
+  { path: '*', element: <Navigate to={ROUTES.LOGIN} replace /> },
 ]);
