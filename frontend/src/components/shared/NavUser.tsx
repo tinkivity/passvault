@@ -3,7 +3,7 @@ import { ChevronsUpDown, LogOut, BadgeCheck, Bell, Sparkles, KeyRound } from 'lu
 import { useAuth } from '../../hooks/useAuth.js';
 import { AccountDialog } from './AccountDialog.js';
 import { NotificationsDialog } from './NotificationsDialog.js';
-import { validatePassword } from '@passvault/shared';
+import { ChangePasswordDialog } from './ChangePasswordDialog.js';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   SidebarMenu,
@@ -20,53 +20,18 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 
 interface NavUserProps {
   onLogout: () => void;
 }
 
 export function NavUser({ onLogout }: NavUserProps) {
-  const { username, firstName, displayName, role, plan, adminChangePassword, loading } = useAuth();
+  const { username, firstName, displayName, role, plan } = useAuth();
   const { isMobile } = useSidebar();
 
   const [accountOpen, setAccountOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
   const [pwOpen, setPwOpen] = useState(false);
-  const [newPassword, setNewPassword] = useState('');
-  const [confirm, setConfirm] = useState('');
-  const [pwError, setPwError] = useState<string | null>(null);
-
-  const handlePwSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setPwError(null);
-
-    if (newPassword !== confirm) {
-      setPwError('Passwords do not match');
-      return;
-    }
-    const validation = validatePassword(newPassword);
-    if (!validation.valid) {
-      setPwError(validation.errors.join(', '));
-      return;
-    }
-    try {
-      await adminChangePassword({ newPassword });
-      setPwOpen(false);
-      setNewPassword('');
-      setConfirm('');
-    } catch (err) {
-      setPwError(err instanceof Error ? err.message : 'Failed to change password');
-    }
-  };
 
   const label = displayName ?? firstName ?? username ?? '';
   const initials = label[0]?.toUpperCase() ?? '?';
@@ -141,21 +106,12 @@ export function NavUser({ onLogout }: NavUserProps) {
                     Notifications
                   </DropdownMenuItem>
                 )}
+                <DropdownMenuItem onClick={() => setPwOpen(true)}>
+                  <KeyRound className="mr-2 h-4 w-4" />
+                  Change Password
+                </DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
-
-              {/* Admin-only: Change Password */}
-              {role === 'admin' && (
-                <>
-                  <DropdownMenuGroup>
-                    <DropdownMenuItem onClick={() => { setPwOpen(true); setPwError(null); }}>
-                      <KeyRound className="mr-2 h-4 w-4" />
-                      Change Password
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
-                  <DropdownMenuSeparator />
-                </>
-              )}
 
               <DropdownMenuItem onClick={onLogout}>
                 <LogOut className="mr-2 h-4 w-4" />
@@ -166,60 +122,11 @@ export function NavUser({ onLogout }: NavUserProps) {
         </SidebarMenuItem>
       </SidebarMenu>
 
-      {/* Account dialog (both roles) */}
       <AccountDialog open={accountOpen} onOpenChange={setAccountOpen} />
-
-      {/* Notifications dialog (user only) */}
       {role === 'user' && (
         <NotificationsDialog open={notifOpen} onOpenChange={setNotifOpen} />
       )}
-
-      {/* Change Password dialog (admin only) */}
-      {role === 'admin' && (
-        <Dialog open={pwOpen} onOpenChange={setPwOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Change Password</DialogTitle>
-            </DialogHeader>
-            <form onSubmit={handlePwSubmit} className="flex flex-col gap-4">
-              <div className="flex flex-col gap-1">
-                <label htmlFor="nav-new-password" className="text-sm font-medium">New Password</label>
-                <Input
-                  id="nav-new-password"
-                  type="password"
-                  autoComplete="new-password"
-                  value={newPassword}
-                  onChange={e => setNewPassword(e.target.value)}
-                  required
-                />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label htmlFor="nav-confirm-password" className="text-sm font-medium">Confirm Password</label>
-                <Input
-                  id="nav-confirm-password"
-                  type="password"
-                  autoComplete="new-password"
-                  value={confirm}
-                  onChange={e => setConfirm(e.target.value)}
-                  required
-                />
-              </div>
-              <p className="text-xs text-muted-foreground">
-                At least 12 characters with uppercase, lowercase, number, and special character.
-              </p>
-              {pwError && <p className="text-sm text-destructive">{pwError}</p>}
-              <DialogFooter>
-                <Button variant="outline" type="button" onClick={() => setPwOpen(false)}>
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={loading}>
-                  {loading ? 'Saving…' : 'Change Password'}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
-      )}
+      <ChangePasswordDialog open={pwOpen} onOpenChange={setPwOpen} />
     </>
   );
 }

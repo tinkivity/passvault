@@ -297,6 +297,8 @@ export class BackendConstruct extends Construct {
     authLogin.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
     const authChangePassword = auth.addResource('change-password');
     authChangePassword.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
+    const authChangePasswordSelf = authChangePassword.addResource('self');
+    authChangePasswordSelf.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
     const authPasskey = auth.addResource('passkey');
     const authPasskeyChallenge = authPasskey.addResource('challenge');
     authPasskeyChallenge.addMethod('GET', new apigateway.LambdaIntegration(this.authFn));
