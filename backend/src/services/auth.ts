@@ -4,6 +4,7 @@ import {
   type LoginRequest,
   type LoginResponse,
   type ChangePasswordRequest,
+  type SelfChangePasswordRequest,
   type ChangePasswordResponse,
   type UpdateProfileRequest,
   type UserStatus,
@@ -158,6 +159,36 @@ export async function changePassword(
     oneTimePasswordHash: null,
     otpExpiresAt: null,
   });
+
+  return { response: { success: true } };
+}
+
+export async function selfChangePassword(
+  userId: string,
+  username: string,
+  request: SelfChangePasswordRequest,
+): Promise<{ response?: ChangePasswordResponse; error?: string; statusCode?: number; details?: string[] }> {
+  if (typeof request.currentPassword !== 'string' || request.currentPassword.length > LIMITS.MAX_PASSWORD_LENGTH) {
+    return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 400 };
+  }
+
+  const user = await getUserById(userId);
+  if (!user?.passwordHash) {
+    return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 400 };
+  }
+
+  const currentValid = await verifyPassword(request.currentPassword, user.passwordHash);
+  if (!currentValid) {
+    return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 400 };
+  }
+
+  const validation = validatePassword(request.newPassword, username);
+  if (!validation.valid) {
+    return { error: 'Password does not meet requirements', statusCode: 400, details: validation.errors };
+  }
+
+  const newHash = await hashPassword(request.newPassword);
+  await updateUser(userId, { passwordHash: newHash });
 
   return { response: { success: true } };
 }

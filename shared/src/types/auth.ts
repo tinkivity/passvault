@@ -34,6 +34,11 @@ export interface ChangePasswordRequest {
   newPassword: string;
 }
 
+export interface SelfChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
 export interface ChangePasswordResponse {
   success: boolean;
 }

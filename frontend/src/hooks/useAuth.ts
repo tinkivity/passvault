@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import type { ChangePasswordRequest, PasskeyVerifyResponse, UpdateProfileRequest } from '@passvault/shared';
+import type { ChangePasswordRequest, SelfChangePasswordRequest, PasskeyVerifyResponse, UpdateProfileRequest } from '@passvault/shared';
 import { useAuthContext } from '../context/AuthContext.js';
 import { useEncryptionContext } from '../context/EncryptionContext.js';
 import { api } from '../services/api.js';
@@ -136,6 +136,21 @@ export function useAuth() {
     }
   }, [token, patchAuth]);
 
+  const selfChangePassword = useCallback(async (req: SelfChangePasswordRequest) => {
+    if (!token) throw new Error('Not authenticated');
+    setLoading(true);
+    setError(null);
+    try {
+      await api.selfChangePassword(req, token);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Password change failed';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
   const adminChangePassword = useCallback(async (req: ChangePasswordRequest) => {
     if (!token) throw new Error('Not authenticated');
     setLoading(true);
@@ -177,6 +192,7 @@ export function useAuth() {
     login,
     // shared
     changePassword,
+    selfChangePassword,
     updateProfile,
     adminChangePassword,
     logout,

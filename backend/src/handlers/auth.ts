@@ -5,7 +5,7 @@ import { success, error } from '../utils/response.js';
 import { validatePow } from '../middleware/pow.js';
 import { validateHoneypot } from '../middleware/honeypot.js';
 import { requireAuth } from '../middleware/auth.js';
-import { login, changePassword, updateProfile } from '../services/auth.js';
+import { login, changePassword, selfChangePassword, updateProfile } from '../services/auth.js';
 import { verifyEmailToken } from '../services/admin.js';
 import { updateLoginEventLogout } from '../utils/dynamodb.js';
 import {
@@ -39,9 +39,13 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     if (path === API_PATHS.AUTH_LOGIN && method === 'POST') {
       return await handleLogin(event);
     }
-    // POST /auth/change-password
+    // POST /auth/change-password  (onboarding — pending_first_login only)
     if (path === API_PATHS.AUTH_CHANGE_PASSWORD && method === 'POST') {
       return await handleChangePassword(event);
+    }
+    // POST /auth/change-password/self  (self-service for active users)
+    if (path === API_PATHS.AUTH_CHANGE_PASSWORD_SELF && method === 'POST') {
+      return await handleSelfChangePassword(event);
     }
     // GET /auth/passkey/challenge
     if (path === API_PATHS.AUTH_PASSKEY_CHALLENGE && method === 'GET') {
@@ -110,6 +114,27 @@ async function handleChangePassword(event: APIGatewayProxyEvent): Promise<APIGat
   const parsed = parseBody(event);
   if ('parseError' in parsed) return parsed.parseError;
   const result = await changePassword(user!.userId, user!.username, parsed.body as unknown as import('@passvault/shared').ChangePasswordRequest);
+
+  if (result.error) {
+    return error(result.error, result.statusCode || 400, result.details);
+  }
+  return success(result.response);
+}
+
+async function handleSelfChangePassword(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  const pow = validatePow(event, POW_CONFIG.DIFFICULTY.MEDIUM);
+  if (pow.errorResponse) return pow.errorResponse;
+
+  const { user, errorResponse } = await requireAuth(event);
+  if (errorResponse) return errorResponse;
+
+  if (user!.status !== 'active') {
+    return error(ERRORS.FORBIDDEN, 403);
+  }
+
+  const parsed = parseBody(event);
+  if ('parseError' in parsed) return parsed.parseError;
+  const result = await selfChangePassword(user!.userId, user!.username, parsed.body as unknown as import('@passvault/shared').SelfChangePasswordRequest);
 
   if (result.error) {
     return error(result.error, result.statusCode || 400, result.details);

@@ -4,6 +4,7 @@ import type {
   LoginRequest,
   LoginResponse,
   ChangePasswordRequest,
+  SelfChangePasswordRequest,
   ChangePasswordResponse,
   UpdateProfileRequest,
   UpdateNotificationsRequest,
@@ -111,6 +112,18 @@ export class ApiClient {
     token: string,
   ): Promise<ChangePasswordResponse> {
     return this.request<ChangePasswordResponse>(API_PATHS.AUTH_CHANGE_PASSWORD, {
+      method: 'POST',
+      body: req,
+      token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.MEDIUM,
+    });
+  }
+
+  async selfChangePassword(
+    req: SelfChangePasswordRequest,
+    token: string,
+  ): Promise<ChangePasswordResponse> {
+    return this.request<ChangePasswordResponse>(API_PATHS.AUTH_CHANGE_PASSWORD_SELF, {
       method: 'POST',
       body: req,
       token,

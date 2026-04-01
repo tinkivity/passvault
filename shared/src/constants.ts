@@ -4,6 +4,7 @@ export const API_PATHS = {
   HEALTH: '/api/health',
   AUTH_LOGIN: '/api/auth/login',
   AUTH_CHANGE_PASSWORD: '/api/auth/change-password',
+  AUTH_CHANGE_PASSWORD_SELF: '/api/auth/change-password/self',
   AUTH_PASSKEY_CHALLENGE: '/api/auth/passkey/challenge',
   AUTH_PASSKEY_VERIFY: '/api/auth/passkey/verify',
   AUTH_PASSKEY_REGISTER_CHALLENGE: '/api/auth/passkey/register/challenge',
