@@ -61,7 +61,7 @@ export function AccountDialog({ open, onOpenChange }: AccountDialogProps) {
         <DialogHeader>
           <DialogTitle>Account</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSave} className="grid gap-4 py-2">
+        <form onSubmit={handleSave} className="grid gap-4 pt-2">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label htmlFor="account-first-name">First name</Label>

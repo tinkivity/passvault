@@ -66,7 +66,7 @@ export function NotificationsDialog({ open, onOpenChange }: NotificationsDialogP
         <DialogHeader>
           <DialogTitle>Notifications</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSave} className="grid gap-6 py-2">
+        <form onSubmit={handleSave} className="grid gap-6 pt-2">
           {/* Failed login alerts */}
           <div className="space-y-2">
             <p className="text-sm font-medium">Failed login alerts</p>
