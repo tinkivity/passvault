@@ -24,6 +24,7 @@ vi.mock('../utils/dynamodb.js', () => ({
   createUser: vi.fn().mockResolvedValue(undefined),
   updateUser: vi.fn().mockResolvedValue(undefined),
   listAllUsers: vi.fn(),
+  getUserByRegistrationToken: vi.fn(),
   deleteUser: vi.fn().mockResolvedValue(undefined),
   recordLoginEvent: vi.fn().mockResolvedValue(undefined),
   getLoginCountSince: vi.fn().mockResolvedValue(0),
@@ -65,7 +66,7 @@ vi.mock('./passkey.js', () => ({
 }));
 
 import { adminLogin, adminChangePassword, createUserInvitation, listUsers, refreshOtp, deleteNewUser, getStats, lockUser, unlockUser, expireUser, retireUser, verifyEmailToken, reactivateUser, updateUserProfile, adminEmailUserVault } from './admin.js';
-import { getUserByUsername, getUserById, updateUser, createUser, listAllUsers, deleteUser, getLoginCountSince, listVaultsByUser } from '../utils/dynamodb.js';
+import { getUserByUsername, getUserById, getUserByRegistrationToken, updateUser, createUser, listAllUsers, deleteUser, getLoginCountSince, listVaultsByUser } from '../utils/dynamodb.js';
 import { verifyPassword } from '../utils/crypto.js';
 import { verifyPasskeyToken } from './passkey.js';
 import { config } from '../config.js';
@@ -77,6 +78,7 @@ const mockVerifyPw = vi.mocked(verifyPassword);
 const mockVerifyPasskeyToken = vi.mocked(verifyPasskeyToken);
 const mockUpdateUser = vi.mocked(updateUser);
 const mockListAllUsers = vi.mocked(listAllUsers);
+const mockGetUserByRegistrationToken = vi.mocked(getUserByRegistrationToken);
 const mockGetLoginCountSince = vi.mocked(getLoginCountSince);
 
 function makeAdmin(overrides: Partial<User> = {}): User {
@@ -893,31 +895,31 @@ describe('verifyEmailToken', () => {
   const pastExpiry = new Date(Date.now() - 60_000).toISOString();
 
   it('returns 400 when no user has the token', async () => {
-    mockListAllUsers.mockResolvedValue([]);
+    mockGetUserByRegistrationToken.mockResolvedValue(null);
     const result = await verifyEmailToken('no-such-token');
     expect(result.statusCode).toBe(400);
   });
 
   it('returns 400 when the token belongs to a non-pending_email_verification user', async () => {
-    mockListAllUsers.mockResolvedValue([
-      makeAdmin({ role: 'user', status: 'active', registrationToken: 'tok1', registrationTokenExpiresAt: futureExpiry }),
-    ]);
+    mockGetUserByRegistrationToken.mockResolvedValue({
+      userId: 'user-1', username: 'alice@example.com', status: 'active', registrationTokenExpiresAt: futureExpiry,
+    });
     const result = await verifyEmailToken('tok1');
     expect(result.statusCode).toBe(400);
   });
 
   it('returns 400 when the token is expired', async () => {
-    mockListAllUsers.mockResolvedValue([
-      makeAdmin({ role: 'user', status: 'pending_email_verification', registrationToken: 'tok1', registrationTokenExpiresAt: pastExpiry }),
-    ]);
+    mockGetUserByRegistrationToken.mockResolvedValue({
+      userId: 'user-1', username: 'alice@example.com', status: 'pending_email_verification', registrationTokenExpiresAt: pastExpiry,
+    });
     const result = await verifyEmailToken('tok1');
     expect(result.statusCode).toBe(400);
   });
 
   it('transitions user to pending_first_login on valid token', async () => {
-    mockListAllUsers.mockResolvedValue([
-      makeAdmin({ role: 'user', status: 'pending_email_verification', userId: 'user-1', registrationToken: 'tok1', registrationTokenExpiresAt: futureExpiry }),
-    ]);
+    mockGetUserByRegistrationToken.mockResolvedValue({
+      userId: 'user-1', username: 'alice@example.com', status: 'pending_email_verification', registrationTokenExpiresAt: futureExpiry,
+    });
     const result = await verifyEmailToken('tok1');
     expect(result.response?.success).toBe(true);
     expect(mockUpdateUser).toHaveBeenCalledWith('user-1', expect.objectContaining({ status: 'pending_first_login' }));

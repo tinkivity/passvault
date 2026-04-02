@@ -30,6 +30,13 @@ export class StorageConstruct extends Construct {
       partitionKey: { name: 'username', type: dynamodb.AttributeType.STRING },
     });
 
+    this.usersTable.addGlobalSecondaryIndex({
+      indexName: 'registrationToken-index',
+      partitionKey: { name: 'registrationToken', type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.INCLUDE,
+      nonKeyAttributes: ['userId', 'status', 'registrationTokenExpiresAt', 'username'],
+    });
+
     // DynamoDB login events table (for admin dashboard metrics)
     // TTL auto-expires records after 90 days to keep costs minimal.
     this.loginEventsTable = new dynamodb.Table(this, 'LoginEventsTable', {

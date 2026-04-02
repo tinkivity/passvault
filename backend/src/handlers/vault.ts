@@ -3,6 +3,8 @@ import { API_PATHS, POW_CONFIG, ERRORS, type UpdateNotificationsRequest } from '
 import { success, error } from '../utils/response.js';
 import { requireAuth } from '../middleware/auth.js';
 import { Router, pow, auth } from '../utils/router.js';
+import { validate } from '../middleware/validate.js';
+import { CreateVaultSchema, RenameVaultSchema, PutVaultSchema, UpdateNotificationsSchema } from './vault.schemas.js';
 import {
   listVaults,
   createVault,
@@ -20,18 +22,18 @@ import { parseBody } from '../utils/request.js';
 const HIGH = POW_CONFIG.DIFFICULTY.HIGH;
 
 const router = new Router();
-router.get(API_PATHS.CONFIG_WARNING_CODES, [], handleWarningCodes);
-router.get(API_PATHS.VAULTS, [pow(HIGH), auth()], handleListVaults);
-router.post(API_PATHS.VAULTS, [pow(HIGH), auth()], handleCreateVault);
-router.patch('/api/vaults/{vaultId}', [pow(HIGH), auth()], handleRenameVault);
-router.delete('/api/vaults/{vaultId}', [pow(HIGH), auth()], handleDeleteVault);
-// VAULT_NOTIFICATIONS is a static path — registered before /api/vault/{vaultId} so it takes precedence
-router.get(API_PATHS.VAULT_NOTIFICATIONS, [auth()], handleGetNotifications);
-router.post(API_PATHS.VAULT_NOTIFICATIONS, [auth()], handleUpdateNotifications);
-router.get('/api/vault/{vaultId}', [pow(HIGH), auth()], handleGetVault);
-router.put('/api/vault/{vaultId}', [pow(HIGH), auth()], handlePutVault);
-router.get('/api/vault/{vaultId}/download', [pow(HIGH), auth()], handleDownloadVault);
-router.post('/api/vault/{vaultId}/email', [pow(HIGH), auth()], handleSendVaultEmail);
+router.get  (API_PATHS.CONFIG_WARNING_CODES,  [],                                              handleWarningCodes);
+router.get  (API_PATHS.VAULTS,               [pow(HIGH), auth()],                              handleListVaults);
+router.post (API_PATHS.VAULTS,               [pow(HIGH), auth(), validate(CreateVaultSchema)], handleCreateVault);
+router.patch('/api/vaults/{vaultId}',         [pow(HIGH), auth(), validate(RenameVaultSchema)], handleRenameVault);
+router.delete('/api/vaults/{vaultId}',        [pow(HIGH), auth()],                              handleDeleteVault);
+// VAULT_NOTIFICATIONS is a static path — registered before /api/vaults/{vaultId} so it takes precedence
+router.get  (API_PATHS.VAULT_NOTIFICATIONS,  [auth()],                                         handleGetNotifications);
+router.post (API_PATHS.VAULT_NOTIFICATIONS,  [auth(), validate(UpdateNotificationsSchema)],     handleUpdateNotifications);
+router.get  (API_PATHS.VAULT,               [pow(HIGH), auth()],                               handleGetVault);
+router.put  (API_PATHS.VAULT,               [pow(HIGH), auth(), validate(PutVaultSchema)],     handlePutVault);
+router.get  (API_PATHS.VAULT_DOWNLOAD,      [pow(HIGH), auth()],                               handleDownloadVault);
+router.post (API_PATHS.VAULT_EMAIL,         [pow(HIGH), auth()],                               handleSendVaultEmail);
 
 export const handler = (event: APIGatewayProxyEvent) => router.dispatch(event);
 

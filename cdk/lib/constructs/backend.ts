@@ -18,7 +18,8 @@ export class BackendConstruct extends Construct {
   public readonly api: apigateway.RestApi;
   public readonly challengeFn: lambda.Function;
   public readonly authFn: lambda.Function;
-  public readonly adminFn: lambda.Function;
+  public readonly adminAuthFn: lambda.Function;
+  public readonly adminMgmtFn: lambda.Function;
   public readonly vaultFn: lambda.Function;
   public readonly healthFn: lambda.Function;
   public readonly digestFn: lambda.Function;
@@ -97,22 +98,41 @@ export class BackendConstruct extends Construct {
       ...(isProd && { reservedConcurrentExecutions: 3 }),
     });
 
-    // Admin Lambda
-    const adminLogGroup = new logs.LogGroup(this, 'AdminLogs', {
-      logGroupName: `/aws/lambda/passvault-admin-${env}`,
+    // Admin Auth Lambda
+    const adminAuthLogGroup = new logs.LogGroup(this, 'AdminAuthLogs', {
+      logGroupName: `/aws/lambda/passvault-admin-auth-${env}`,
       retention: retentionDays,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
-    this.adminFn = new lambda.Function(this, 'AdminFn', {
+    this.adminAuthFn = new lambda.Function(this, 'AdminAuthFn', {
       runtime,
       architecture,
-      functionName: `passvault-admin-${env}`,
-      handler: 'admin.handler',
-      code: lambda.Code.fromAsset('../backend/dist/admin'),
+      functionName: `passvault-admin-auth-${env}`,
+      handler: 'admin-auth.handler',
+      code: lambda.Code.fromAsset('../backend/dist/admin-auth'),
       environment: commonEnv,
       memorySize: defaultMemory,
       timeout: cdk.Duration.seconds(10),
-      logGroup: adminLogGroup,
+      logGroup: adminAuthLogGroup,
+      ...(isProd && { reservedConcurrentExecutions: 3 }),
+    });
+
+    // Admin Management Lambda
+    const adminMgmtLogGroup = new logs.LogGroup(this, 'AdminMgmtLogs', {
+      logGroupName: `/aws/lambda/passvault-admin-mgmt-${env}`,
+      retention: retentionDays,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+    this.adminMgmtFn = new lambda.Function(this, 'AdminMgmtFn', {
+      runtime,
+      architecture,
+      functionName: `passvault-admin-mgmt-${env}`,
+      handler: 'admin-management.handler',
+      code: lambda.Code.fromAsset('../backend/dist/admin-management'),
+      environment: commonEnv,
+      memorySize: defaultMemory,
+      timeout: cdk.Duration.seconds(10),
+      logGroup: adminMgmtLogGroup,
       ...(isProd && { reservedConcurrentExecutions: 2 }),
     });
 
@@ -157,7 +177,8 @@ export class BackendConstruct extends Construct {
     // SSM: pass parameter name (not value) to Lambdas that sign/verify tokens.
     // The Lambda fetches and decrypts the value at cold-start via the SSM API.
     this.authFn.addEnvironment('JWT_SECRET_PARAM', jwtSecretParamName);
-    this.adminFn.addEnvironment('JWT_SECRET_PARAM', jwtSecretParamName);
+    this.adminAuthFn.addEnvironment('JWT_SECRET_PARAM', jwtSecretParamName);
+    this.adminMgmtFn.addEnvironment('JWT_SECRET_PARAM', jwtSecretParamName);
     this.vaultFn.addEnvironment('JWT_SECRET_PARAM', jwtSecretParamName);
 
     // Passkey (WebAuthn) relying-party configuration.
@@ -168,38 +189,39 @@ export class BackendConstruct extends Construct {
       const origin = this.node.tryGetContext('passkeyOrigin') as string | undefined ?? process.env.PASSKEY_ORIGIN ?? '';
       this.authFn.addEnvironment('PASSKEY_RP_ID', rpId);
       this.authFn.addEnvironment('PASSKEY_ORIGIN', origin);
-      this.adminFn.addEnvironment('PASSKEY_RP_ID', rpId);
-      this.adminFn.addEnvironment('PASSKEY_ORIGIN', origin);
+      this.adminAuthFn.addEnvironment('PASSKEY_RP_ID', rpId);
+      this.adminAuthFn.addEnvironment('PASSKEY_ORIGIN', origin);
     }
     jwtSecretParam.grantRead(this.authFn);
-    jwtSecretParam.grantRead(this.adminFn);
+    jwtSecretParam.grantRead(this.adminAuthFn);
+    jwtSecretParam.grantRead(this.adminMgmtFn);
     jwtSecretParam.grantRead(this.vaultFn);
 
     // IAM: grant DynamoDB access to auth, admin, vault
     storage.usersTable.grantReadWriteData(this.authFn);
-    storage.usersTable.grantReadWriteData(this.adminFn);
+    storage.usersTable.grantReadWriteData(this.adminAuthFn);
+    storage.usersTable.grantReadWriteData(this.adminMgmtFn);
     storage.usersTable.grantReadWriteData(this.vaultFn);
 
-    // IAM: login events table — auth writes, admin reads
+    // IAM: login events table — auth + admin-auth write, admin-mgmt reads
     storage.loginEventsTable.grantWriteData(this.authFn);
-    storage.loginEventsTable.grantWriteData(this.adminFn);
-    storage.loginEventsTable.grantReadData(this.adminFn);
+    storage.loginEventsTable.grantWriteData(this.adminAuthFn);
+    storage.loginEventsTable.grantReadData(this.adminMgmtFn);
 
     // Pass login events table name to auth + admin Lambdas
     this.authFn.addEnvironment('LOGIN_EVENTS_TABLE_NAME', storage.loginEventsTable.tableName);
-    this.adminFn.addEnvironment('LOGIN_EVENTS_TABLE_NAME', storage.loginEventsTable.tableName);
+    this.adminAuthFn.addEnvironment('LOGIN_EVENTS_TABLE_NAME', storage.loginEventsTable.tableName);
+    this.adminMgmtFn.addEnvironment('LOGIN_EVENTS_TABLE_NAME', storage.loginEventsTable.tableName);
 
-    // IAM: grant vaults table access to vault + admin Lambdas
+    // IAM: grant vaults table access to vault + admin-mgmt Lambdas
     storage.vaultsTable.grantReadWriteData(this.vaultFn);
-    storage.vaultsTable.grantReadWriteData(this.adminFn);
-
-
+    storage.vaultsTable.grantReadWriteData(this.adminMgmtFn);
 
     // IAM: grant S3 file access to vault
     storage.filesBucket.grantReadWrite(this.vaultFn);
 
-    // IAM: grant S3 file read+write to admin (creates empty vault on invite, downloads vault for backup)
-    storage.filesBucket.grantReadWrite(this.adminFn);
+    // IAM: grant S3 file read+write to admin-mgmt (creates empty vault on invite, downloads vault for backup)
+    storage.filesBucket.grantReadWrite(this.adminMgmtFn);
 
     // Digest Lambda — scheduled daily at 01:00 UTC, sends failed-login digests and vault backups
     const digestLogGroup = new logs.LogGroup(this, 'DigestLogs', {
@@ -310,75 +332,73 @@ export class BackendConstruct extends Construct {
     authPasskeyRegister.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
 
     const admin = apiRoot.addResource('admin');
+    // Admin auth / onboarding routes → adminAuthFn
     const adminLogin = admin.addResource('login');
-    adminLogin.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
+    adminLogin.addMethod('POST', new apigateway.LambdaIntegration(this.adminAuthFn));
     const adminChangePassword = admin.addResource('change-password');
-    adminChangePassword.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
+    adminChangePassword.addMethod('POST', new apigateway.LambdaIntegration(this.adminAuthFn));
     const adminPasskey = admin.addResource('passkey');
     const adminPasskeyChallenge = adminPasskey.addResource('challenge');
-    adminPasskeyChallenge.addMethod('GET', new apigateway.LambdaIntegration(this.adminFn));
+    adminPasskeyChallenge.addMethod('GET', new apigateway.LambdaIntegration(this.adminAuthFn));
     const adminPasskeyVerify = adminPasskey.addResource('verify');
-    adminPasskeyVerify.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
+    adminPasskeyVerify.addMethod('POST', new apigateway.LambdaIntegration(this.adminAuthFn));
     const adminPasskeyRegister = adminPasskey.addResource('register');
     const adminPasskeyRegisterChallenge = adminPasskeyRegister.addResource('challenge');
-    adminPasskeyRegisterChallenge.addMethod('GET', new apigateway.LambdaIntegration(this.adminFn));
-    adminPasskeyRegister.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
+    adminPasskeyRegisterChallenge.addMethod('GET', new apigateway.LambdaIntegration(this.adminAuthFn));
+    adminPasskeyRegister.addMethod('POST', new apigateway.LambdaIntegration(this.adminAuthFn));
+
+    // Admin management routes → adminMgmtFn
     const adminUsers = admin.addResource('users');
-    adminUsers.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
-    adminUsers.addMethod('GET', new apigateway.LambdaIntegration(this.adminFn));
-    adminUsers.addMethod('DELETE', new apigateway.LambdaIntegration(this.adminFn));
-    const adminUsersRefreshOtp = adminUsers.addResource('refresh-otp');
-    adminUsersRefreshOtp.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
-    const adminUsersLock = adminUsers.addResource('lock');
-    adminUsersLock.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
-    const adminUsersUnlock = adminUsers.addResource('unlock');
-    adminUsersUnlock.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
-    const adminUsersRetire = adminUsers.addResource('retire');
-    adminUsersRetire.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
-    const adminUsersExpire = adminUsers.addResource('expire');
-    adminUsersExpire.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
-    const adminUsersReactivate = adminUsers.addResource('reactivate');
-    adminUsersReactivate.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
-    const adminUsersUpdate = adminUsers.addResource('update');
-    adminUsersUpdate.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
-    const adminUsersEmailVault = adminUsers.addResource('email-vault');
-    adminUsersEmailVault.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
-    const adminVault = admin.addResource('vault');
-    adminVault.addMethod('GET', new apigateway.LambdaIntegration(this.adminFn));
+    adminUsers.addMethod('POST', new apigateway.LambdaIntegration(this.adminMgmtFn));
+    adminUsers.addMethod('GET', new apigateway.LambdaIntegration(this.adminMgmtFn));
+    const adminUserById = adminUsers.addResource('{userId}');
+    adminUserById.addMethod('DELETE', new apigateway.LambdaIntegration(this.adminMgmtFn));
+    adminUserById.addMethod('PATCH', new apigateway.LambdaIntegration(this.adminMgmtFn));
+    const adminUserVault = adminUserById.addResource('vault');
+    adminUserVault.addMethod('GET', new apigateway.LambdaIntegration(this.adminMgmtFn));
+    const adminUserLock = adminUserById.addResource('lock');
+    adminUserLock.addMethod('POST', new apigateway.LambdaIntegration(this.adminMgmtFn));
+    const adminUserUnlock = adminUserById.addResource('unlock');
+    adminUserUnlock.addMethod('POST', new apigateway.LambdaIntegration(this.adminMgmtFn));
+    const adminUserRetire = adminUserById.addResource('retire');
+    adminUserRetire.addMethod('POST', new apigateway.LambdaIntegration(this.adminMgmtFn));
+    const adminUserExpire = adminUserById.addResource('expire');
+    adminUserExpire.addMethod('POST', new apigateway.LambdaIntegration(this.adminMgmtFn));
+    const adminUserReactivate = adminUserById.addResource('reactivate');
+    adminUserReactivate.addMethod('POST', new apigateway.LambdaIntegration(this.adminMgmtFn));
+    const adminUserRefreshOtp = adminUserById.addResource('refresh-otp');
+    adminUserRefreshOtp.addMethod('POST', new apigateway.LambdaIntegration(this.adminMgmtFn));
+    const adminUserEmailVault = adminUserById.addResource('email-vault');
+    adminUserEmailVault.addMethod('POST', new apigateway.LambdaIntegration(this.adminMgmtFn));
     const adminStats = admin.addResource('stats');
-    adminStats.addMethod('GET', new apigateway.LambdaIntegration(this.adminFn));
+    adminStats.addMethod('GET', new apigateway.LambdaIntegration(this.adminMgmtFn));
     const adminLoginEvents = admin.addResource('login-events');
-    adminLoginEvents.addMethod('GET', new apigateway.LambdaIntegration(this.adminFn));
+    adminLoginEvents.addMethod('GET', new apigateway.LambdaIntegration(this.adminMgmtFn));
 
     const authVerifyEmail = auth.addResource('verify-email');
     authVerifyEmail.addMethod('GET', new apigateway.LambdaIntegration(this.authFn));
     const authLogout = auth.addResource('logout');
     authLogout.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
     const authProfile = auth.addResource('profile');
-    authProfile.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
+    authProfile.addMethod('PATCH', new apigateway.LambdaIntegration(this.authFn));
 
-    // Vaults (plural) — list and create
+    // Vaults — all operations unified under /api/vaults
     const vaults = apiRoot.addResource('vaults');
     vaults.addMethod('GET', new apigateway.LambdaIntegration(this.vaultFn));
     vaults.addMethod('POST', new apigateway.LambdaIntegration(this.vaultFn));
-    const vaultById = vaults.addResource('{vaultId}');
-    vaultById.addMethod('PATCH', new apigateway.LambdaIntegration(this.vaultFn));
-    vaultById.addMethod('DELETE', new apigateway.LambdaIntegration(this.vaultFn));
-
-    // Vault (singular) — content operations on a specific vault
-    const vault = apiRoot.addResource('vault');
-    const vaultId = vault.addResource('{vaultId}');
-    vaultId.addMethod('GET', new apigateway.LambdaIntegration(this.vaultFn));
-    vaultId.addMethod('PUT', new apigateway.LambdaIntegration(this.vaultFn));
-    const vaultDownload = vaultId.addResource('download');
-    vaultDownload.addMethod('GET', new apigateway.LambdaIntegration(this.vaultFn));
-    const vaultEmail = vaultId.addResource('email');
-    vaultEmail.addMethod('POST', new apigateway.LambdaIntegration(this.vaultFn));
-
-    // Vault notifications preferences
-    const vaultNotifications = vault.addResource('notifications');
+    // notifications must be registered before {vaultId} for API Gateway static-path precedence
+    const vaultNotifications = vaults.addResource('notifications');
     vaultNotifications.addMethod('GET', new apigateway.LambdaIntegration(this.vaultFn));
     vaultNotifications.addMethod('POST', new apigateway.LambdaIntegration(this.vaultFn));
+    const vaultById = vaults.addResource('{vaultId}');
+    vaultById.addMethod('GET', new apigateway.LambdaIntegration(this.vaultFn));
+    vaultById.addMethod('PUT', new apigateway.LambdaIntegration(this.vaultFn));
+    vaultById.addMethod('PATCH', new apigateway.LambdaIntegration(this.vaultFn));
+    vaultById.addMethod('DELETE', new apigateway.LambdaIntegration(this.vaultFn));
+    const vaultDownload = vaultById.addResource('download');
+    vaultDownload.addMethod('GET', new apigateway.LambdaIntegration(this.vaultFn));
+    const vaultEmail = vaultById.addResource('email');
+    vaultEmail.addMethod('POST', new apigateway.LambdaIntegration(this.vaultFn));
 
     // Config (warning codes catalog — public, no auth required)
     const configResource = apiRoot.addResource('config');

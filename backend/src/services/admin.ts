@@ -17,7 +17,7 @@ import {
   type UserStatus,
   type UserPlan,
 } from '@passvault/shared';
-import { getUserById, getUserByUsername, createUser, updateUser, listAllUsers, deleteUser, recordLoginEvent, getLoginCountSince, getLoginEvents, listVaultsByUser, getVaultRecord, deleteVaultRecord } from '../utils/dynamodb.js';
+import { getUserById, getUserByUsername, getUserByRegistrationToken, createUser, updateUser, listAllUsers, deleteUser, recordLoginEvent, getLoginCountSince, getLoginEvents, listVaultsByUser, getVaultRecord, deleteVaultRecord } from '../utils/dynamodb.js';
 import { hashPassword, verifyPassword, generateOtp, generateSalt } from '../utils/crypto.js';
 import { validatePassword } from '../utils/password.js';
 import { signToken } from '../utils/jwt.js';
@@ -399,17 +399,14 @@ export async function retireUser(
 export async function verifyEmailToken(
   token: string,
 ): Promise<{ response?: { success: true }; error?: string; statusCode?: number }> {
-  // Scan for user with this registration token
-  const users = await listAllUsers();
-  const user = users.find(
-    (u) =>
-      u.registrationToken === token &&
-      u.status === 'pending_email_verification' &&
-      u.registrationTokenExpiresAt &&
-      new Date(u.registrationTokenExpiresAt) > new Date(),
-  );
+  const user = await getUserByRegistrationToken(token);
 
-  if (!user) {
+  if (
+    !user ||
+    user.status !== 'pending_email_verification' ||
+    !user.registrationTokenExpiresAt ||
+    new Date(user.registrationTokenExpiresAt) <= new Date()
+  ) {
     return { error: ERRORS.EMAIL_VERIFICATION_INVALID, statusCode: 400 };
   }
 

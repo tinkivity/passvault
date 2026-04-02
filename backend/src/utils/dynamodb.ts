@@ -77,6 +77,19 @@ export async function updateUser(
   );
 }
 
+export async function getUserByRegistrationToken(token: string): Promise<Pick<User, 'userId' | 'status' | 'registrationTokenExpiresAt' | 'username'> | null> {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: DYNAMODB_TABLE,
+      IndexName: 'registrationToken-index',
+      KeyConditionExpression: 'registrationToken = :token',
+      ExpressionAttributeValues: { ':token': token },
+      Limit: 1,
+    }),
+  );
+  return (result.Items?.[0] as Pick<User, 'userId' | 'status' | 'registrationTokenExpiresAt' | 'username'>) ?? null;
+}
+
 export async function getUserByCredentialId(credentialId: string): Promise<User | null> {
   const result = await docClient.send(
     new ScanCommand({

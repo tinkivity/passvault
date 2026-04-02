@@ -34,16 +34,6 @@ vi.mock('../middleware/auth.js', () => ({
 vi.mock('../services/admin.js', () => ({
   adminLogin: vi.fn(),
   adminChangePassword: vi.fn(),
-  createUserInvitation: vi.fn(),
-  listUsers: vi.fn(),
-  downloadVault: vi.fn(),
-  refreshOtp: vi.fn(),
-  deleteNewUser: vi.fn(),
-  getStats: vi.fn(),
-}));
-
-vi.mock('../services/vault.js', () => ({
-  downloadVault: vi.fn(),
 }));
 
 vi.mock('../services/passkey.js', () => ({
@@ -59,36 +49,23 @@ vi.mock('../utils/dynamodb.js', () => ({
   updateUser: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { handler } from './admin.js';
-import {
-  adminLogin,
-  adminChangePassword,
-  createUserInvitation,
-  listUsers,
-  refreshOtp,
-  deleteNewUser,
-  getStats,
-} from '../services/admin.js';
-import { downloadVault } from '../services/vault.js';
-import { requireAuth, requireAdminActive } from '../middleware/auth.js';
+import { handler } from './admin-auth.js';
+import { adminLogin, adminChangePassword } from '../services/admin.js';
+import { verifyPasskeyAttestation } from '../services/passkey.js';
+import { requireAuth } from '../middleware/auth.js';
 import { validatePow } from '../middleware/pow.js';
 import { validateHoneypot } from '../middleware/honeypot.js';
+import { updateUser } from '../utils/dynamodb.js';
 import { config } from '../config.js';
 import type { APIGatewayProxyEvent } from 'aws-lambda';
 import type { TokenPayload } from '../utils/jwt.js';
 
 const mockAdminLogin = vi.mocked(adminLogin);
 const mockChangePassword = vi.mocked(adminChangePassword);
-const mockCreateUser = vi.mocked(createUserInvitation);
-const mockListUsers = vi.mocked(listUsers);
-const mockDownload = vi.mocked(downloadVault);
-const mockRefreshOtp = vi.mocked(refreshOtp);
-const mockDeleteNewUser = vi.mocked(deleteNewUser);
-const mockGetStats = vi.mocked(getStats);
 const mockRequireAuth = vi.mocked(requireAuth);
-const mockRequireAdminActive = vi.mocked(requireAdminActive);
 const mockValidatePow = vi.mocked(validatePow);
 const mockValidateHoneypot = vi.mocked(validateHoneypot);
+const mockVerifyPasskeyAttestation = vi.mocked(verifyPasskeyAttestation);
 
 const adminUser: TokenPayload = {
   userId: 'admin-1',
@@ -103,14 +80,13 @@ function makeEvent(
   path: string,
   method: string,
   body?: object | string,
-  queryStringParameters?: Record<string, string>,
 ): APIGatewayProxyEvent {
   return {
     path,
     httpMethod: method,
     headers: { Authorization: 'Bearer tok' },
     body: body === undefined ? null : typeof body === 'string' ? body : JSON.stringify(body),
-    queryStringParameters: queryStringParameters ?? null,
+    queryStringParameters: null,
     multiValueHeaders: {},
     multiValueQueryStringParameters: null,
     pathParameters: null,
@@ -129,17 +105,6 @@ function authFail() {
   mockRequireAuth.mockResolvedValue({
     user: null,
     errorResponse: { statusCode: 401, body: '{"error":"Unauthorized"}', headers: {} },
-  });
-}
-
-function adminAuthOk() {
-  mockRequireAdminActive.mockResolvedValue({ user: adminUser, errorResponse: null });
-}
-
-function adminAuthFail(statusCode = 401) {
-  mockRequireAdminActive.mockResolvedValue({
-    user: null,
-    errorResponse: { statusCode, body: statusCode === 401 ? '{"error":"Unauthorized"}' : '{"error":"Forbidden"}', headers: {} },
   });
 }
 
@@ -216,184 +181,26 @@ describe('POST /admin/change-password', () => {
   });
 
   it('returns 403 when role is not admin', async () => {
-    mockRequireAuth.mockResolvedValue({
-      user: { ...adminUser, role: 'user' },
-      errorResponse: null,
-    });
-    const res = await handler(makeEvent(API_PATHS.ADMIN_CHANGE_PASSWORD, 'POST', {}));
+    mockRequireAuth.mockResolvedValue({ user: { ...adminUser, role: 'user' }, errorResponse: null });
+    const res = await handler(makeEvent(API_PATHS.ADMIN_CHANGE_PASSWORD, 'POST', { newPassword: 'Str0ng!Passw0rd' }));
     expect(res.statusCode).toBe(403);
   });
 
   it('returns 403 when status is locked', async () => {
     authOk({ ...adminUser, status: 'locked' });
-    const res = await handler(makeEvent(API_PATHS.ADMIN_CHANGE_PASSWORD, 'POST', {}));
+    const res = await handler(makeEvent(API_PATHS.ADMIN_CHANGE_PASSWORD, 'POST', { newPassword: 'Str0ng!Passw0rd' }));
     expect(res.statusCode).toBe(403);
   });
 
   it('returns 200 on success', async () => {
     authOk(pendingAdmin);
     mockChangePassword.mockResolvedValue({ response: { success: true } });
-    const res = await handler(makeEvent(API_PATHS.ADMIN_CHANGE_PASSWORD, 'POST', { newPassword: 'Strong1!' }));
+    const res = await handler(makeEvent(API_PATHS.ADMIN_CHANGE_PASSWORD, 'POST', { newPassword: 'Str0ng!Passw0rd' }));
     expect(res.statusCode).toBe(200);
   });
 });
 
-// ── POST /admin/users ─────────────────────────────────────────────────────────
-
-describe('POST /admin/users (create user)', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockValidatePow.mockReturnValue({ valid: true, errorResponse: null });
-  });
-
-  it('returns 401 when unauthenticated', async () => {
-    adminAuthFail();
-    const res = await handler(makeEvent(API_PATHS.ADMIN_USERS, 'POST', { username: 'bob' }));
-    expect(res.statusCode).toBe(401);
-  });
-
-  it('returns 403 when admin account is not fully set up', async () => {
-    adminAuthFail(403);
-    const res = await handler(makeEvent(API_PATHS.ADMIN_USERS, 'POST', { username: 'bob' }));
-    expect(res.statusCode).toBe(403);
-  });
-
-  it('returns 201 on successful user creation', async () => {
-    adminAuthOk();
-    mockCreateUser.mockResolvedValue({
-      response: { success: true, username: 'bob', oneTimePassword: 'OTP', userId: 'uid-2' },
-    });
-    const res = await handler(makeEvent(API_PATHS.ADMIN_USERS, 'POST', { username: 'bob' }));
-    expect(res.statusCode).toBe(201);
-    expect(JSON.parse(res.body).data.username).toBe('bob');
-  });
-});
-
-// ── GET /admin/users ──────────────────────────────────────────────────────────
-
-describe('GET /admin/users', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockValidatePow.mockReturnValue({ valid: true, errorResponse: null });
-  });
-
-  it('returns 200 with user list', async () => {
-    adminAuthOk();
-    mockListUsers.mockResolvedValue({
-      users: [{ userId: 'u1', username: 'alice', status: 'active', plan: 'free' as const, createdAt: '2024-01-01', lastLoginAt: null, vaultSizeBytes: 0 }],
-    });
-    const res = await handler(makeEvent(API_PATHS.ADMIN_USERS, 'GET'));
-    expect(res.statusCode).toBe(200);
-    expect(JSON.parse(res.body).data.users).toHaveLength(1);
-  });
-});
-
-// ── POST /admin/users/refresh-otp ─────────────────────────────────────────────
-
-describe('POST /admin/users/refresh-otp', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockValidatePow.mockReturnValue({ valid: true, errorResponse: null });
-  });
-
-  it('returns 401 when unauthenticated', async () => {
-    adminAuthFail();
-    const res = await handler(makeEvent(API_PATHS.ADMIN_USER_REFRESH_OTP, 'POST', { userId: 'u1' }));
-    expect(res.statusCode).toBe(401);
-  });
-
-  it('returns 200 on success', async () => {
-    adminAuthOk();
-    mockRefreshOtp.mockResolvedValue({
-      response: { success: true, username: 'bob', oneTimePassword: 'NEWPASS', userId: 'u1' },
-    });
-    const res = await handler(makeEvent(API_PATHS.ADMIN_USER_REFRESH_OTP, 'POST', { userId: 'u1' }));
-    expect(res.statusCode).toBe(200);
-    expect(JSON.parse(res.body).data.oneTimePassword).toBe('NEWPASS');
-  });
-});
-
-// ── DELETE /admin/users ────────────────────────────────────────────────────────
-
-describe('DELETE /admin/users', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockValidatePow.mockReturnValue({ valid: true, errorResponse: null });
-  });
-
-  it('returns 400 when userId query param is missing', async () => {
-    adminAuthOk();
-    const res = await handler(makeEvent(API_PATHS.ADMIN_USERS, 'DELETE'));
-    expect(res.statusCode).toBe(400);
-  });
-
-  it('returns 200 on success', async () => {
-    adminAuthOk();
-    mockDeleteNewUser.mockResolvedValue({ response: { success: true } });
-    const res = await handler(makeEvent(API_PATHS.ADMIN_USERS, 'DELETE', undefined, { userId: 'u1' }));
-    expect(res.statusCode).toBe(200);
-  });
-});
-
-// ── GET /admin/stats ──────────────────────────────────────────────────────────
-
-describe('GET /admin/stats', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockValidatePow.mockReturnValue({ valid: true, errorResponse: null });
-  });
-
-  it('returns 401 when unauthenticated', async () => {
-    adminAuthFail();
-    const res = await handler(makeEvent(API_PATHS.ADMIN_STATS, 'GET'));
-    expect(res.statusCode).toBe(401);
-    expect(mockGetStats).not.toHaveBeenCalled();
-  });
-
-  it('returns 403 when role is not admin', async () => {
-    adminAuthFail(403);
-    const res = await handler(makeEvent(API_PATHS.ADMIN_STATS, 'GET'));
-    expect(res.statusCode).toBe(403);
-    expect(mockGetStats).not.toHaveBeenCalled();
-  });
-
-  it('returns 403 when admin account is not active', async () => {
-    adminAuthFail(403);
-    const res = await handler(makeEvent(API_PATHS.ADMIN_STATS, 'GET'));
-    expect(res.statusCode).toBe(403);
-    expect(mockGetStats).not.toHaveBeenCalled();
-  });
-
-  it('returns 200 with stats on success', async () => {
-    adminAuthOk();
-    mockGetStats.mockResolvedValue({ totalUsers: 3, totalVaultSizeBytes: 4096, loginsLast7Days: 12 });
-    const res = await handler(makeEvent(API_PATHS.ADMIN_STATS, 'GET'));
-    expect(res.statusCode).toBe(200);
-    const data = JSON.parse(res.body).data;
-    expect(data.totalUsers).toBe(3);
-    expect(data.totalVaultSizeBytes).toBe(4096);
-    expect(data.loginsLast7Days).toBe(12);
-  });
-
-  it('returns 403 when PoW fails', async () => {
-    mockValidatePow.mockReturnValue({
-      valid: false,
-      errorResponse: { statusCode: 403, body: '{"error":"PoW"}', headers: {} },
-    });
-    const res = await handler(makeEvent(API_PATHS.ADMIN_STATS, 'GET'));
-    expect(res.statusCode).toBe(403);
-    expect(mockGetStats).not.toHaveBeenCalled();
-  });
-});
-
-// ── Passkey endpoints ─────────────────────────────────────────────────────────
-
-import { verifyPasskeyAssertion, verifyPasskeyAttestation } from '../services/passkey.js';
-import { getUserByCredentialId, updateUser } from '../utils/dynamodb.js';
-
-const mockGetUserByCredentialId = vi.mocked(getUserByCredentialId);
-const mockVerifyPasskeyAssertion = vi.mocked(verifyPasskeyAssertion);
-const mockVerifyPasskeyAttestation = vi.mocked(verifyPasskeyAttestation);
+// ── GET /admin/passkey/challenge ──────────────────────────────────────────────
 
 describe('GET /admin/passkey/challenge', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -404,6 +211,8 @@ describe('GET /admin/passkey/challenge', () => {
     expect(JSON.parse(res.body).data.challengeJwt).toBe('challenge.jwt.token');
   });
 });
+
+// ── GET /admin/passkey/register/challenge ─────────────────────────────────────
 
 describe('GET /admin/passkey/register/challenge', () => {
   beforeEach(() => {
@@ -419,7 +228,7 @@ describe('GET /admin/passkey/register/challenge', () => {
   });
 
   it('returns 400 when status is not pending_passkey_setup', async () => {
-    authOk(adminUser); // status: active
+    authOk(adminUser);
     const res = await handler(makeEvent(API_PATHS.ADMIN_PASSKEY_REGISTER_CHALLENGE, 'GET'));
     expect(res.statusCode).toBe(400);
   });
@@ -431,6 +240,8 @@ describe('GET /admin/passkey/register/challenge', () => {
     expect(JSON.parse(res.body).data.challengeJwt).toBe('challenge.jwt.token');
   });
 });
+
+// ── POST /admin/passkey/register ──────────────────────────────────────────────
 
 describe('POST /admin/passkey/register', () => {
   beforeEach(() => {
