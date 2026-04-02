@@ -160,6 +160,7 @@ describe('Router', () => {
 
   describe('error handling', () => {
     it('returns 500 when handler throws', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
       const router = new Router();
       router.get('/api/test', [], async () => { throw new Error('boom'); });
       const result = await router.dispatch(makeEvent('GET', '/api/test'));

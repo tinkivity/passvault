@@ -26,8 +26,8 @@ describe('BackendConstruct (dev)', () => {
     template = makeTemplate(devConfig);
   });
 
-  it('creates all 5 named Lambda functions', () => {
-    for (const name of ['challenge', 'auth', 'admin', 'vault', 'health']) {
+  it('creates all 6 named Lambda functions', () => {
+    for (const name of ['challenge', 'auth', 'admin-auth', 'admin-mgmt', 'vault', 'health']) {
       template.hasResourceProperties('AWS::Lambda::Function', {
         FunctionName: `passvault-${name}-dev`,
       });
@@ -80,9 +80,20 @@ describe('BackendConstruct (dev)', () => {
     });
   });
 
-  it('sets JWT_SECRET_PARAM on admin Lambda', () => {
+  it('sets JWT_SECRET_PARAM on admin-auth Lambda', () => {
     template.hasResourceProperties('AWS::Lambda::Function', {
-      FunctionName: 'passvault-admin-dev',
+      FunctionName: 'passvault-admin-auth-dev',
+      Environment: {
+        Variables: Match.objectLike({
+          JWT_SECRET_PARAM: '/passvault/dev/jwt-secret',
+        }),
+      },
+    });
+  });
+
+  it('sets JWT_SECRET_PARAM on admin-mgmt Lambda', () => {
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'passvault-admin-mgmt-dev',
       Environment: {
         Variables: Match.objectLike({
           JWT_SECRET_PARAM: '/passvault/dev/jwt-secret',
@@ -113,9 +124,20 @@ describe('BackendConstruct (dev)', () => {
     });
   });
 
-  it('sets LOGIN_EVENTS_TABLE_NAME on admin Lambda', () => {
+  it('sets LOGIN_EVENTS_TABLE_NAME on admin-auth Lambda', () => {
     template.hasResourceProperties('AWS::Lambda::Function', {
-      FunctionName: 'passvault-admin-dev',
+      FunctionName: 'passvault-admin-auth-dev',
+      Environment: {
+        Variables: Match.objectLike({
+          LOGIN_EVENTS_TABLE_NAME: Match.anyValue(),
+        }),
+      },
+    });
+  });
+
+  it('sets LOGIN_EVENTS_TABLE_NAME on admin-mgmt Lambda', () => {
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'passvault-admin-mgmt-dev',
       Environment: {
         Variables: Match.objectLike({
           LOGIN_EVENTS_TABLE_NAME: Match.anyValue(),
@@ -186,9 +208,16 @@ describe('BackendConstruct (prod)', () => {
     });
   });
 
-  it('sets admin reserved concurrency to 2 in prod', () => {
+  it('sets admin-auth reserved concurrency to 3 in prod', () => {
     template.hasResourceProperties('AWS::Lambda::Function', {
-      FunctionName: 'passvault-admin-prod',
+      FunctionName: 'passvault-admin-auth-prod',
+      ReservedConcurrentExecutions: 3,
+    });
+  });
+
+  it('sets admin-mgmt reserved concurrency to 2 in prod', () => {
+    template.hasResourceProperties('AWS::Lambda::Function', {
+      FunctionName: 'passvault-admin-mgmt-prod',
       ReservedConcurrentExecutions: 2,
     });
   });

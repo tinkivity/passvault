@@ -6,8 +6,15 @@ import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as events from 'aws-cdk-lib/aws-events';
 import * as eventsTargets from 'aws-cdk-lib/aws-events-targets';
 import { Construct } from 'constructs';
+import { resolve } from 'path';
 import type { EnvironmentConfig } from '@passvault/shared';
 import type { StorageConstruct } from './storage.js';
+
+// Resolve asset paths relative to this source file so they work regardless of
+// process.cwd() (tsx / vitest both run from the source location).
+// cdk/lib/constructs/ → cdk/ → backend/dist/
+const BACKEND_DIST = resolve(__dirname, '../../../backend/dist');
+const dist = (name: string) => lambda.Code.fromAsset(resolve(BACKEND_DIST, name));
 
 interface BackendConstructProps {
   config: EnvironmentConfig;
@@ -71,7 +78,7 @@ export class BackendConstruct extends Construct {
       architecture,
       functionName: `passvault-challenge-${env}`,
       handler: 'challenge.handler',
-      code: lambda.Code.fromAsset('../backend/dist/challenge'),
+      code: dist('challenge'),
       environment: commonEnv,
       memorySize: 256,
       timeout: cdk.Duration.seconds(5),
@@ -90,7 +97,7 @@ export class BackendConstruct extends Construct {
       architecture,
       functionName: `passvault-auth-${env}`,
       handler: 'auth.handler',
-      code: lambda.Code.fromAsset('../backend/dist/auth'),
+      code: dist('auth'),
       environment: commonEnv,
       memorySize: defaultMemory,
       timeout: cdk.Duration.seconds(10),
@@ -109,7 +116,7 @@ export class BackendConstruct extends Construct {
       architecture,
       functionName: `passvault-admin-auth-${env}`,
       handler: 'admin-auth.handler',
-      code: lambda.Code.fromAsset('../backend/dist/admin-auth'),
+      code: dist('admin-auth'),
       environment: commonEnv,
       memorySize: defaultMemory,
       timeout: cdk.Duration.seconds(10),
@@ -128,7 +135,7 @@ export class BackendConstruct extends Construct {
       architecture,
       functionName: `passvault-admin-mgmt-${env}`,
       handler: 'admin-management.handler',
-      code: lambda.Code.fromAsset('../backend/dist/admin-management'),
+      code: dist('admin-management'),
       environment: commonEnv,
       memorySize: defaultMemory,
       timeout: cdk.Duration.seconds(10),
@@ -147,7 +154,7 @@ export class BackendConstruct extends Construct {
       architecture,
       functionName: `passvault-vault-${env}`,
       handler: 'vault.handler',
-      code: lambda.Code.fromAsset('../backend/dist/vault'),
+      code: dist('vault'),
       environment: commonEnv,
       memorySize: defaultMemory,
       timeout: defaultTimeout,
@@ -166,7 +173,7 @@ export class BackendConstruct extends Construct {
       architecture,
       functionName: `passvault-health-${env}`,
       handler: 'health.handler',
-      code: lambda.Code.fromAsset('../backend/dist/health'),
+      code: dist('health'),
       environment: commonEnv,
       memorySize: 128,
       timeout: cdk.Duration.seconds(5),
@@ -235,7 +242,7 @@ export class BackendConstruct extends Construct {
       architecture,
       functionName: `passvault-digest-${env}`,
       handler: 'digest.handler',
-      code: lambda.Code.fromAsset('../backend/dist/digest'),
+      code: dist('digest'),
       environment: {
         ...commonEnv,
         LOGIN_EVENTS_TABLE_NAME: storage.loginEventsTable.tableName,
