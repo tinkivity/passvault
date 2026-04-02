@@ -431,19 +431,20 @@ export async function getStats(): Promise<AdminStats> {
   const users = await listAllUsers();
   const regularUsers = users.filter((u) => u.role === 'user' && u.status !== 'retired');
 
-  // Sum vault sizes across all vaults
   const { getVaultFileSize } = await import('../utils/s3.js');
-  let totalVaultSizeBytes = 0;
-  for (const u of regularUsers) {
-    const vaults = await listVaultsByUser(u.userId);
-    for (const v of vaults) {
-      const size = await getVaultFileSize(v.vaultId);
-      totalVaultSizeBytes += size ?? 0;
-    }
-  }
-
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const loginsLast7Days = await getLoginCountSince(sevenDaysAgo);
+
+  // Fetch all vault lists and login count in parallel
+  const [vaultLists, loginsLast7Days] = await Promise.all([
+    Promise.all(regularUsers.map((u) => listVaultsByUser(u.userId))),
+    getLoginCountSince(sevenDaysAgo),
+  ]);
+
+  // Fetch all vault sizes in parallel across all users
+  const allVaultIds = vaultLists.flat().map((v) => v.vaultId);
+  const sizes = await Promise.all(allVaultIds.map((vaultId) => getVaultFileSize(vaultId)));
+  const totalVaultSizeBytes = sizes.reduce<number>((sum, s) => sum + (s ?? 0), 0);
+
   return {
     totalUsers: regularUsers.length,
     totalVaultSizeBytes,

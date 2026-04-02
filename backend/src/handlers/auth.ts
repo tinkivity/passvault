@@ -2,9 +2,8 @@ import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
 import { API_PATHS, POW_CONFIG, ERRORS } from '@passvault/shared';
 import type { AuthenticationResponseJSON, RegistrationResponseJSON } from '@simplewebauthn/server';
 import { success, error } from '../utils/response.js';
-import { validatePow } from '../middleware/pow.js';
-import { validateHoneypot } from '../middleware/honeypot.js';
 import { requireAuth } from '../middleware/auth.js';
+import { Router, pow, honeypot, auth } from '../utils/router.js';
 import { login, changePassword, selfChangePassword, updateProfile } from '../services/auth.js';
 import { verifyEmailToken } from '../services/admin.js';
 import { updateLoginEventLogout } from '../utils/dynamodb.js';
@@ -17,79 +16,25 @@ import {
 } from '../services/passkey.js';
 import { getUserByCredentialId, updateUser } from '../utils/dynamodb.js';
 import { config } from '../config.js';
+import { parseBody } from '../utils/request.js';
 
-function parseBody(event: APIGatewayProxyEvent): { body: Record<string, unknown> } | { parseError: APIGatewayProxyResult } {
-  try {
-    const parsed = JSON.parse(event.body || '{}');
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      return { parseError: error('Invalid request body', 400) };
-    }
-    return { body: parsed as Record<string, unknown> };
-  } catch {
-    return { parseError: error('Invalid JSON', 400) };
-  }
-}
+const MEDIUM = POW_CONFIG.DIFFICULTY.MEDIUM;
 
-export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
-  const path = event.path;
-  const method = event.httpMethod;
+const router = new Router();
+router.post(API_PATHS.AUTH_LOGIN,                      [pow(MEDIUM), honeypot()], handleLogin);
+router.post(API_PATHS.AUTH_CHANGE_PASSWORD,            [pow(MEDIUM), auth()],     handleChangePassword);
+router.post(API_PATHS.AUTH_CHANGE_PASSWORD_SELF,       [pow(MEDIUM), auth()],     handleSelfChangePassword);
+router.get (API_PATHS.AUTH_PASSKEY_CHALLENGE,          [],                        handlePasskeyChallenge);
+router.post(API_PATHS.AUTH_PASSKEY_VERIFY,             [pow(MEDIUM), honeypot()], handlePasskeyVerify);
+router.get (API_PATHS.AUTH_PASSKEY_REGISTER_CHALLENGE, [auth()],                  handlePasskeyRegisterChallenge);
+router.post(API_PATHS.AUTH_PASSKEY_REGISTER,           [pow(MEDIUM), auth()],     handlePasskeyRegister);
+router.get (API_PATHS.AUTH_VERIFY_EMAIL,               [],                        handleVerifyEmail);
+router.post(API_PATHS.AUTH_LOGOUT,                     [auth()],                  handleLogout);
+router.post(API_PATHS.AUTH_PROFILE,                    [auth()],                  handleUpdateProfile);
 
-  try {
-    // POST /auth/login
-    if (path === API_PATHS.AUTH_LOGIN && method === 'POST') {
-      return await handleLogin(event);
-    }
-    // POST /auth/change-password  (onboarding — pending_first_login only)
-    if (path === API_PATHS.AUTH_CHANGE_PASSWORD && method === 'POST') {
-      return await handleChangePassword(event);
-    }
-    // POST /auth/change-password/self  (self-service for active users)
-    if (path === API_PATHS.AUTH_CHANGE_PASSWORD_SELF && method === 'POST') {
-      return await handleSelfChangePassword(event);
-    }
-    // GET /auth/passkey/challenge
-    if (path === API_PATHS.AUTH_PASSKEY_CHALLENGE && method === 'GET') {
-      return await handlePasskeyChallenge();
-    }
-    // POST /auth/passkey/verify
-    if (path === API_PATHS.AUTH_PASSKEY_VERIFY && method === 'POST') {
-      return await handlePasskeyVerify(event);
-    }
-    // GET /auth/passkey/register/challenge
-    if (path === API_PATHS.AUTH_PASSKEY_REGISTER_CHALLENGE && method === 'GET') {
-      return await handlePasskeyRegisterChallenge(event);
-    }
-    // POST /auth/passkey/register
-    if (path === API_PATHS.AUTH_PASSKEY_REGISTER && method === 'POST') {
-      return await handlePasskeyRegister(event);
-    }
-    // GET /auth/verify-email?token=...
-    if (path === API_PATHS.AUTH_VERIFY_EMAIL && method === 'GET') {
-      return await handleVerifyEmail(event);
-    }
-    // POST /auth/logout
-    if (path === API_PATHS.AUTH_LOGOUT && method === 'POST') {
-      return await handleLogout(event);
-    }
-    // POST /auth/profile
-    if (path === API_PATHS.AUTH_PROFILE && method === 'POST') {
-      return await handleUpdateProfile(event);
-    }
-
-    return error('Not found', 404);
-  } catch (err) {
-    console.error('Auth handler error:', err);
-    return error('Internal server error', 500);
-  }
-}
+export const handler = (event: APIGatewayProxyEvent) => router.dispatch(event);
 
 async function handleLogin(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
-  const pow = validatePow(event, POW_CONFIG.DIFFICULTY.MEDIUM);
-  if (pow.errorResponse) return pow.errorResponse;
-
-  const honeypot = validateHoneypot(event);
-  if (honeypot.errorResponse) return honeypot.errorResponse;
-
   const parsed = parseBody(event);
   if ('parseError' in parsed) return parsed.parseError;
   const result = await login(parsed.body as unknown as import('@passvault/shared').LoginRequest);
@@ -101,9 +46,6 @@ async function handleLogin(event: APIGatewayProxyEvent): Promise<APIGatewayProxy
 }
 
 async function handleChangePassword(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
-  const pow = validatePow(event, POW_CONFIG.DIFFICULTY.MEDIUM);
-  if (pow.errorResponse) return pow.errorResponse;
-
   const { user, errorResponse } = await requireAuth(event);
   if (errorResponse) return errorResponse;
 
@@ -122,9 +64,6 @@ async function handleChangePassword(event: APIGatewayProxyEvent): Promise<APIGat
 }
 
 async function handleSelfChangePassword(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
-  const pow = validatePow(event, POW_CONFIG.DIFFICULTY.MEDIUM);
-  if (pow.errorResponse) return pow.errorResponse;
-
   const { user, errorResponse } = await requireAuth(event);
   if (errorResponse) return errorResponse;
 
@@ -148,12 +87,6 @@ async function handlePasskeyChallenge(): Promise<APIGatewayProxyResult> {
 }
 
 async function handlePasskeyVerify(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
-  const pow = validatePow(event, POW_CONFIG.DIFFICULTY.MEDIUM);
-  if (pow.errorResponse) return pow.errorResponse;
-
-  const honeypot = validateHoneypot(event);
-  if (honeypot.errorResponse) return honeypot.errorResponse;
-
   const parsed = parseBody(event);
   if ('parseError' in parsed) return parsed.parseError;
 
@@ -212,9 +145,6 @@ async function handlePasskeyRegister(event: APIGatewayProxyEvent): Promise<APIGa
   if (!config.features.passkeyRequired) {
     return error('Passkey not enabled in this environment', 404);
   }
-
-  const pow = validatePow(event, POW_CONFIG.DIFFICULTY.MEDIUM);
-  if (pow.errorResponse) return pow.errorResponse;
 
   const { user, errorResponse } = await requireAuth(event);
   if (errorResponse) return errorResponse;

@@ -337,6 +337,12 @@ export class BackendConstruct extends Construct {
     adminUsersRetire.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
     const adminUsersExpire = adminUsers.addResource('expire');
     adminUsersExpire.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
+    const adminUsersReactivate = adminUsers.addResource('reactivate');
+    adminUsersReactivate.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
+    const adminUsersUpdate = adminUsers.addResource('update');
+    adminUsersUpdate.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
+    const adminUsersEmailVault = adminUsers.addResource('email-vault');
+    adminUsersEmailVault.addMethod('POST', new apigateway.LambdaIntegration(this.adminFn));
     const adminVault = admin.addResource('vault');
     adminVault.addMethod('GET', new apigateway.LambdaIntegration(this.adminFn));
     const adminStats = admin.addResource('stats');

@@ -28,6 +28,7 @@ vi.mock('../middleware/honeypot.js', () => ({
 
 vi.mock('../middleware/auth.js', () => ({
   requireAuth: vi.fn(),
+  requireAdminActive: vi.fn(),
 }));
 
 vi.mock('../services/admin.js', () => ({
@@ -69,7 +70,7 @@ import {
   getStats,
 } from '../services/admin.js';
 import { downloadVault } from '../services/vault.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, requireAdminActive } from '../middleware/auth.js';
 import { validatePow } from '../middleware/pow.js';
 import { validateHoneypot } from '../middleware/honeypot.js';
 import { config } from '../config.js';
@@ -85,6 +86,7 @@ const mockRefreshOtp = vi.mocked(refreshOtp);
 const mockDeleteNewUser = vi.mocked(deleteNewUser);
 const mockGetStats = vi.mocked(getStats);
 const mockRequireAuth = vi.mocked(requireAuth);
+const mockRequireAdminActive = vi.mocked(requireAdminActive);
 const mockValidatePow = vi.mocked(validatePow);
 const mockValidateHoneypot = vi.mocked(validateHoneypot);
 
@@ -127,6 +129,17 @@ function authFail() {
   mockRequireAuth.mockResolvedValue({
     user: null,
     errorResponse: { statusCode: 401, body: '{"error":"Unauthorized"}', headers: {} },
+  });
+}
+
+function adminAuthOk() {
+  mockRequireAdminActive.mockResolvedValue({ user: adminUser, errorResponse: null });
+}
+
+function adminAuthFail(statusCode = 401) {
+  mockRequireAdminActive.mockResolvedValue({
+    user: null,
+    errorResponse: { statusCode, body: statusCode === 401 ? '{"error":"Unauthorized"}' : '{"error":"Forbidden"}', headers: {} },
   });
 }
 
@@ -234,19 +247,19 @@ describe('POST /admin/users (create user)', () => {
   });
 
   it('returns 401 when unauthenticated', async () => {
-    authFail();
+    adminAuthFail();
     const res = await handler(makeEvent(API_PATHS.ADMIN_USERS, 'POST', { username: 'bob' }));
     expect(res.statusCode).toBe(401);
   });
 
   it('returns 403 when admin account is not fully set up', async () => {
-    authOk(pendingAdmin);
+    adminAuthFail(403);
     const res = await handler(makeEvent(API_PATHS.ADMIN_USERS, 'POST', { username: 'bob' }));
     expect(res.statusCode).toBe(403);
   });
 
   it('returns 201 on successful user creation', async () => {
-    authOk();
+    adminAuthOk();
     mockCreateUser.mockResolvedValue({
       response: { success: true, username: 'bob', oneTimePassword: 'OTP', userId: 'uid-2' },
     });
@@ -265,7 +278,7 @@ describe('GET /admin/users', () => {
   });
 
   it('returns 200 with user list', async () => {
-    authOk();
+    adminAuthOk();
     mockListUsers.mockResolvedValue({
       users: [{ userId: 'u1', username: 'alice', status: 'active', plan: 'free' as const, createdAt: '2024-01-01', lastLoginAt: null, vaultSizeBytes: 0 }],
     });
@@ -284,13 +297,13 @@ describe('POST /admin/users/refresh-otp', () => {
   });
 
   it('returns 401 when unauthenticated', async () => {
-    authFail();
+    adminAuthFail();
     const res = await handler(makeEvent(API_PATHS.ADMIN_USER_REFRESH_OTP, 'POST', { userId: 'u1' }));
     expect(res.statusCode).toBe(401);
   });
 
   it('returns 200 on success', async () => {
-    authOk();
+    adminAuthOk();
     mockRefreshOtp.mockResolvedValue({
       response: { success: true, username: 'bob', oneTimePassword: 'NEWPASS', userId: 'u1' },
     });
@@ -309,13 +322,13 @@ describe('DELETE /admin/users', () => {
   });
 
   it('returns 400 when userId query param is missing', async () => {
-    authOk();
+    adminAuthOk();
     const res = await handler(makeEvent(API_PATHS.ADMIN_USERS, 'DELETE'));
     expect(res.statusCode).toBe(400);
   });
 
   it('returns 200 on success', async () => {
-    authOk();
+    adminAuthOk();
     mockDeleteNewUser.mockResolvedValue({ response: { success: true } });
     const res = await handler(makeEvent(API_PATHS.ADMIN_USERS, 'DELETE', undefined, { userId: 'u1' }));
     expect(res.statusCode).toBe(200);
@@ -331,28 +344,28 @@ describe('GET /admin/stats', () => {
   });
 
   it('returns 401 when unauthenticated', async () => {
-    authFail();
+    adminAuthFail();
     const res = await handler(makeEvent(API_PATHS.ADMIN_STATS, 'GET'));
     expect(res.statusCode).toBe(401);
     expect(mockGetStats).not.toHaveBeenCalled();
   });
 
   it('returns 403 when role is not admin', async () => {
-    mockRequireAuth.mockResolvedValue({ user: { ...adminUser, role: 'user' }, errorResponse: null });
+    adminAuthFail(403);
     const res = await handler(makeEvent(API_PATHS.ADMIN_STATS, 'GET'));
     expect(res.statusCode).toBe(403);
     expect(mockGetStats).not.toHaveBeenCalled();
   });
 
   it('returns 403 when admin account is not active', async () => {
-    authOk(pendingAdmin);
+    adminAuthFail(403);
     const res = await handler(makeEvent(API_PATHS.ADMIN_STATS, 'GET'));
     expect(res.statusCode).toBe(403);
     expect(mockGetStats).not.toHaveBeenCalled();
   });
 
   it('returns 200 with stats on success', async () => {
-    authOk();
+    adminAuthOk();
     mockGetStats.mockResolvedValue({ totalUsers: 3, totalVaultSizeBytes: 4096, loginsLast7Days: 12 });
     const res = await handler(makeEvent(API_PATHS.ADMIN_STATS, 'GET'));
     expect(res.statusCode).toBe(200);
