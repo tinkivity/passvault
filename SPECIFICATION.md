@@ -403,6 +403,13 @@ All environment differences are driven by a single `EnvironmentConfig` type. The
 
 ## 3. Technical Architecture
 
+> **Implementation details** have moved to per-package docs:
+> - [frontend/ARCHITECTURE.md](frontend/ARCHITECTURE.md) — routing, state management, encryption flow, PoW, honeypot
+> - [backend/ARCHITECTURE.md](backend/ARCHITECTURE.md) — handlers, services, middleware, utilities, build
+> - [cdk/ARCHITECTURE.md](cdk/ARCHITECTURE.md) — CDK constructs, DynamoDB, Lambda, API Gateway, CloudFront, kill switch
+>
+> This section retains the high-level design intent.
+
 ### 3.1 Frontend
 - **Framework**: React (latest stable version)
 - **State Management**:
@@ -1130,239 +1137,16 @@ All error responses follow the shape `{ "success": false, "error": "<CODE>", "me
 
 ## 7. Deployment
 
-### 7.1 Frontend
-- Build React app for production
-- Host on **AWS S3 + CloudFront** (deployed via CDK)
-  - Static hosting on S3
-  - CloudFront CDN for global distribution (with flat-rate plan for edge protection)
-  - HTTPS with TLS 1.2+
-  - Automatic cache invalidation on deployment
+Deployment details have moved to dedicated guides:
 
-### 7.2 Backend
-- Deploy Lambda functions via **AWS CDK (Cloud Development Kit)**
-  - Infrastructure as Code using TypeScript
-  - Type-safe infrastructure definitions
-  - Automated CloudFormation stack generation
-  - Built-in best practices and constructs
-  - See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed deployment guide
-
-### 7.3 Infrastructure as Code (AWS CDK)
-- All infrastructure defined in TypeScript using AWS CDK
-- CDK Stack components:
-  - **StorageConstruct**: DynamoDB tables, S3 buckets (PITR and versioning conditional on environment)
-  - **BackendConstruct**: Lambda functions, API Gateway with configurable throttle (memory/timeout from config)
-  - **FrontendConstruct**: CloudFront distribution, S3 static hosting (CloudFront optional for dev)
-  - **MonitoringConstruct**: CloudWatch alarms, dashboards, SNS alert topic (**prod only**)
-  - **KillSwitchConstruct**: Kill switch Lambda (sets concurrency to 0 on sustained-traffic alarm) + re-enable Lambda (restores concurrency via EventBridge Scheduler after 4 hours) (**prod only**)
-- Three environments via CDK contexts: `--context env=dev|beta|prod`
-- Each environment deploys as a fully isolated CloudFormation stack (see Section 7.5)
-- Environment configs defined in single file: `shared/src/config/environments.ts`
-
-**CDK Entry Point:**
-```typescript
-// bin/passvault.ts
-const app = new cdk.App();
-const env = app.node.tryGetContext('env');
-if (!env) throw new Error('Missing required context: --context env=dev|beta|prod');
-const config = getEnvironmentConfig(env);
-new PassVaultStack(app, config.stackName, config, { env: { region: config.region } });
-```
-
-- Automated deployment via `cdk deploy` command
-- See [DEPLOYMENT.md](DEPLOYMENT.md) for complete deployment guide
-
-### 7.4 Stack Naming and Isolation
-
-Each environment deploys as a fully independent CloudFormation stack:
-
-| Resource              | Dev                            | Beta                           | Prod                          |
-|-----------------------|--------------------------------|--------------------------------|-------------------------------|
-| Stack name            | PassVault-Dev                  | PassVault-Beta                 | PassVault-Prod                |
-| DynamoDB table        | passvault-users-dev            | passvault-users-beta           | passvault-users-prod          |
-| S3 files bucket       | passvault-files-dev-{hash}     | passvault-files-beta-{hash}    | passvault-files-prod-{hash}   |
-| S3 frontend bucket    | passvault-frontend-dev-{hash}  | passvault-frontend-beta-{hash} | passvault-frontend-prod-{hash}|
-| API Gateway           | passvault-api-dev              | passvault-api-beta             | passvault-api-prod            |
-| CloudFront            | *(optional)*                   | passvault-cdn-beta             | passvault-cdn-prod            |
-| Lambda functions      | passvault-{fn}-dev             | passvault-{fn}-beta            | passvault-{fn}-prod           |
-
-Stacks share nothing — they can be deployed and destroyed independently.
-
-### 7.5 Initial Deployment Setup
-- **Admin Account Creation**:
-  - Run `ENVIRONMENT=<env> npx tsx scripts/init-admin.ts` after CDK deployment
-  - Creates admin user in DynamoDB with username="admin", role="admin", status="pending_first_login"
-  - Generates a secure random one-time password (16+ characters) and prints it to the console
-  - The OTP is **not** stored in S3 — save it securely from the console output
-- **Post-Deployment Steps**:
-  - Run the init-admin script and note the one-time password printed to console
-  - Admin logs in with the one-time password
-  - Admin immediately changes password to a secure personal password
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** — Quick start and overview
+- **[cdk/DEPLOYMENT.md](cdk/DEPLOYMENT.md)** — Full deployment guide (SSM secrets, CDK context variables, SES email, monitoring, troubleshooting)
+- **[cdk/ARCHITECTURE.md](cdk/ARCHITECTURE.md)** — CDK constructs, stack composition, resource naming
+- **[scripts/README.md](scripts/README.md)** — Post-deploy scripts (init-admin, seed-dev, deploy-ui, cleanup)
 
 ## 8. Development Phases
 
-### Phase 1: MVP
-- [ ] **Define environment configuration system**:
-  - Define `EnvironmentConfig` type in `shared/config/environments.ts`
-  - Create dev, beta, and prod config objects with feature flags (see Section 2.5)
-  - Pass environment to Lambda via `ENVIRONMENT` env var
-  - Pass environment to frontend via `VITE_ENVIRONMENT` build-time var
-- [ ] **Setup AWS CDK project structure**:
-  - Initialize CDK app with TypeScript
-  - Define main PassVaultStack
-  - Create construct library (Storage, Backend, Security, Frontend, Monitoring)
-  - Configure environment-specific settings (dev, beta, prod) — see Section 2.5
-  - See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed structure
-- [ ] **Implement CDK Constructs (environment-aware)**:
-  - StorageConstruct: DynamoDB users table, S3 buckets (PITR and versioning conditional on environment)
-  - BackendConstruct: Lambda functions, API Gateway, IAM roles (memory/timeout from config)
-  - FrontendConstruct: CloudFront distribution, S3 static hosting, OAI (CloudFront optional for dev)
-  - MonitoringConstruct: CloudWatch alarms, dashboards, SNS alert topic (prod only)
-  - KillSwitchConstruct: Lambda concurrency kill switch + EventBridge Scheduler auto-recovery (prod only)
-- [x] **Setup bot protection**:
-  - Enroll CloudFront distribution in flat-rate Free plan (AWS console, post-deploy)
-  - Includes: AWS-managed WAF, DDoS protection, bot management — $0/month Free tier
-  - See [BOTPROTECTION.md](BOTPROTECTION.md) for full details
-  - Set up CloudWatch logging for WAF events
-- [ ] **Implement Proof of Work (PoW) system**:
-  - Backend: GET /challenge endpoint (returns nonce, difficulty, timestamp)
-  - Backend: PoW validation middleware for all protected endpoints
-  - Frontend: SHA-256 based PoW solver function
-  - Frontend: API wrapper that automatically solves PoW before requests
-  - Dynamic difficulty based on endpoint (login=medium, vault=high)
-  - Challenge caching and expiration (60 second TTL)
-- [ ] **Configure API Gateway rate limiting**:
-  - Per-IP throttling (20 burst, 10 steady-state)
-  - Per-user throttling (10 burst, 5 steady-state)
-  - Usage plans for admin vs user roles
-  - Return 429 (Too Many Requests) on rate limit exceeded
-- [ ] **Implement honeypot and bot traps**:
-  - Hidden form fields on login page
-  - Time-based form submission validation
-  - Track user interaction before form submit
-  - Reject suspicious submissions
-- [ ] Create deployment script to:
-  - Generate initial admin password and print to console
-  - Create admin user in DynamoDB with status="pending_first_login"
-- [ ] Implement password policy validation module
-- [ ] Implement client-side encryption module (post-quantum safe):
-  - Argon2id key derivation function
-  - AES-256-GCM encryption/decryption
-  - Random salt generation per user
-  - Random IV generation per encryption
-  - Key management (derive at login, hold in memory, clear on logout)
-  - Encryption/decryption wrapper functions
-  - Password change re-encryption flow
-- [ ] Implement passkey module (WebAuthn/FIDO2):
-  - Stateless challenge JWT generation and verification
-  - Passkey token generation (proves passkey was verified before password step)
-  - Credential registration via `@simplewebauthn/server` `verifyRegistrationResponse()`
-  - Credential authentication via `@simplewebauthn/server` `verifyAuthenticationResponse()`
-  - Counter-based replay protection (updated on every login)
-- [ ] Implement admin endpoints (with environment-conditional passkeys):
-  - POST /admin/login (handle initial password; in prod, accept passkeyToken + password; in dev/beta, accept username + password; return requirePasswordChange flag)
-  - POST /api/admin/change-password (with policy validation; set status to "active" directly when passkeys disabled, otherwise "pending_passkey_setup")
-  - GET /api/admin/passkey/challenge (stateless signed challenge JWT; return 404 when passkeys disabled)
-  - POST /api/admin/passkey/verify (verify passkey credential, return passkeyToken + username; return 404 when passkeys disabled)
-  - GET /api/admin/passkey/register/challenge (Bearer JWT required, status=pending_passkey_setup; return 404 when passkeys disabled)
-  - POST /api/admin/passkey/register (store credential, activate account; return 404 when passkeys disabled)
-  - POST /api/admin/users (create user invitation with OTP generation, blocked if admin not active)
-  - GET /api/admin/users (list all users, blocked if admin not active)
-- [ ] Implement user authentication endpoints (with environment-conditional passkeys):
-  - POST /auth/login (handle OTP first login; in prod, accept passkeyToken + password; in dev/beta, accept username + password; return requirePasswordChange flag)
-  - POST /api/auth/change-password (with policy validation; set status to "active" directly when passkeys disabled, otherwise "pending_passkey_setup")
-  - GET /api/auth/passkey/challenge (stateless signed challenge JWT; return 404 when passkeys disabled)
-  - POST /api/auth/passkey/verify (verify passkey credential, return passkeyToken + username + encryptionSalt; return 404 when passkeys disabled)
-  - GET /api/auth/passkey/register/challenge (Bearer JWT required, status=pending_passkey_setup; return 404 when passkeys disabled)
-  - POST /api/auth/passkey/register (store credential, activate account; return 404 when passkeys disabled)
-- [ ] Implement vault endpoints:
-  - GET /vault (read user's file)
-  - PUT /vault (update user's file)
-  - GET /api/vault/download (download complete recovery package with metadata)
-- [ ] Create React frontend:
-  - **Encryption module**:
-    - Derive encryption key from password using Argon2id on login
-    - Store key in memory (React context or state, never localStorage)
-    - Encrypt file content before PUT /vault
-    - Decrypt file content after GET /vault
-    - Re-encrypt on password change
-    - Clear key from memory on logout
-  - Admin login page (prod: two-step passkey → password form; dev/beta: username + password form; derives encryption key)
-  - Admin first-time password change page (redirect from login if requirePasswordChange=true, handles re-encryption)
-  - Admin passkey setup page (redirect from password change in prod; shows register button, calls WebAuthn API)
-  - Admin dashboard (create users, view user list, accessible only after passkey setup)
-  - User login page (prod: two-step passkey → password form; dev/beta: username + password form; derives encryption key)
-  - User first-time password change page (with policy display, handles re-encryption)
-  - User passkey setup page (redirect from password change in prod; shows register button, calls WebAuthn API)
-  - Vault page with two modes:
-    - View mode (read-only, copy to clipboard, download encrypted backup)
-    - Edit mode (editable textarea, save/cancel buttons with logout on both)
-  - Auto-logout countdown timer (60s view mode, 120s edit mode)
-  - Mode switching logic (view → edit with timer reset)
-  - Auto-logout implementation when timer expires
-  - Immediate logout after save operation
-  - Immediate logout after cancel operation (with confirmation dialog)
-  - Unsaved changes warning in cancel confirmation
-  - Auth state management (admin vs user contexts, track passkey setup status)
-  - Environment-conditional passkeys:
-    - Skip passkey setup screen when passkeys are disabled (dev/beta)
-    - Show passkey button on login form only when passkeys are enabled (prod)
-  - Environment banner:
-    - Show "DEV ENVIRONMENT" or "BETA ENVIRONMENT" banner when not in prod
-    - No banner in prod
-  - Route guards:
-    - Redirect pending_first_login users/admin to password change page
-    - Redirect pending_passkey_setup users/admin to passkey setup page (prod only)
-    - Block vault/dashboard access until status is "active"
-- [ ] Connect frontend to backend APIs
-- [ ] Basic error handling and validation feedback
-
-### Phase 2: Polish
-- [ ] Improve UI/UX design (styling, responsive layout)
-- [ ] Add loading states and user feedback (spinners, toast messages)
-- [ ] Implement comprehensive error handling (network errors, validation errors)
-- [ ] Add input validation on frontend and backend
-- [ ] Security hardening (rate limiting, CORS, encryption)
-- [ ] Testing (unit tests for Lambda, integration tests for API)
-
-### Phase 3: Deployment
-- [ ] **CDK Deployment Preparation**:
-  - Configure AWS credentials and CDK bootstrap
-  - Environment configs defined in `shared/src/config/environments.ts`
-  - Test CDK synthesis (`cdk synth`)
-  - Review generated CloudFormation templates
-- [ ] **Infrastructure Deployment**:
-  - Deploy dev stack: `cdk deploy PassVault-Dev --context env=dev`
-  - Deploy beta stack: `cdk deploy PassVault-Beta --context env=beta`
-  - Deploy prod stack: `cdk deploy PassVault-Prod --context env=prod --require-approval broadening`
-  - Deploy all stacks: `cdk deploy --all`
-  - Verify all resources created successfully
-- [ ] **Application Deployment**:
-  - Run admin initialization script (create admin user, generate password)
-  - Build frontend (`npm run build`)
-  - Deploy frontend to S3 bucket
-  - Invalidate CloudFront cache
-- [ ] **Setup CI/CD pipeline** (optional):
-  - GitHub Actions for automated deployments
-  - Separate workflows for dev/beta/prod
-  - Automated testing before deployment
-  - Slack/email notifications on deployment status
-- [ ] **Setup monitoring**:
-  - CloudWatch dashboards (via MonitoringConstruct)
-  - Cost alerts (threshold: $20/month)
-  - Error rate alerts (threshold: 5%)
-  - Sustained traffic alarm (triggers kill switch after 3 min at throttle limit)
-  - Lambda error and throttle alarms
-- [ ] **Documentation**:
-  - Complete [DEPLOYMENT.md](DEPLOYMENT.md) with actual values (API endpoints, CloudFront URLs)
-  - Document admin procedures
-  - Create runbooks for common operations
-  - API documentation for developers
-- [ ] **Performance testing and optimization**:
-  - Load testing with realistic traffic patterns
-  - Lambda memory optimization (AWS Lambda Power Tuning)
-  - CloudFront cache hit rate optimization
-  - PoW difficulty tuning based on user feedback
-  - Cost analysis and optimization
+All phases are complete. The build plan was documented in the now-deleted `IMPLEMENTATION.md` (8 sequential steps from shared types through frontend UI). See the per-package ARCHITECTURE.md files for current implementation details.
 
 ## 9. Technical Decisions Needed
 

@@ -54,14 +54,30 @@ PassVault is a privacy-focused, serverless password vault where:
 
 ## 📚 Documentation
 
-- **[SPECIFICATION.md](SPECIFICATION.md)** - Complete technical specification
-- **[IMPLEMENTATION.md](IMPLEMENTATION.md)** - Build plan and architecture
-- **[DEPLOYMENT.md](DEPLOYMENT.md)** - AWS CDK deployment guide
-- **[TESTING.md](TESTING.md)** - Unit tests, dev UI testing script, smoke tests, pre-deployment checklist
-- **[RECOVERY.md](RECOVERY.md)** - Offline file recovery manual
-- **[COSTS.md](COSTS.md)** - Detailed cost analysis and projections
-- **[BOTPROTECTION.md](BOTPROTECTION.md)** - Bot protection layers, CloudFront flat-rate plan, kill switch, worst-case costs
-- **[LICENSE](LICENSE)** - MIT License
+### Project-wide
+
+| Document | Description |
+|----------|-------------|
+| [SPECIFICATION.md](SPECIFICATION.md) | Requirements, API design, data model, security |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | Quick start and deployment overview |
+| [TESTING.md](TESTING.md) | Test commands, pre-deployment checklist |
+| [RECOVERY.md](RECOVERY.md) | Offline vault recovery manual |
+| [COSTS.md](COSTS.md) | Cost analysis and projections |
+| [BOTPROTECTION.md](BOTPROTECTION.md) | Bot defense layers, kill switch, cost analysis |
+
+### Per-package
+
+| Document | Description |
+|----------|-------------|
+| [shared/README.md](shared/README.md) | Types, configs, constants (contract layer) |
+| [backend/ARCHITECTURE.md](backend/ARCHITECTURE.md) | Handlers, services, middleware, utilities, build |
+| [backend/TESTING.md](backend/TESTING.md) | Backend test inventory and mocking conventions |
+| [cdk/ARCHITECTURE.md](cdk/ARCHITECTURE.md) | CDK constructs, DynamoDB, Lambda, API Gateway, CloudFront |
+| [cdk/DEPLOYMENT.md](cdk/DEPLOYMENT.md) | Full deployment guide (SSM, SES, monitoring, troubleshooting) |
+| [frontend/ARCHITECTURE.md](frontend/ARCHITECTURE.md) | Routing, state, encryption flow, PoW, auto-logout |
+| [frontend/TESTING.md](frontend/TESTING.md) | Frontend test inventory and manual UI testing |
+| [frontend/USER_MANUAL.md](frontend/USER_MANUAL.md) | End-user guide |
+| [scripts/README.md](scripts/README.md) | Post-deploy scripts (init-admin, deploy-ui, cleanup, etc.) |
 
 ---
 
@@ -256,14 +272,13 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## 🔗 Links
 
-- **Documentation:** [SPECIFICATION.md](SPECIFICATION.md)
-- **Deployment:** [DEPLOYMENT.md](DEPLOYMENT.md)
-- **Testing:** [TESTING.md](TESTING.md)
+- **Specification:** [SPECIFICATION.md](SPECIFICATION.md)
+- **Deployment:** [DEPLOYMENT.md](DEPLOYMENT.md) | [cdk/DEPLOYMENT.md](cdk/DEPLOYMENT.md)
+- **Testing:** [TESTING.md](TESTING.md) | [backend/TESTING.md](backend/TESTING.md) | [frontend/TESTING.md](frontend/TESTING.md)
 - **Recovery:** [RECOVERY.md](RECOVERY.md)
 - **Costs:** [COSTS.md](COSTS.md)
 - **Bot Protection:** [BOTPROTECTION.md](BOTPROTECTION.md)
 - **Issues:** GitHub Issues
-- **AWS CDK:** https://aws.amazon.com/cdk/
 
 ---
 
