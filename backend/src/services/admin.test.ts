@@ -65,7 +65,7 @@ vi.mock('./passkey.js', () => ({
   verifyPasskeyToken: vi.fn(),
 }));
 
-import { adminLogin, adminChangePassword, createUserInvitation, listUsers, refreshOtp, deleteNewUser, getStats, lockUser, unlockUser, expireUser, retireUser, verifyEmailToken, reactivateUser, updateUserProfile, adminEmailUserVault } from './admin.js';
+import { adminLogin, createUserInvitation, listUsers, refreshOtp, deleteNewUser, getStats, lockUser, unlockUser, expireUser, retireUser, verifyEmailToken, reactivateUser, updateUserProfile, adminEmailUserVault } from './admin.js';
 import { getUserByUsername, getUserById, getUserByRegistrationToken, updateUser, createUser, listAllUsers, deleteUser, getLoginCountSince, listVaultsByUser } from '../utils/dynamodb.js';
 import { verifyPassword } from '../utils/crypto.js';
 import { verifyPasskeyToken } from './passkey.js';
@@ -269,82 +269,6 @@ describe('adminLogin — input validation (dev/beta)', () => {
   });
 });
 
-// ── adminChangePassword() ─────────────────────────────────────────────────────
-
-describe('adminChangePassword — validation', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it('returns 400 for a weak password', async () => {
-    const result = await adminChangePassword('admin-1', 'admin', { newPassword: 'weak' });
-    expect(result.statusCode).toBe(400);
-    expect(result.details?.length).toBeGreaterThan(0);
-  });
-});
-
-describe('adminChangePassword — passkeyRequired: false (dev/beta)', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    config.features.passkeyRequired = false;
-  });
-
-  it('sets next status to active', async () => {
-    await adminChangePassword('admin-1', 'admin', { newPassword: 'StrongPass123!' });
-    expect(mockUpdateUser).toHaveBeenCalledWith(
-      'admin-1',
-      expect.objectContaining({ status: 'active' }),
-    );
-  });
-});
-
-describe('adminChangePassword — passkeyRequired: true (prod)', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    config.features.passkeyRequired = true;
-  });
-
-  it('sets next status to pending_passkey_setup', async () => {
-    await adminChangePassword('admin-1', 'admin', { newPassword: 'StrongPass123!' });
-    expect(mockUpdateUser).toHaveBeenCalledWith(
-      'admin-1',
-      expect.objectContaining({ status: 'pending_passkey_setup' }),
-    );
-  });
-});
-
-describe('adminChangePassword — rejects OTP as new password', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    config.features.passkeyRequired = false;
-  });
-
-  it('returns 400 when new password matches the OTP', async () => {
-    mockGetUserById.mockResolvedValue(
-      makeAdmin({ status: 'pending_first_login', oneTimePasswordHash: '$2b$12$otphash' }),
-    );
-    mockVerifyPw.mockResolvedValue(true);
-    const result = await adminChangePassword('admin-1', 'admin', { newPassword: 'StrongPass123!' });
-    expect(result.error).toBe(ERRORS.PASSWORD_SAME_AS_OTP);
-    expect(result.statusCode).toBe(400);
-    expect(mockUpdateUser).not.toHaveBeenCalled();
-  });
-
-  it('succeeds when new password differs from the OTP', async () => {
-    mockGetUserById.mockResolvedValue(
-      makeAdmin({ status: 'pending_first_login', oneTimePasswordHash: '$2b$12$otphash' }),
-    );
-    mockVerifyPw.mockResolvedValue(false);
-    const result = await adminChangePassword('admin-1', 'admin', { newPassword: 'StrongPass123!' });
-    expect(result.error).toBeUndefined();
-    expect(result.response?.success).toBe(true);
-  });
-
-  it('skips OTP check for active users', async () => {
-    mockGetUserById.mockResolvedValue(makeAdmin({ status: 'active', oneTimePasswordHash: null }));
-    const result = await adminChangePassword('admin-1', 'admin', { newPassword: 'StrongPass123!' });
-    expect(result.error).toBeUndefined();
-    expect(mockVerifyPw).not.toHaveBeenCalled();
-  });
-});
 
 // ── createUserInvitation() ────────────────────────────────────────────────────
 

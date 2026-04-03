@@ -5,8 +5,6 @@ import {
   LIMITS,
   type LoginRequest,
   type LoginResponse,
-  type ChangePasswordRequest,
-  type ChangePasswordResponse,
   type CreateUserRequest,
   type CreateUserResponse,
   type UpdateUserRequest,
@@ -19,7 +17,6 @@ import {
 } from '@passvault/shared';
 import { getUserById, getUserByUsername, getUserByRegistrationToken, createUser, updateUser, listAllUsers, deleteUser, recordLoginEvent, getLoginCountSince, getLoginEvents, listVaultsByUser, getVaultRecord, deleteVaultRecord } from '../utils/dynamodb.js';
 import { hashPassword, verifyPassword, generateOtp, generateSalt } from '../utils/crypto.js';
-import { validatePassword } from '../utils/password.js';
 import { signToken } from '../utils/jwt.js';
 import { deleteLegacyVaultFile, deleteVaultFile } from '../utils/s3.js';
 import { sendEmail } from '../utils/ses.js';
@@ -104,34 +101,6 @@ export async function adminLogin(request: LoginRequest): Promise<{ response?: Lo
   return { response };
 }
 
-export async function adminChangePassword(
-  userId: string,
-  username: string,
-  request: ChangePasswordRequest,
-): Promise<{ response?: ChangePasswordResponse; error?: string; statusCode?: number; details?: string[] }> {
-  const validation = validatePassword(request.newPassword, username);
-  if (!validation.valid) {
-    return { error: 'Password does not meet requirements', statusCode: 400, details: validation.errors };
-  }
-
-  const user = await getUserById(userId);
-  if (user?.status === 'pending_first_login' && user.oneTimePasswordHash) {
-    const sameAsOtp = await verifyPassword(request.newPassword, user.oneTimePasswordHash);
-    if (sameAsOtp) {
-      return { error: ERRORS.PASSWORD_SAME_AS_OTP, statusCode: 400 };
-    }
-  }
-
-  const newHash = await hashPassword(request.newPassword);
-  const nextStatus: UserStatus = config.features.passkeyRequired ? 'pending_passkey_setup' : 'active';
-
-  await updateUser(userId, {
-    passwordHash: newHash,
-    status: nextStatus,
-  });
-
-  return { response: { success: true } };
-}
 
 export async function createUserInvitation(
   request: CreateUserRequest,

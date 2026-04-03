@@ -33,7 +33,10 @@ vi.mock('../middleware/auth.js', () => ({
 
 vi.mock('../services/admin.js', () => ({
   adminLogin: vi.fn(),
-  adminChangePassword: vi.fn(),
+}));
+
+vi.mock('../services/auth.js', () => ({
+  changePassword: vi.fn(),
 }));
 
 vi.mock('../services/passkey.js', () => ({
@@ -50,7 +53,8 @@ vi.mock('../utils/dynamodb.js', () => ({
 }));
 
 import { handler } from './admin-auth.js';
-import { adminLogin, adminChangePassword } from '../services/admin.js';
+import { adminLogin } from '../services/admin.js';
+import { changePassword } from '../services/auth.js';
 import { verifyPasskeyAttestation } from '../services/passkey.js';
 import { requireAuth } from '../middleware/auth.js';
 import { validatePow } from '../middleware/pow.js';
@@ -61,7 +65,7 @@ import type { APIGatewayProxyEvent } from 'aws-lambda';
 import type { TokenPayload } from '../utils/jwt.js';
 
 const mockAdminLogin = vi.mocked(adminLogin);
-const mockChangePassword = vi.mocked(adminChangePassword);
+const mockChangePassword = vi.mocked(changePassword);
 const mockRequireAuth = vi.mocked(requireAuth);
 const mockValidatePow = vi.mocked(validatePow);
 const mockValidateHoneypot = vi.mocked(validateHoneypot);
