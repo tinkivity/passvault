@@ -170,7 +170,7 @@ export class ApiClient {
 
   async updateProfile(req: UpdateProfileRequest, token: string): Promise<void> {
     return this.request(API_PATHS.AUTH_PROFILE, {
-      method: 'POST',
+      method: 'PATCH',
       body: req,
       token,
     });
@@ -237,23 +237,21 @@ export class ApiClient {
   }
 
   async downloadUserVault(userId: string, token: string, vaultId?: string): Promise<VaultDownloadResponse> {
-    const url = vaultId
-      ? `${API_PATHS.ADMIN_USER_VAULT}?userId=${encodeURIComponent(userId)}&vaultId=${encodeURIComponent(vaultId)}`
-      : `${API_PATHS.ADMIN_USER_VAULT}?userId=${encodeURIComponent(userId)}`;
+    const base = API_PATHS.ADMIN_USER_VAULT.replace('{userId}', encodeURIComponent(userId));
+    const url = vaultId ? `${base}?vaultId=${encodeURIComponent(vaultId)}` : base;
     return this.request<VaultDownloadResponse>(url, { method: 'GET', token, powDifficulty: POW_CONFIG.DIFFICULTY.HIGH });
   }
 
   async refreshOtp(userId: string, token: string): Promise<{ username: string; oneTimePassword: string; userId: string }> {
-    return this.request(`${API_PATHS.ADMIN_USER_REFRESH_OTP}`, {
+    return this.request(API_PATHS.ADMIN_USER_REFRESH_OTP.replace('{userId}', encodeURIComponent(userId)), {
       method: 'POST',
-      body: { userId },
       token,
       powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
     });
   }
 
   async deleteUser(userId: string, token: string): Promise<void> {
-    return this.request(`${API_PATHS.ADMIN_USERS}?userId=${encodeURIComponent(userId)}`, {
+    return this.request(API_PATHS.ADMIN_USER.replace('{userId}', encodeURIComponent(userId)), {
       method: 'DELETE',
       token,
       powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
@@ -261,62 +259,58 @@ export class ApiClient {
   }
 
   async lockUser(userId: string, token: string): Promise<void> {
-    return this.request(API_PATHS.ADMIN_USERS_LOCK, {
+    return this.request(API_PATHS.ADMIN_USER_LOCK.replace('{userId}', encodeURIComponent(userId)), {
       method: 'POST',
-      body: { userId },
       token,
       powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
     });
   }
 
   async unlockUser(userId: string, token: string): Promise<void> {
-    return this.request(API_PATHS.ADMIN_USERS_UNLOCK, {
+    return this.request(API_PATHS.ADMIN_USER_UNLOCK.replace('{userId}', encodeURIComponent(userId)), {
       method: 'POST',
-      body: { userId },
       token,
       powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
     });
   }
 
   async expireUser(userId: string, token: string): Promise<void> {
-    return this.request(API_PATHS.ADMIN_USERS_EXPIRE, {
+    return this.request(API_PATHS.ADMIN_USER_EXPIRE.replace('{userId}', encodeURIComponent(userId)), {
       method: 'POST',
-      body: { userId },
       token,
       powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
     });
   }
 
   async retireUser(userId: string, token: string): Promise<void> {
-    return this.request(API_PATHS.ADMIN_USERS_RETIRE, {
+    return this.request(API_PATHS.ADMIN_USER_RETIRE.replace('{userId}', encodeURIComponent(userId)), {
       method: 'POST',
-      body: { userId },
       token,
       powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
     });
   }
 
   async emailUserVault(userId: string, token: string, vaultId?: string): Promise<void> {
-    return this.request(API_PATHS.ADMIN_USERS_EMAIL_VAULT, {
+    return this.request(API_PATHS.ADMIN_USER_EMAIL_VAULT.replace('{userId}', encodeURIComponent(userId)), {
       method: 'POST',
-      body: vaultId ? { userId, vaultId } : { userId },
+      body: vaultId ? { vaultId } : {},
       token,
       powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
     });
   }
 
   async reactivateUser(userId: string, expiresAt: string | null, token: string): Promise<void> {
-    return this.request(API_PATHS.ADMIN_USER_REACTIVATE, {
+    return this.request(API_PATHS.ADMIN_USER_REACTIVATE.replace('{userId}', encodeURIComponent(userId)), {
       method: 'POST',
-      body: { userId, expiresAt },
+      body: { expiresAt },
       token,
       powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
     });
   }
 
   async updateUser(req: UpdateUserRequest, token: string): Promise<void> {
-    return this.request(API_PATHS.ADMIN_USER_UPDATE, {
-      method: 'POST',
+    return this.request(API_PATHS.ADMIN_USER.replace('{userId}', encodeURIComponent(req.userId)), {
+      method: 'PATCH',
       body: req,
       token,
       powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
@@ -367,7 +361,7 @@ export class ApiClient {
   }
 
   async getVault(vaultId: string, token: string): Promise<VaultGetResponse> {
-    return this.request<VaultGetResponse>(`/api/vault/${encodeURIComponent(vaultId)}`, {
+    return this.request<VaultGetResponse>(API_PATHS.VAULT.replace('{vaultId}', encodeURIComponent(vaultId)), {
       method: 'GET',
       token,
       powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
@@ -375,7 +369,7 @@ export class ApiClient {
   }
 
   async putVault(vaultId: string, req: VaultPutRequest, token: string): Promise<VaultPutResponse> {
-    return this.request<VaultPutResponse>(`/api/vault/${encodeURIComponent(vaultId)}`, {
+    return this.request<VaultPutResponse>(API_PATHS.VAULT.replace('{vaultId}', encodeURIComponent(vaultId)), {
       method: 'PUT',
       body: req,
       token,
@@ -384,7 +378,7 @@ export class ApiClient {
   }
 
   async renameVault(vaultId: string, req: RenameVaultRequest, token: string): Promise<VaultSummary> {
-    return this.request<VaultSummary>(`/api/vaults/${encodeURIComponent(vaultId)}`, {
+    return this.request<VaultSummary>(API_PATHS.VAULT.replace('{vaultId}', encodeURIComponent(vaultId)), {
       method: 'PATCH',
       body: req,
       token,
@@ -393,7 +387,7 @@ export class ApiClient {
   }
 
   async downloadVault(vaultId: string, token: string): Promise<VaultDownloadResponse> {
-    return this.request<VaultDownloadResponse>(`/api/vault/${encodeURIComponent(vaultId)}/download`, {
+    return this.request<VaultDownloadResponse>(API_PATHS.VAULT_DOWNLOAD.replace('{vaultId}', encodeURIComponent(vaultId)), {
       method: 'GET',
       token,
       powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
@@ -417,7 +411,7 @@ export class ApiClient {
   }
 
   async sendVaultEmail(vaultId: string, token: string): Promise<void> {
-    return this.request(`/api/vault/${encodeURIComponent(vaultId)}/email`, {
+    return this.request(API_PATHS.VAULT_EMAIL.replace('{vaultId}', encodeURIComponent(vaultId)), {
       method: 'POST',
       token,
       powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,

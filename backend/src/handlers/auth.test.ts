@@ -119,7 +119,7 @@ describe('routing', () => {
   it('routes POST /auth/change-password', async () => {
     mockRequireAuth.mockResolvedValue({ user: mockUser, errorResponse: null });
     mockChangePassword.mockResolvedValue({ response: { success: true } });
-    const res = await handler(makeEvent(API_PATHS.AUTH_CHANGE_PASSWORD, 'POST', { newPassword: 'Strong1!' }));
+    const res = await handler(makeEvent(API_PATHS.AUTH_CHANGE_PASSWORD, 'POST', { newPassword: 'Str0ng!Passw0rd' }));
     expect(mockChangePassword).toHaveBeenCalled();
     expect(res.statusCode).toBe(200);
   });

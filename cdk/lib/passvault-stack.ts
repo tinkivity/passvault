@@ -55,7 +55,8 @@ export class PassVaultStack extends cdk.Stack {
     for (const fn of [
       backend.challengeFn,
       backend.authFn,
-      backend.adminFn,
+      backend.adminAuthFn,
+      backend.adminMgmtFn,
       backend.vaultFn,
       backend.healthFn,
     ]) {
@@ -71,7 +72,8 @@ export class PassVaultStack extends cdk.Stack {
         lambdaFunctions: [
           backend.challengeFn,
           backend.authFn,
-          backend.adminFn,
+          backend.adminAuthFn,
+          backend.adminMgmtFn,
           backend.vaultFn,
           backend.healthFn,
         ],
@@ -103,14 +105,16 @@ export class PassVaultStack extends cdk.Stack {
         killSwitchTopic = monitoring!.alertTopic;
       }
 
+      // originalConcurrency order: challenge, auth, admin-auth, admin-mgmt, vault, health
       const originalConcurrency =
-        config.environment === 'prod' ? [5, 3, 2, 5, 2] : [0, 0, 0, 0, 0];
+        config.environment === 'prod' ? [5, 3, 3, 2, 5, 2] : [0, 0, 0, 0, 0, 0];
 
       new KillSwitchConstruct(this, 'KillSwitch', {
         lambdaFunctions: [
           backend.challengeFn,
           backend.authFn,
-          backend.adminFn,
+          backend.adminAuthFn,
+          backend.adminMgmtFn,
           backend.vaultFn,
           backend.healthFn,
         ],
@@ -153,7 +157,7 @@ export class PassVaultStack extends cdk.Stack {
       // checks IAM on the recipient identity ARN in addition to the sender ARN.
       // Using a wildcard resource avoids having to enumerate every recipient identity.
       const transactionalSender = `noreply@${senderDomain}`;
-      for (const fn of [backend.adminFn, backend.authFn, backend.vaultFn, backend.digestFn]) {
+      for (const fn of [backend.adminAuthFn, backend.adminMgmtFn, backend.authFn, backend.vaultFn, backend.digestFn]) {
         fn.addToRolePolicy(new iam.PolicyStatement({
           actions: ['ses:SendEmail', 'ses:SendRawEmail'],
           resources: [`arn:aws:ses:${this.region}:${this.account}:identity/*`],

@@ -40,9 +40,13 @@ if (!ADMIN_EMAIL) {
 }
 
 const BCRYPT_ROUNDS = 12;
-const OTP_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
-const OTP_LENGTH = 16;
-const SALT_BYTES = 32;
+const OTP_UPPER   = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+const OTP_LOWER   = 'abcdefghijklmnopqrstuvwxyz';
+const OTP_DIGITS  = '0123456789';
+const OTP_SPECIAL = '!@#$%^&*';
+const OTP_CHARS   = OTP_UPPER + OTP_LOWER + OTP_DIGITS + OTP_SPECIAL;
+const OTP_LENGTH  = 16;
+const SALT_BYTES  = 32;
 
 // ---- DynamoDB client ------------------------------------------------------
 
@@ -50,13 +54,35 @@ const dynamo = DynamoDBDocumentClient.from(new DynamoDBClient({ region: REGION }
 
 // ---- Helpers --------------------------------------------------------------
 
+function randomChar(alphabet: string): string {
+  // Rejection-sampling to avoid modulo bias
+  const max = Math.floor(256 / alphabet.length) * alphabet.length;
+  let b: number;
+  do { b = randomBytes(1)[0]; } while (b >= max);
+  return alphabet[b % alphabet.length];
+}
+
 function generateOtp(): string {
-  const bytes = randomBytes(OTP_LENGTH);
-  let otp = '';
-  for (let i = 0; i < OTP_LENGTH; i++) {
-    otp += OTP_CHARS[bytes[i] % OTP_CHARS.length];
+  // Guarantee at least one character from each required class
+  const required = [
+    randomChar(OTP_UPPER),
+    randomChar(OTP_LOWER),
+    randomChar(OTP_DIGITS),
+    randomChar(OTP_SPECIAL),
+  ];
+
+  // Fill remaining slots from the full pool
+  for (let i = required.length; i < OTP_LENGTH; i++) {
+    required.push(randomChar(OTP_CHARS));
   }
-  return otp;
+
+  // Fisher-Yates shuffle using cryptographic randomness
+  for (let i = required.length - 1; i > 0; i--) {
+    const j = randomBytes(1)[0] % (i + 1);
+    [required[i], required[j]] = [required[j], required[i]];
+  }
+
+  return required.join('');
 }
 
 async function usernameExists(username: string): Promise<boolean> {

@@ -77,6 +77,19 @@ export async function updateUser(
   );
 }
 
+export async function getUserByRegistrationToken(token: string): Promise<Pick<User, 'userId' | 'status' | 'registrationTokenExpiresAt' | 'username'> | null> {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: DYNAMODB_TABLE,
+      IndexName: 'registrationToken-index',
+      KeyConditionExpression: 'registrationToken = :token',
+      ExpressionAttributeValues: { ':token': token },
+      Limit: 1,
+    }),
+  );
+  return (result.Items?.[0] as Pick<User, 'userId' | 'status' | 'registrationTokenExpiresAt' | 'username'>) ?? null;
+}
+
 export async function getUserByCredentialId(credentialId: string): Promise<User | null> {
   const result = await docClient.send(
     new ScanCommand({
@@ -107,7 +120,7 @@ export async function listAllUsers(): Promise<User[]> {
   return (result.Items as User[]) || [];
 }
 
-export async function recordLoginEvent(eventId: string, userId: string, username: string, success: boolean): Promise<void> {
+export async function recordLoginEvent(eventId: string, userId: string, success: boolean): Promise<void> {
   const now = new Date();
   const expiresAt = Math.floor(now.getTime() / 1000) + 90 * 24 * 60 * 60; // 90 days TTL
   await docClient.send(
@@ -116,7 +129,6 @@ export async function recordLoginEvent(eventId: string, userId: string, username
       Item: {
         eventId,
         userId,
-        username,
         timestamp: now.toISOString(),
         success,
         expiresAt,
@@ -132,12 +144,13 @@ export async function updateLoginEventLogout(eventId: string, logoutAt: string):
       Key: { eventId },
       UpdateExpression: 'SET logoutAt = :l',
       ExpressionAttributeValues: { ':l': logoutAt },
+      ConditionExpression: 'attribute_exists(eventId)',
     }),
   );
 }
 
 export async function getLoginEvents(limit: number): Promise<Array<{
-  eventId: string; userId: string; username: string;
+  eventId: string; userId: string;
   timestamp: string; success: boolean; logoutAt?: string;
 }>> {
   const items: Array<Record<string, unknown>> = [];
@@ -154,7 +167,7 @@ export async function getLoginEvents(limit: number): Promise<Array<{
   } while (lastKey);
   items.sort((a, b) => String(b.timestamp).localeCompare(String(a.timestamp)));
   return items.slice(0, limit) as Array<{
-    eventId: string; userId: string; username: string;
+    eventId: string; userId: string;
     timestamp: string; success: boolean; logoutAt?: string;
   }>;
 }

@@ -5,8 +5,6 @@ import {
   LIMITS,
   type LoginRequest,
   type LoginResponse,
-  type ChangePasswordRequest,
-  type ChangePasswordResponse,
   type CreateUserRequest,
   type CreateUserResponse,
   type UpdateUserRequest,
@@ -17,9 +15,8 @@ import {
   type UserStatus,
   type UserPlan,
 } from '@passvault/shared';
-import { getUserById, getUserByUsername, createUser, updateUser, listAllUsers, deleteUser, recordLoginEvent, getLoginCountSince, getLoginEvents, listVaultsByUser, getVaultRecord, deleteVaultRecord } from '../utils/dynamodb.js';
+import { getUserById, getUserByUsername, getUserByRegistrationToken, createUser, updateUser, listAllUsers, deleteUser, recordLoginEvent, getLoginCountSince, getLoginEvents, listVaultsByUser, getVaultRecord, deleteVaultRecord } from '../utils/dynamodb.js';
 import { hashPassword, verifyPassword, generateOtp, generateSalt } from '../utils/crypto.js';
-import { validatePassword } from '../utils/password.js';
 import { signToken } from '../utils/jwt.js';
 import { deleteLegacyVaultFile, deleteVaultFile } from '../utils/s3.js';
 import { sendEmail } from '../utils/ses.js';
@@ -77,7 +74,7 @@ export async function adminLogin(request: LoginRequest): Promise<{ response?: Lo
   });
 
   const loginEventId = randomUUID();
-  recordLoginEvent(loginEventId, user.userId, user.username, true).catch(err => {
+  recordLoginEvent(loginEventId, user.userId, true).catch(err => {
     console.error('Failed to record admin login event:', err);
   });
 
@@ -104,34 +101,6 @@ export async function adminLogin(request: LoginRequest): Promise<{ response?: Lo
   return { response };
 }
 
-export async function adminChangePassword(
-  userId: string,
-  username: string,
-  request: ChangePasswordRequest,
-): Promise<{ response?: ChangePasswordResponse; error?: string; statusCode?: number; details?: string[] }> {
-  const validation = validatePassword(request.newPassword, username);
-  if (!validation.valid) {
-    return { error: 'Password does not meet requirements', statusCode: 400, details: validation.errors };
-  }
-
-  const user = await getUserById(userId);
-  if (user?.status === 'pending_first_login' && user.oneTimePasswordHash) {
-    const sameAsOtp = await verifyPassword(request.newPassword, user.oneTimePasswordHash);
-    if (sameAsOtp) {
-      return { error: ERRORS.PASSWORD_SAME_AS_OTP, statusCode: 400 };
-    }
-  }
-
-  const newHash = await hashPassword(request.newPassword);
-  const nextStatus: UserStatus = config.features.passkeyRequired ? 'pending_passkey_setup' : 'active';
-
-  await updateUser(userId, {
-    passwordHash: newHash,
-    status: nextStatus,
-  });
-
-  return { response: { success: true } };
-}
 
 export async function createUserInvitation(
   request: CreateUserRequest,
@@ -399,17 +368,14 @@ export async function retireUser(
 export async function verifyEmailToken(
   token: string,
 ): Promise<{ response?: { success: true }; error?: string; statusCode?: number }> {
-  // Scan for user with this registration token
-  const users = await listAllUsers();
-  const user = users.find(
-    (u) =>
-      u.registrationToken === token &&
-      u.status === 'pending_email_verification' &&
-      u.registrationTokenExpiresAt &&
-      new Date(u.registrationTokenExpiresAt) > new Date(),
-  );
+  const user = await getUserByRegistrationToken(token);
 
-  if (!user) {
+  if (
+    !user ||
+    user.status !== 'pending_email_verification' ||
+    !user.registrationTokenExpiresAt ||
+    new Date(user.registrationTokenExpiresAt) <= new Date()
+  ) {
     return { error: ERRORS.EMAIL_VERIFICATION_INVALID, statusCode: 400 };
   }
 
@@ -423,7 +389,14 @@ export async function verifyEmailToken(
 }
 
 export async function listLoginEvents(): Promise<ListLoginEventsResponse> {
-  const events = await getLoginEvents(500);
+  const [rawEvents, users] = await Promise.all([getLoginEvents(500), listAllUsers()]);
+  const usernameMap = new Map(users.map(u => [u.userId, u.username]));
+  const events = rawEvents
+    .filter(ev => ev.timestamp)
+    .map(ev => ({
+      ...ev,
+      username: usernameMap.get(ev.userId) ?? 'unknown',
+    }));
   return { events };
 }
 
@@ -431,19 +404,20 @@ export async function getStats(): Promise<AdminStats> {
   const users = await listAllUsers();
   const regularUsers = users.filter((u) => u.role === 'user' && u.status !== 'retired');
 
-  // Sum vault sizes across all vaults
   const { getVaultFileSize } = await import('../utils/s3.js');
-  let totalVaultSizeBytes = 0;
-  for (const u of regularUsers) {
-    const vaults = await listVaultsByUser(u.userId);
-    for (const v of vaults) {
-      const size = await getVaultFileSize(v.vaultId);
-      totalVaultSizeBytes += size ?? 0;
-    }
-  }
-
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const loginsLast7Days = await getLoginCountSince(sevenDaysAgo);
+
+  // Fetch all vault lists and login count in parallel
+  const [vaultLists, loginsLast7Days] = await Promise.all([
+    Promise.all(regularUsers.map((u) => listVaultsByUser(u.userId))),
+    getLoginCountSince(sevenDaysAgo),
+  ]);
+
+  // Fetch all vault sizes in parallel across all users
+  const allVaultIds = vaultLists.flat().map((v) => v.vaultId);
+  const sizes = await Promise.all(allVaultIds.map((vaultId) => getVaultFileSize(vaultId)));
+  const totalVaultSizeBytes = sizes.reduce<number>((sum, s) => sum + (s ?? 0), 0);
+
   return {
     totalUsers: regularUsers.length,
     totalVaultSizeBytes,
@@ -518,7 +492,7 @@ async function recordFailedAttempt(userId: string, username: string, currentAtte
       ? new Date(Date.now() + LIMITS.RATE_LIMIT_WINDOW_MINUTES * 60 * 1000).toISOString()
       : null;
   await updateUser(userId, { failedLoginAttempts: newCount, lockedUntil });
-  recordLoginEvent(randomUUID(), userId, username, false).catch(err => {
+  recordLoginEvent(randomUUID(), userId, false).catch(err => {
     console.error('Failed to record failed admin login event:', err);
   });
 }

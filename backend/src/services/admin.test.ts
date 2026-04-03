@@ -24,6 +24,7 @@ vi.mock('../utils/dynamodb.js', () => ({
   createUser: vi.fn().mockResolvedValue(undefined),
   updateUser: vi.fn().mockResolvedValue(undefined),
   listAllUsers: vi.fn(),
+  getUserByRegistrationToken: vi.fn(),
   deleteUser: vi.fn().mockResolvedValue(undefined),
   recordLoginEvent: vi.fn().mockResolvedValue(undefined),
   getLoginCountSince: vi.fn().mockResolvedValue(0),
@@ -64,8 +65,8 @@ vi.mock('./passkey.js', () => ({
   verifyPasskeyToken: vi.fn(),
 }));
 
-import { adminLogin, adminChangePassword, createUserInvitation, listUsers, refreshOtp, deleteNewUser, getStats, lockUser, unlockUser, expireUser, retireUser, verifyEmailToken, reactivateUser, updateUserProfile, adminEmailUserVault } from './admin.js';
-import { getUserByUsername, getUserById, updateUser, createUser, listAllUsers, deleteUser, getLoginCountSince, listVaultsByUser } from '../utils/dynamodb.js';
+import { adminLogin, createUserInvitation, listUsers, refreshOtp, deleteNewUser, getStats, lockUser, unlockUser, expireUser, retireUser, verifyEmailToken, reactivateUser, updateUserProfile, adminEmailUserVault } from './admin.js';
+import { getUserByUsername, getUserById, getUserByRegistrationToken, updateUser, createUser, listAllUsers, deleteUser, getLoginCountSince, listVaultsByUser } from '../utils/dynamodb.js';
 import { verifyPassword } from '../utils/crypto.js';
 import { verifyPasskeyToken } from './passkey.js';
 import { config } from '../config.js';
@@ -77,6 +78,7 @@ const mockVerifyPw = vi.mocked(verifyPassword);
 const mockVerifyPasskeyToken = vi.mocked(verifyPasskeyToken);
 const mockUpdateUser = vi.mocked(updateUser);
 const mockListAllUsers = vi.mocked(listAllUsers);
+const mockGetUserByRegistrationToken = vi.mocked(getUserByRegistrationToken);
 const mockGetLoginCountSince = vi.mocked(getLoginCountSince);
 
 function makeAdmin(overrides: Partial<User> = {}): User {
@@ -267,82 +269,6 @@ describe('adminLogin — input validation (dev/beta)', () => {
   });
 });
 
-// ── adminChangePassword() ─────────────────────────────────────────────────────
-
-describe('adminChangePassword — validation', () => {
-  beforeEach(() => vi.clearAllMocks());
-
-  it('returns 400 for a weak password', async () => {
-    const result = await adminChangePassword('admin-1', 'admin', { newPassword: 'weak' });
-    expect(result.statusCode).toBe(400);
-    expect(result.details?.length).toBeGreaterThan(0);
-  });
-});
-
-describe('adminChangePassword — passkeyRequired: false (dev/beta)', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    config.features.passkeyRequired = false;
-  });
-
-  it('sets next status to active', async () => {
-    await adminChangePassword('admin-1', 'admin', { newPassword: 'StrongPass123!' });
-    expect(mockUpdateUser).toHaveBeenCalledWith(
-      'admin-1',
-      expect.objectContaining({ status: 'active' }),
-    );
-  });
-});
-
-describe('adminChangePassword — passkeyRequired: true (prod)', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    config.features.passkeyRequired = true;
-  });
-
-  it('sets next status to pending_passkey_setup', async () => {
-    await adminChangePassword('admin-1', 'admin', { newPassword: 'StrongPass123!' });
-    expect(mockUpdateUser).toHaveBeenCalledWith(
-      'admin-1',
-      expect.objectContaining({ status: 'pending_passkey_setup' }),
-    );
-  });
-});
-
-describe('adminChangePassword — rejects OTP as new password', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    config.features.passkeyRequired = false;
-  });
-
-  it('returns 400 when new password matches the OTP', async () => {
-    mockGetUserById.mockResolvedValue(
-      makeAdmin({ status: 'pending_first_login', oneTimePasswordHash: '$2b$12$otphash' }),
-    );
-    mockVerifyPw.mockResolvedValue(true);
-    const result = await adminChangePassword('admin-1', 'admin', { newPassword: 'StrongPass123!' });
-    expect(result.error).toBe(ERRORS.PASSWORD_SAME_AS_OTP);
-    expect(result.statusCode).toBe(400);
-    expect(mockUpdateUser).not.toHaveBeenCalled();
-  });
-
-  it('succeeds when new password differs from the OTP', async () => {
-    mockGetUserById.mockResolvedValue(
-      makeAdmin({ status: 'pending_first_login', oneTimePasswordHash: '$2b$12$otphash' }),
-    );
-    mockVerifyPw.mockResolvedValue(false);
-    const result = await adminChangePassword('admin-1', 'admin', { newPassword: 'StrongPass123!' });
-    expect(result.error).toBeUndefined();
-    expect(result.response?.success).toBe(true);
-  });
-
-  it('skips OTP check for active users', async () => {
-    mockGetUserById.mockResolvedValue(makeAdmin({ status: 'active', oneTimePasswordHash: null }));
-    const result = await adminChangePassword('admin-1', 'admin', { newPassword: 'StrongPass123!' });
-    expect(result.error).toBeUndefined();
-    expect(mockVerifyPw).not.toHaveBeenCalled();
-  });
-});
 
 // ── createUserInvitation() ────────────────────────────────────────────────────
 
@@ -893,31 +819,31 @@ describe('verifyEmailToken', () => {
   const pastExpiry = new Date(Date.now() - 60_000).toISOString();
 
   it('returns 400 when no user has the token', async () => {
-    mockListAllUsers.mockResolvedValue([]);
+    mockGetUserByRegistrationToken.mockResolvedValue(null);
     const result = await verifyEmailToken('no-such-token');
     expect(result.statusCode).toBe(400);
   });
 
   it('returns 400 when the token belongs to a non-pending_email_verification user', async () => {
-    mockListAllUsers.mockResolvedValue([
-      makeAdmin({ role: 'user', status: 'active', registrationToken: 'tok1', registrationTokenExpiresAt: futureExpiry }),
-    ]);
+    mockGetUserByRegistrationToken.mockResolvedValue({
+      userId: 'user-1', username: 'alice@example.com', status: 'active', registrationTokenExpiresAt: futureExpiry,
+    });
     const result = await verifyEmailToken('tok1');
     expect(result.statusCode).toBe(400);
   });
 
   it('returns 400 when the token is expired', async () => {
-    mockListAllUsers.mockResolvedValue([
-      makeAdmin({ role: 'user', status: 'pending_email_verification', registrationToken: 'tok1', registrationTokenExpiresAt: pastExpiry }),
-    ]);
+    mockGetUserByRegistrationToken.mockResolvedValue({
+      userId: 'user-1', username: 'alice@example.com', status: 'pending_email_verification', registrationTokenExpiresAt: pastExpiry,
+    });
     const result = await verifyEmailToken('tok1');
     expect(result.statusCode).toBe(400);
   });
 
   it('transitions user to pending_first_login on valid token', async () => {
-    mockListAllUsers.mockResolvedValue([
-      makeAdmin({ role: 'user', status: 'pending_email_verification', userId: 'user-1', registrationToken: 'tok1', registrationTokenExpiresAt: futureExpiry }),
-    ]);
+    mockGetUserByRegistrationToken.mockResolvedValue({
+      userId: 'user-1', username: 'alice@example.com', status: 'pending_email_verification', registrationTokenExpiresAt: futureExpiry,
+    });
     const result = await verifyEmailToken('tok1');
     expect(result.response?.success).toBe(true);
     expect(mockUpdateUser).toHaveBeenCalledWith('user-1', expect.objectContaining({ status: 'pending_first_login' }));

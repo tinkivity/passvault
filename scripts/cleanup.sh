@@ -9,7 +9,6 @@
 # Resources cleaned up:
 #   • DynamoDB tables   passvault-users-{env}                  (removalPolicy: RETAIN)
 #                       passvault-vaults-{env}                 (removalPolicy: RETAIN)
-#                       passvault-login-events-{env}           (removalPolicy: DESTROY, sometimes missed)
 #   • S3 files bucket   auto-named, found via CFN stack tag    (removalPolicy: RETAIN)
 #   • CloudWatch logs   /aws/lambda/passvault-*-{env}          (DESTROY but sometimes missed)
 #   • (prod only)       /aws/lambda/passvault-kill-switch
@@ -69,6 +68,17 @@ echo "  Stack       : $STACK_NAME"
 echo "  Region      : $REGION"
 [[ -n "$PROFILE" ]] && echo "  AWS profile : $PROFILE"
 echo ""
+
+# ── AWS access check ─────────────────────────────────────────────────────────
+if ! aws sts get-caller-identity --region "$REGION" &>/dev/null; then
+  echo "✗ No AWS access — cannot reach AWS STS."
+  echo "  Your SSO session may have expired. Run:"
+  [[ -n "$PROFILE" ]] \
+    && echo "    aws sso login --profile $PROFILE" \
+    || echo "    aws sso login"
+  echo ""
+  exit 1
+fi
 
 # ── Guard: warn if stack is still live ───────────────────────────────────────
 stack_status=$(aws cloudformation describe-stacks \
@@ -148,7 +158,6 @@ _delete_table() {
 
 _delete_table "passvault-users-${ENV}"
 _delete_table "passvault-vaults-${ENV}"
-_delete_table "passvault-login-events-${ENV}"
 
 # ── S3 files bucket ───────────────────────────────────────────────────────────
 section "S3 ──────────────────────────────────────────────────────────────────────"

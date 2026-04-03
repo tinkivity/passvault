@@ -101,7 +101,7 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
   });
 
   const loginEventId = randomUUID();
-  recordLoginEvent(loginEventId, user.userId, user.username, true).catch(err => {
+  recordLoginEvent(loginEventId, user.userId, true).catch(err => {
     console.error('Failed to record login event:', err);
   });
 
@@ -228,7 +228,7 @@ async function recordFailedAttempt(userId: string, username: string, currentAtte
       ? new Date(Date.now() + LIMITS.RATE_LIMIT_WINDOW_MINUTES * 60 * 1000).toISOString()
       : null;
   await updateUser(userId, { failedLoginAttempts: newCount, lockedUntil });
-  recordLoginEvent(randomUUID(), userId, username, false).catch(err => {
+  recordLoginEvent(randomUUID(), userId, false).catch(err => {
     console.error('Failed to record failed login event:', err);
   });
 }

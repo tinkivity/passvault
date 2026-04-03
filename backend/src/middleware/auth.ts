@@ -49,3 +49,17 @@ export async function requireRole(event: APIGatewayProxyEvent, role: 'admin' | '
   }
   return { user, errorResponse: null };
 }
+
+// Gate that enforces authentication, admin role, and active status in one call.
+// Consolidates the repeated inline checks across all admin management endpoints.
+export async function requireAdminActive(event: APIGatewayProxyEvent) {
+  const { user, errorResponse } = await requireAuth(event);
+  if (errorResponse) return { user: null, errorResponse };
+  if (user!.role !== 'admin') {
+    return { user: null, errorResponse: error(ERRORS.FORBIDDEN, 403) };
+  }
+  if (user!.status !== 'active') {
+    return { user: null, errorResponse: error(ERRORS.ADMIN_NOT_ACTIVE, 403) };
+  }
+  return { user, errorResponse: null };
+}

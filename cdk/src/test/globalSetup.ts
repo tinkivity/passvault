@@ -10,7 +10,7 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // cdk/src/test/ → passvault/backend/dist/
 const DIST_BASE = resolve(__dirname, '../../../backend/dist');
-const HANDLERS = ['challenge', 'auth', 'admin', 'vault', 'health'];
+const HANDLERS = ['challenge', 'auth', 'admin-auth', 'admin-management', 'vault', 'health'];
 
 export function setup(): void {
   for (const name of HANDLERS) {
