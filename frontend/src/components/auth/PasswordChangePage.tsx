@@ -16,10 +16,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import logo from '../../assets/logo.png';
-import { config } from '../../config.js';
 import { ROUTES } from '../../routes.js';
-
-const PASSKEY_REQUIRED = config.passkeyRequired;
 
 export function PasswordChangePage() {
   const navigate = useNavigate();
@@ -57,13 +54,9 @@ export function PasswordChangePage() {
     }
   };
 
-  const handleSuccessConfirm = () => {
-    if (PASSKEY_REQUIRED) {
-      navigate(ROUTES.PASSKEY_SETUP, { replace: true });
-    } else {
-      logout();
-      navigate(ROUTES.LOGIN, { replace: true });
-    }
+  const handleContinue = () => {
+    logout();
+    navigate(ROUTES.LOGIN, { replace: true });
   };
 
   if (success) {
@@ -75,14 +68,12 @@ export function PasswordChangePage() {
             <CardHeader className="text-center">
               <CardTitle className="text-xl">Password Changed</CardTitle>
               <CardDescription>
-                {PASSKEY_REQUIRED
-                  ? 'Your password has been set. Next, register your passkey.'
-                  : 'Your password has been set. Please log in with your new password.'}
+                Your password has been set successfully. Please sign in with your new credentials.
               </CardDescription>
             </CardHeader>
-            <CardContent className="flex justify-center pb-2">
-              <Button onClick={handleSuccessConfirm}>
-                {PASSKEY_REQUIRED ? 'Set Up Passkey' : 'Continue to Login'}
+            <CardContent>
+              <Button onClick={handleContinue} className="w-full">
+                Continue to Login
               </Button>
             </CardContent>
           </Card>
@@ -131,7 +122,7 @@ export function PasswordChangePage() {
               </p>
               <ErrorMessage message={error} />
               <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Please wait…</> : 'Set Password'}
+                {loading ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Please wait...</> : 'Set Password'}
               </Button>
             </form>
           </CardContent>

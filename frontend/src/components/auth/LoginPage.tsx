@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
+import { Loader2, KeyRound } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth.js';
 import { Layout, ErrorMessage } from '../layout/Layout.js';
 import { Button } from '@/components/ui/button';
@@ -14,14 +14,12 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import logo from '../../assets/logo.png';
-import { config } from '../../config.js';
 import { ROUTES } from '../../routes.js';
 
-const PASSKEY_REQUIRED = config.passkeyRequired;
-
-function postLoginPath(role: string, requirePasswordChange?: boolean, requirePasskeySetup?: boolean): string {
-  if (requirePasswordChange) return ROUTES.CHANGE_PASSWORD;
-  if (requirePasskeySetup) return ROUTES.PASSKEY_SETUP;
+function postLoginPath(role: string, requirePasswordChange?: boolean): string {
+  if (requirePasswordChange) {
+    return role === 'admin' ? ROUTES.CHANGE_PASSWORD : ROUTES.ONBOARDING;
+  }
   return role === 'admin' ? ROUTES.UI.ADMIN.DASHBOARD : ROUTES.UI.ROOT;
 }
 
@@ -29,27 +27,15 @@ export function LoginPage() {
   const navigate = useNavigate();
   const { login, startPasskeyLogin, completeLogin, loading, error } = useAuth();
 
-  const [passkeyToken, setPasskeyToken] = useState<string | null>(null);
-  const [prefilledUsername, setPrefilledUsername] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
 
   const handlePasskeyClick = async () => {
     try {
       const res = await startPasskeyLogin();
-      setPasskeyToken(res.passkeyToken);
-      setPrefilledUsername(res.username);
-    } catch {
-      // error already set by useAuth
-    }
-  };
-
-  const handlePasskeyPasswordSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!passkeyToken) return;
-    try {
-      const res = await completeLogin(passkeyToken, password);
-      navigate(postLoginPath(res.role, res.requirePasswordChange, res.requirePasskeySetup));
+      // User passkey login: complete immediately without password
+      const loginRes = await completeLogin(res.passkeyToken);
+      navigate(postLoginPath(loginRes.role, loginRes.requirePasswordChange));
     } catch {
       // error already set by useAuth
     }
@@ -74,51 +60,39 @@ export function LoginPage() {
             <CardTitle className="text-xl">Sign In</CardTitle>
             <CardDescription>Enter your credentials to continue</CardDescription>
           </CardHeader>
-          <CardContent>
-            {PASSKEY_REQUIRED ? (
-              passkeyToken ? (
-                <form onSubmit={handlePasskeyPasswordSubmit} className="flex flex-col gap-4">
-                  <div className="flex flex-col gap-1">
-                    <Label htmlFor="username">Username</Label>
-                    <Input id="username" type="text" autoComplete="username" value={prefilledUsername} readOnly />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <Label htmlFor="password">Password</Label>
-                    <Input id="password" type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} required />
-                  </div>
-                  <ErrorMessage message={error} />
-                  <Button type="submit" className="w-full" disabled={loading}>
-                    {loading ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Please wait…</> : 'Sign in'}
-                  </Button>
-                </form>
+          <CardContent className="flex flex-col gap-4">
+            <Button variant="outline" className="w-full" onClick={handlePasskeyClick} disabled={loading}>
+              {loading ? (
+                <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Please wait…</>
               ) : (
-                <div className="flex flex-col gap-4">
-                  <ErrorMessage message={error} />
-                  <Button className="w-full" onClick={handlePasskeyClick} disabled={loading}>
-                    {loading ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Please wait…</> : 'Sign in with passkey'}
-                  </Button>
-                </div>
-              )
-            ) : (
-              <form onSubmit={handleDirectSubmit} className="flex flex-col gap-4">
-                <div className="flex flex-col gap-1">
-                  <Label htmlFor="username">Username</Label>
-                  <Input id="username" type="text" autoComplete="username" value={username} onChange={e => setUsername(e.target.value)} required />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <Label htmlFor="password">Password</Label>
-                  <Input id="password" type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} required />
-                </div>
-                {/* Honeypot — hidden from real users */}
-                <div style={{ display: 'none' }} aria-hidden="true">
-                  <input tabIndex={-1} name="email_confirm" autoComplete="off" />
-                </div>
-                <ErrorMessage message={error} />
-                <Button type="submit" className="w-full" disabled={loading}>
-                  {loading ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Please wait…</> : 'Sign in'}
-                </Button>
-              </form>
-            )}
+                <><KeyRound className="h-3.5 w-3.5" /> Sign in with passkey</>
+              )}
+            </Button>
+
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              <div className="flex-1 border-t border-border" />
+              or
+              <div className="flex-1 border-t border-border" />
+            </div>
+
+            <form onSubmit={handleDirectSubmit} className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="username">Username</Label>
+                <Input id="username" type="text" autoComplete="username" value={username} onChange={e => setUsername(e.target.value)} required />
+              </div>
+              <div className="flex flex-col gap-1">
+                <Label htmlFor="password">Password</Label>
+                <Input id="password" type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} required />
+              </div>
+              {/* Honeypot — hidden from real users */}
+              <div style={{ display: 'none' }} aria-hidden="true">
+                <input tabIndex={-1} name="email_confirm" autoComplete="off" />
+              </div>
+              <ErrorMessage message={error} />
+              <Button type="submit" className="w-full" disabled={loading}>
+                {loading ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Please wait…</> : 'Sign in'}
+              </Button>
+            </form>
           </CardContent>
         </Card>
       </div>

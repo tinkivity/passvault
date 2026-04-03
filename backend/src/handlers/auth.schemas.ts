@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { PASSWORD_MIN_LENGTH } from '@passvault/shared';
 
 export const LoginSchema = z.object({
-  password: z.string().min(1),
+  password: z.string().min(1).optional(),
   username: z.string().optional(),
   passkeyToken: z.string().optional(),
 });
@@ -32,6 +32,7 @@ export const PasskeyVerifySchema = z.object({
 export const PasskeyRegisterSchema = z.object({
   challengeJwt: z.string(),
   attestation: PasskeyBodySchema,
+  name: z.string().max(64).optional(),
 });
 
 export const UpdateProfileSchema = z.object({

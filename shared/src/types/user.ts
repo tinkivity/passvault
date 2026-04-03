@@ -11,7 +11,7 @@ export interface NotificationPrefs {
 export type UserStatus =
   | 'pending_email_verification'  // prod only: awaiting email link click
   | 'pending_first_login'         // account created; must change password
-  | 'pending_passkey_setup'       // password set; must register passkey (prod only)
+  | 'pending_passkey_setup'       // password set; must register passkey (prod admins only)
   | 'active'                      // fully onboarded
   | 'locked'                      // admin has locked; cannot login
   | 'expired'                     // can login and read; cannot write
@@ -27,11 +27,6 @@ export interface User {
   status: UserStatus;
   plan: UserPlan;
   oneTimePasswordHash: string | null;
-  passkeyCredentialId: string | null;
-  passkeyPublicKey: string | null;
-  passkeyCounter: number;
-  passkeyTransports: string[] | null;
-  passkeyAaguid: string | null;
   encryptionSalt: string;
   createdAt: string;
   lastLoginAt: string | null;

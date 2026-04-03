@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Eye, EyeOff } from 'lucide-react';
 import type { VaultFile, VaultItem, VaultItemCategory, VaultSummary } from '@passvault/shared';
 import { useAuth } from '../../../hooks/useAuth.js';
 import { useVault } from '../../../hooks/useVault.js';
@@ -21,14 +21,35 @@ const CATEGORIES: { value: VaultItemCategory; label: string }[] = [
   { value: 'private_key', label: 'Private Key' },
 ];
 
-function PasswordInput({
+function MaskedInput({
   id, value, onChange, label,
 }: { id: string; value: string; onChange: (v: string) => void; label: string }) {
+  const [visible, setVisible] = useState(false);
   return (
     <div className="space-y-1">
       <Label htmlFor={id}>{label}</Label>
       <div className="flex gap-1">
-        <Input id={id} type="text" value={value} onChange={e => onChange(e.target.value)} className="font-mono" />
+        <Input id={id} type={visible ? 'text' : 'password'} autoComplete="off" value={value} onChange={e => onChange(e.target.value)} className="font-mono" />
+        <Button type="button" variant="ghost" size="icon-sm" title={visible ? 'Hide' : 'Show'} onClick={() => setVisible(v => !v)}>
+          {visible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function PasswordInput({
+  id, value, onChange, label,
+}: { id: string; value: string; onChange: (v: string) => void; label: string }) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div className="space-y-1">
+      <Label htmlFor={id}>{label}</Label>
+      <div className="flex gap-1">
+        <Input id={id} type={visible ? 'text' : 'password'} autoComplete="off" value={value} onChange={e => onChange(e.target.value)} className="font-mono" />
+        <Button type="button" variant="ghost" size="icon-sm" title={visible ? 'Hide' : 'Show'} onClick={() => setVisible(v => !v)}>
+          {visible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+        </Button>
         <Button type="button" variant="outline" size="icon-sm" title="Generate password" onClick={() => onChange(generateSecurePassword())}>
           <RefreshCw className="h-3.5 w-3.5" />
         </Button>
@@ -173,9 +194,9 @@ function CategoryFields({ category, get, set }: {
           <div className="grid grid-cols-3 gap-2">
             <div className="space-y-1"><Label htmlFor="expiryMonth">MM</Label><Input id="expiryMonth" value={get('expiryMonth')} onChange={e => set('expiryMonth')(e.target.value)} placeholder="MM" maxLength={2} /></div>
             <div className="space-y-1"><Label htmlFor="expiryYear">YYYY</Label><Input id="expiryYear" value={get('expiryYear')} onChange={e => set('expiryYear')(e.target.value)} placeholder="YYYY" maxLength={4} /></div>
-            <PasswordInput id="cvv" label="CVV" value={get('cvv')} onChange={set('cvv')} />
+            <MaskedInput id="cvv" label="CVV" value={get('cvv')} onChange={set('cvv')} />
           </div>
-          <div className="space-y-1"><Label htmlFor="pin">PIN</Label><Input id="pin" value={get('pin')} onChange={e => set('pin')(e.target.value)} /></div>
+          <MaskedInput id="pin" label="PIN" value={get('pin')} onChange={set('pin')} />
         </>
       );
     case 'identity':
@@ -207,7 +228,7 @@ function CategoryFields({ category, get, set }: {
           <div className="space-y-1"><Label htmlFor="keyType">Key type</Label><Input id="keyType" value={get('keyType')} onChange={e => set('keyType')(e.target.value)} placeholder="RSA, Ed25519…" /></div>
           <div className="space-y-1"><Label htmlFor="privateKey">Private key</Label><Textarea id="privateKey" value={get('privateKey')} onChange={e => set('privateKey')(e.target.value)} rows={5} className="font-mono text-xs" /></div>
           <div className="space-y-1"><Label htmlFor="publicKey">Public key</Label><Textarea id="publicKey" value={get('publicKey')} onChange={e => set('publicKey')(e.target.value)} rows={3} className="font-mono text-xs" /></div>
-          <div className="space-y-1"><Label htmlFor="passphrase">Passphrase</Label><Input id="passphrase" value={get('passphrase')} onChange={e => set('passphrase')(e.target.value)} /></div>
+          <PasswordInput id="passphrase" label="Passphrase" value={get('passphrase')} onChange={set('passphrase')} />
         </>
       );
   }

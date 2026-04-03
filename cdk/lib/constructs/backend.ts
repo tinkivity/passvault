@@ -220,6 +220,12 @@ export class BackendConstruct extends Construct {
     this.adminAuthFn.addEnvironment('LOGIN_EVENTS_TABLE_NAME', storage.loginEventsTable.tableName);
     this.adminMgmtFn.addEnvironment('LOGIN_EVENTS_TABLE_NAME', storage.loginEventsTable.tableName);
 
+    // IAM: passkey credentials table — auth + admin-auth read/write
+    storage.passkeyCredentialsTable.grantReadWriteData(this.authFn);
+    storage.passkeyCredentialsTable.grantReadWriteData(this.adminAuthFn);
+    this.authFn.addEnvironment('PASSKEY_CREDENTIALS_TABLE_NAME', storage.passkeyCredentialsTable.tableName);
+    this.adminAuthFn.addEnvironment('PASSKEY_CREDENTIALS_TABLE_NAME', storage.passkeyCredentialsTable.tableName);
+
     // IAM: grant vaults table access to vault + admin-mgmt Lambdas
     storage.vaultsTable.grantReadWriteData(this.vaultFn);
     storage.vaultsTable.grantReadWriteData(this.adminMgmtFn);
@@ -337,6 +343,11 @@ export class BackendConstruct extends Construct {
     const authPasskeyRegisterChallenge = authPasskeyRegister.addResource('challenge');
     authPasskeyRegisterChallenge.addMethod('GET', new apigateway.LambdaIntegration(this.authFn));
     authPasskeyRegister.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
+    const authPasskeys = auth.addResource('passkeys');
+    authPasskeys.addMethod('GET', new apigateway.LambdaIntegration(this.authFn));
+    const authPasskeyById = authPasskeys.addResource('{credentialId}');
+    authPasskeyById.addMethod('DELETE', new apigateway.LambdaIntegration(this.authFn));
+    authPasskeyById.addMethod('PATCH', new apigateway.LambdaIntegration(this.authFn));
 
     const admin = apiRoot.addResource('admin');
     // Admin auth / onboarding routes → adminAuthFn
@@ -353,6 +364,11 @@ export class BackendConstruct extends Construct {
     const adminPasskeyRegisterChallenge = adminPasskeyRegister.addResource('challenge');
     adminPasskeyRegisterChallenge.addMethod('GET', new apigateway.LambdaIntegration(this.adminAuthFn));
     adminPasskeyRegister.addMethod('POST', new apigateway.LambdaIntegration(this.adminAuthFn));
+    const adminPasskeys = admin.addResource('passkeys');
+    adminPasskeys.addMethod('GET', new apigateway.LambdaIntegration(this.adminAuthFn));
+    const adminPasskeyById = adminPasskeys.addResource('{credentialId}');
+    adminPasskeyById.addMethod('DELETE', new apigateway.LambdaIntegration(this.adminAuthFn));
+    adminPasskeyById.addMethod('PATCH', new apigateway.LambdaIntegration(this.adminAuthFn));
 
     // Admin management routes → adminMgmtFn
     const adminUsers = admin.addResource('users');
@@ -375,6 +391,8 @@ export class BackendConstruct extends Construct {
     adminUserReactivate.addMethod('POST', new apigateway.LambdaIntegration(this.adminMgmtFn));
     const adminUserRefreshOtp = adminUserById.addResource('refresh-otp');
     adminUserRefreshOtp.addMethod('POST', new apigateway.LambdaIntegration(this.adminMgmtFn));
+    const adminUserReset = adminUserById.addResource('reset');
+    adminUserReset.addMethod('POST', new apigateway.LambdaIntegration(this.adminMgmtFn));
     const adminUserEmailVault = adminUserById.addResource('email-vault');
     adminUserEmailVault.addMethod('POST', new apigateway.LambdaIntegration(this.adminMgmtFn));
     const adminStats = admin.addResource('stats');

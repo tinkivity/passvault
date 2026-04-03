@@ -61,14 +61,14 @@ describe('generateChallengeJwt / verifyChallengeJwt', () => {
 // ── Passkey Token ─────────────────────────────────────────────────────────────
 
 describe('generatePasskeyToken / verifyPasskeyToken', () => {
-  it('round-trips: verify returns the userId', async () => {
-    const token = await generatePasskeyToken('user-42');
-    const userId = await verifyPasskeyToken(token);
-    expect(userId).toBe('user-42');
+  it('round-trips: verify returns the userId, credentialId, and passkeyName', async () => {
+    const token = await generatePasskeyToken('user-42', 'cred-42', 'My Key');
+    const result = await verifyPasskeyToken(token);
+    expect(result).toEqual({ userId: 'user-42', credentialId: 'cred-42', passkeyName: 'My Key' });
   });
 
   it('throws when token is tampered', async () => {
-    const token = await generatePasskeyToken('user-1');
+    const token = await generatePasskeyToken('user-1', 'cred-1', 'Key');
     const tampered = token.slice(0, -5) + 'YYYYY';
     await expect(verifyPasskeyToken(tampered)).rejects.toThrow();
   });

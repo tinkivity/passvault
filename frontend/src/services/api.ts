@@ -168,6 +168,30 @@ export class ApiClient {
     });
   }
 
+  async listPasskeys(token: string): Promise<import('@passvault/shared').PasskeyListResponse> {
+    return this.request(API_PATHS.AUTH_PASSKEYS, { method: 'GET', token });
+  }
+
+  async revokePasskey(credentialId: string, token: string): Promise<import('@passvault/shared').PasskeyRevokeResponse> {
+    return this.request(API_PATHS.AUTH_PASSKEY_REVOKE.replace('{credentialId}', encodeURIComponent(credentialId)), { method: 'DELETE', token });
+  }
+
+  async renamePasskey(credentialId: string, name: string, token: string): Promise<void> {
+    return this.request(API_PATHS.AUTH_PASSKEY_REVOKE.replace('{credentialId}', encodeURIComponent(credentialId)), { method: 'PATCH', body: { name }, token });
+  }
+
+  async listAdminPasskeys(token: string): Promise<import('@passvault/shared').PasskeyListResponse> {
+    return this.request(API_PATHS.ADMIN_PASSKEYS, { method: 'GET', token });
+  }
+
+  async revokeAdminPasskey(credentialId: string, token: string): Promise<import('@passvault/shared').PasskeyRevokeResponse> {
+    return this.request(API_PATHS.ADMIN_PASSKEY_REVOKE.replace('{credentialId}', encodeURIComponent(credentialId)), { method: 'DELETE', token });
+  }
+
+  async renameAdminPasskey(credentialId: string, name: string, token: string): Promise<void> {
+    return this.request(API_PATHS.ADMIN_PASSKEY_REVOKE.replace('{credentialId}', encodeURIComponent(credentialId)), { method: 'PATCH', body: { name }, token });
+  }
+
   async updateProfile(req: UpdateProfileRequest, token: string): Promise<void> {
     return this.request(API_PATHS.AUTH_PROFILE, {
       method: 'PATCH',
@@ -244,6 +268,14 @@ export class ApiClient {
 
   async refreshOtp(userId: string, token: string): Promise<{ username: string; oneTimePassword: string; userId: string }> {
     return this.request(API_PATHS.ADMIN_USER_REFRESH_OTP.replace('{userId}', encodeURIComponent(userId)), {
+      method: 'POST',
+      token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+    });
+  }
+
+  async resetUser(userId: string, token: string): Promise<{ username: string; oneTimePassword: string; userId: string }> {
+    return this.request(API_PATHS.ADMIN_USER_RESET.replace('{userId}', encodeURIComponent(userId)), {
       method: 'POST',
       token,
       powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,

@@ -24,6 +24,9 @@ router.get (API_PATHS.ADMIN_PASSKEY_CHALLENGE,          [],                     
 router.post(API_PATHS.ADMIN_PASSKEY_VERIFY,             [pow(HIGH), honeypot(), validate(PasskeyVerifySchema)], (e) => passkey.handlePasskeyVerify(e, 'admin'));
 router.get (API_PATHS.ADMIN_PASSKEY_REGISTER_CHALLENGE, [auth()],                                               (e) => passkey.handlePasskeyRegisterChallenge(e, 'admin'));
 router.post(API_PATHS.ADMIN_PASSKEY_REGISTER,           [pow(HIGH), auth(), validate(PasskeyRegisterSchema)],   (e) => passkey.handlePasskeyRegister(e, 'admin'));
+router.get (API_PATHS.ADMIN_PASSKEYS,                   [auth()],                                               (e) => passkey.handleListPasskeys(e, 'admin'));
+router.delete(API_PATHS.ADMIN_PASSKEY_REVOKE,           [auth()],                                               (e) => passkey.handleRevokePasskey(e, 'admin'));
+router.patch(API_PATHS.ADMIN_PASSKEY_REVOKE,            [auth()],                                               (e) => passkey.handleRenamePasskey(e, 'admin'));
 
 export const handler = (event: APIGatewayProxyEvent) => router.dispatch(event);
 
@@ -51,7 +54,7 @@ async function handleChangePassword(event: APIGatewayProxyEvent): Promise<APIGat
 
   const parsed = parseBody(event);
   if ('parseError' in parsed) return parsed.parseError;
-  const result = await changePassword(user!.userId, user!.username, parsed.body as unknown as import('@passvault/shared').ChangePasswordRequest);
+  const result = await changePassword(user!.userId, user!.username, parsed.body as unknown as import('@passvault/shared').ChangePasswordRequest, 'admin');
 
   if (result.error) {
     return error(result.error, result.statusCode || 400, result.details);

@@ -15,13 +15,13 @@ import {
   type UserStatus,
   type UserPlan,
 } from '@passvault/shared';
-import { getUserById, getUserByUsername, getUserByRegistrationToken, createUser, updateUser, listAllUsers, deleteUser, recordLoginEvent, getLoginCountSince, getLoginEvents, listVaultsByUser, getVaultRecord, deleteVaultRecord } from '../utils/dynamodb.js';
+import { getUserById, getUserByUsername, getUserByRegistrationToken, createUser, updateUser, listAllUsers, deleteUser, recordLoginEvent, getLoginCountSince, getLoginEvents, listVaultsByUser, getVaultRecord, deleteVaultRecord, listPasskeyCredentials, deletePasskeyCredential } from '../utils/dynamodb.js';
 import { hashPassword, verifyPassword, generateOtp, generateSalt } from '../utils/crypto.js';
 import { signToken } from '../utils/jwt.js';
 import { deleteLegacyVaultFile, deleteVaultFile } from '../utils/s3.js';
 import { sendEmail } from '../utils/ses.js';
 import { verifyPasskeyToken } from './passkey.js';
-import { createFirstVault, deleteVault, sendVaultEmail } from './vault.js';
+import { deleteVault, sendVaultEmail } from './vault.js';
 import { config } from '../config.js';
 
 export async function adminLogin(request: LoginRequest): Promise<{ response?: LoginResponse; error?: string; statusCode?: number }> {
@@ -30,21 +30,25 @@ export async function adminLogin(request: LoginRequest): Promise<{ response?: Lo
   }
 
   let user;
+  let passkeyCredentialId: string | undefined;
+  let passkeyName: string | undefined;
 
   if (config.features.passkeyRequired) {
     if (!request.passkeyToken) {
       return { error: ERRORS.INVALID_PASSKEY, statusCode: 401 };
     }
-    let userId: string;
+    let tokenResult: { userId: string; credentialId: string; passkeyName: string };
     try {
-      userId = await verifyPasskeyToken(request.passkeyToken);
+      tokenResult = await verifyPasskeyToken(request.passkeyToken);
     } catch {
       return { error: ERRORS.INVALID_PASSKEY, statusCode: 401 };
     }
-    user = await getUserById(userId);
+    user = await getUserById(tokenResult.userId);
     if (!user || user.role !== 'admin') {
       return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
     }
+    passkeyCredentialId = tokenResult.credentialId;
+    passkeyName = tokenResult.passkeyName;
   } else {
     if (typeof request.username !== 'string' || request.username.length > LIMITS.EMAIL_MAX_LENGTH) {
       return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
@@ -74,7 +78,7 @@ export async function adminLogin(request: LoginRequest): Promise<{ response?: Lo
   });
 
   const loginEventId = randomUUID();
-  recordLoginEvent(loginEventId, user.userId, true).catch(err => {
+  recordLoginEvent(loginEventId, user.userId, true, passkeyCredentialId, passkeyName).catch(err => {
     console.error('Failed to record admin login event:', err);
   });
 
@@ -147,11 +151,6 @@ export async function createUserInvitation(
     status: userStatus,
     plan: request.plan ?? 'free',
     oneTimePasswordHash: otpHash,
-    passkeyCredentialId: null,
-    passkeyPublicKey: null,
-    passkeyCounter: 0,
-    passkeyTransports: null,
-    passkeyAaguid: null,
     encryptionSalt: salt,
     createdAt: new Date().toISOString(),
     lastLoginAt: null,
@@ -167,9 +166,6 @@ export async function createUserInvitation(
   };
 
   await createUser(user);
-
-  // Create first vault (Personal Vault)
-  await createFirstVault(userId);
 
   // Send invitation email if configured
   if (process.env.SENDER_EMAIL) {
@@ -278,6 +274,62 @@ export async function refreshOtp(
       );
     } catch (err) {
       console.error(`Failed to send refreshed OTP email to ${user.username}:`, err);
+    }
+  }
+
+  return {
+    response: {
+      success: true,
+      username: user.username,
+      oneTimePassword: otp,
+      userId,
+    },
+  };
+}
+
+export async function resetUser(
+  userId: string,
+): Promise<{ response?: CreateUserResponse; error?: string; statusCode?: number }> {
+  const user = await getUserById(userId);
+  if (!user) return { error: ERRORS.NOT_FOUND, statusCode: 404 };
+  if (user.role === 'admin') return { error: ERRORS.FORBIDDEN, statusCode: 403 };
+  if (user.status === 'retired') return { error: ERRORS.FORBIDDEN, statusCode: 403 };
+
+  const otp = generateOtp();
+  const otpHash = await hashPassword(otp);
+  const otpExpiresAt = new Date(Date.now() + config.session.otpExpiryMinutes * 60_000).toISOString();
+
+  // Delete all passkey credentials
+  const passkeys = await listPasskeyCredentials(userId);
+  await Promise.all(passkeys.map(pk => deletePasskeyCredential(pk.credentialId)));
+
+  // Reset user to pending_first_login with new OTP
+  await updateUser(userId, {
+    status: 'pending_first_login',
+    passwordHash: otpHash,
+    oneTimePasswordHash: otpHash,
+    otpExpiresAt,
+    failedLoginAttempts: 0,
+    lockedUntil: null,
+  });
+
+  // Send email notification if configured
+  if (process.env.SENDER_EMAIL && user.username.includes('@')) {
+    try {
+      await sendEmail(
+        user.username,
+        'Your PassVault account has been reset',
+        [
+          `Your account has been reset by an administrator.`,
+          ``,
+          `Username: ${user.username}`,
+          `One-time password: ${otp}`,
+          ``,
+          `Please log in and set up your account again.`,
+        ].join('\n'),
+      );
+    } catch (err) {
+      console.error('Failed to send reset email:', err);
     }
   }
 

@@ -252,12 +252,3 @@ export async function renameVault(
 export async function getWarningCodes(): Promise<{ response?: WarningCodeDefinition[]; error?: string; statusCode?: number }> {
   return { response: WARNING_CODE_CATALOG };
 }
-
-/** Create the first vault for a newly invited user. Called from admin service. */
-export async function createFirstVault(userId: string): Promise<string> {
-  const vaultId = uuidv4();
-  const encryptionSalt = randomBytes(SALT_LENGTH).toString('base64');
-  await createVaultRecord(vaultId, userId, 'Personal Vault', encryptionSalt);
-  await putVaultFile(vaultId, '');
-  return vaultId;
-}

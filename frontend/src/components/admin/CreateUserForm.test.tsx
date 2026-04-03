@@ -81,7 +81,8 @@ describe('CreateUserForm', () => {
     render(<CreateUserForm onCreateUser={onCreateUser} loading={false} />);
     await userEvent.type(screen.getByLabelText(/email address/i), 'bob@example.com');
     await userEvent.click(screen.getByText('Create user'));
-    expect(await screen.findByText('abc123XY')).toBeInTheDocument();
+    expect(await screen.findByText(/bob@example\.com/)).toBeInTheDocument();
+    expect(screen.getByTitle('Reveal')).toBeInTheDocument();
   });
 
   it('shows an error if onCreateUser rejects', async () => {
@@ -92,13 +93,14 @@ describe('CreateUserForm', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Username taken');
   });
 
-  it('"Done" resets back to the form', async () => {
+  it('"Done" resets back to the form after copy', async () => {
     const onCreateUser = makeOnCreate();
     render(<CreateUserForm onCreateUser={onCreateUser} loading={false} />);
     await userEvent.type(screen.getByLabelText(/email address/i), 'bob@example.com');
     await userEvent.click(screen.getByText('Create user'));
-    await screen.findByText('abc123XY');
-    await userEvent.click(screen.getByText('Done'));
+    await screen.findByTitle('Copy');
+    await userEvent.click(screen.getByTitle('Copy'));
+    await userEvent.click(screen.getByRole('button', { name: 'Done' }));
     expect(screen.getByLabelText(/email address/i)).toBeInTheDocument();
   });
 

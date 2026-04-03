@@ -50,6 +50,9 @@ vi.mock('../services/passkey.js', () => ({
 vi.mock('../utils/dynamodb.js', () => ({
   getUserByCredentialId: vi.fn(),
   updateUser: vi.fn().mockResolvedValue(undefined),
+  listPasskeyCredentials: vi.fn().mockResolvedValue([]),
+  createPasskeyCredential: vi.fn().mockResolvedValue(undefined),
+  updatePasskeyCounter: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { handler } from './admin-auth.js';
@@ -221,20 +224,13 @@ describe('GET /admin/passkey/challenge', () => {
 describe('GET /admin/passkey/register/challenge', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    config.features.passkeyRequired = true;
   });
 
-  it('returns 404 when passkeyRequired is false', async () => {
-    config.features.passkeyRequired = false;
-    mockRequireAuth.mockResolvedValue({ user: { ...adminUser, status: 'pending_passkey_setup' }, errorResponse: null });
-    const res = await handler(makeEvent(API_PATHS.ADMIN_PASSKEY_REGISTER_CHALLENGE, 'GET'));
-    expect(res.statusCode).toBe(404);
-  });
-
-  it('returns 400 when status is not pending_passkey_setup', async () => {
+  it('returns challengeJwt for active admin (adding more passkeys)', async () => {
     authOk(adminUser);
     const res = await handler(makeEvent(API_PATHS.ADMIN_PASSKEY_REGISTER_CHALLENGE, 'GET'));
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body).data.challengeJwt).toBe('challenge.jwt.token');
   });
 
   it('returns challengeJwt for admin with pending_passkey_setup', async () => {
@@ -250,11 +246,10 @@ describe('GET /admin/passkey/register/challenge', () => {
 describe('POST /admin/passkey/register', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    config.features.passkeyRequired = true;
     mockValidatePow.mockReturnValue({ valid: true, errorResponse: null });
   });
 
-  it('sets status to active on successful registration', async () => {
+  it('sets status to active on successful registration for pending_passkey_setup admin', async () => {
     mockRequireAuth.mockResolvedValue({ user: { ...adminUser, status: 'pending_passkey_setup' }, errorResponse: null });
     mockVerifyPasskeyAttestation.mockResolvedValue({
       verified: true, credentialId: 'cred-1', publicKey: 'pubkey', counter: 0, aaguid: 'aaguid', transports: ['internal'],

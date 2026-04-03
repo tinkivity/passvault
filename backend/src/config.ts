@@ -9,6 +9,7 @@ export const DYNAMODB_TABLE = process.env.DYNAMODB_TABLE || `passvault-users-${e
 export const FILES_BUCKET = process.env.FILES_BUCKET || `passvault-files-${env}`;
 export const LOGIN_EVENTS_TABLE = process.env.LOGIN_EVENTS_TABLE_NAME || `passvault-login-events-${env}`;
 export const VAULTS_TABLE = process.env.VAULTS_TABLE_NAME || `passvault-vaults-${env}`;
+export const PASSKEY_CREDENTIALS_TABLE = process.env.PASSKEY_CREDENTIALS_TABLE_NAME || `passvault-passkey-credentials-${env}`;
 
 let jwtSecretCache: string | undefined;
 

@@ -12,12 +12,16 @@ export const API_PATHS = {
   AUTH_VERIFY_EMAIL: '/api/auth/verify-email',
   AUTH_LOGOUT: '/api/auth/logout',
   AUTH_PROFILE: '/api/auth/profile',
+  AUTH_PASSKEYS: '/api/auth/passkeys',
+  AUTH_PASSKEY_REVOKE: '/api/auth/passkeys/{credentialId}',
   ADMIN_LOGIN: '/api/admin/login',
   ADMIN_CHANGE_PASSWORD: '/api/admin/change-password',
   ADMIN_PASSKEY_CHALLENGE: '/api/admin/passkey/challenge',
   ADMIN_PASSKEY_VERIFY: '/api/admin/passkey/verify',
   ADMIN_PASSKEY_REGISTER_CHALLENGE: '/api/admin/passkey/register/challenge',
   ADMIN_PASSKEY_REGISTER: '/api/admin/passkey/register',
+  ADMIN_PASSKEYS: '/api/admin/passkeys',
+  ADMIN_PASSKEY_REVOKE: '/api/admin/passkeys/{credentialId}',
   ADMIN_USERS: '/api/admin/users',
   ADMIN_USER: '/api/admin/users/{userId}',
   ADMIN_USER_VAULT: '/api/admin/users/{userId}/vault',
@@ -28,6 +32,7 @@ export const API_PATHS = {
   ADMIN_USER_EXPIRE: '/api/admin/users/{userId}/expire',
   ADMIN_USER_EMAIL_VAULT: '/api/admin/users/{userId}/email-vault',
   ADMIN_USER_REACTIVATE: '/api/admin/users/{userId}/reactivate',
+  ADMIN_USER_RESET: '/api/admin/users/{userId}/reset',
   ADMIN_STATS: '/api/admin/stats',
   ADMIN_LOGIN_EVENTS: '/api/admin/login-events',
   VAULTS: '/api/vaults',
@@ -92,6 +97,10 @@ export const ERRORS = {
   VAULT_LIMIT_REACHED: 'Vault limit reached for your plan',
   VAULT_NOT_FOUND: 'Vault not found',
   CANNOT_DELETE_LAST_VAULT: 'Cannot delete the last vault',
+  PASSKEY_LIMIT_REACHED: 'Maximum number of passkeys reached',
+  PASSKEY_DUPLICATE_PROVIDER: 'A passkey from this provider is already registered',
+  PASSKEY_CANNOT_REVOKE_LAST: 'Cannot revoke the last passkey',
+  PASSKEY_NOT_FOUND: 'Passkey not found',
 } as const;
 
 // Limits
@@ -106,4 +115,7 @@ export const LIMITS = {
   MAX_PASSWORD_LENGTH: 1024,
   EMAIL_MAX_LENGTH: 254,
   VAULT_LIMITS: { free: 1, pro: 10, administrator: 10 } as Record<string, number>,
+  MAX_PASSKEYS_USER: 10,
+  MAX_PASSKEYS_ADMIN: 2,
+  MAX_PASSKEY_NAME_LENGTH: 64,
 } as const;

@@ -64,6 +64,8 @@ export interface LoginEventSummary {
   timestamp: string;
   success: boolean;
   logoutAt?: string;
+  passkeyCredentialId?: string;
+  passkeyName?: string;
 }
 
 export interface ListLoginEventsResponse {

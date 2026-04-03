@@ -76,6 +76,22 @@ export function useAdmin(token: string | null) {
     }
   }, [token]);
 
+  const resetUser = useCallback(async (userId: string): Promise<{ username: string; oneTimePassword: string }> => {
+    if (!token) throw new Error('Not authenticated');
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.resetUser(userId, token);
+      return { username: res.username, oneTimePassword: res.oneTimePassword };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to reset user';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
   const deleteUser = useCallback(async (userId: string): Promise<void> => {
     if (!token) throw new Error('Not authenticated');
     setLoading(true);
@@ -226,5 +242,5 @@ export function useAdmin(token: string | null) {
     }
   }, [token]);
 
-  return { loading, error, createUser, listUsers, downloadUserVault, refreshOtp, deleteUser, lockUser, unlockUser, expireUser, retireUser, reactivateUser, updateUser, emailUserVault, getStats, getLoginEvents };
+  return { loading, error, createUser, listUsers, downloadUserVault, refreshOtp, resetUser, deleteUser, lockUser, unlockUser, expireUser, retireUser, reactivateUser, updateUser, emailUserVault, getStats, getLoginEvents };
 }

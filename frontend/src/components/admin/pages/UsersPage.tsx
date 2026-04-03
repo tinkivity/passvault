@@ -6,6 +6,7 @@ import { useAuth } from '../../../hooks/useAuth.js';
 import { useAdmin } from '../../../hooks/useAdmin.js';
 import { UserList } from '../UserList.js';
 import { CreateUserForm } from '../CreateUserForm.js';
+import { OtpDisplay } from '../OtpDisplay.js';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ROUTES } from '../../../routes.js';
@@ -18,6 +19,8 @@ export function UsersPage() {
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [usersLoaded, setUsersLoaded] = useState(false);
   const [createOpen, setCreateOpen] = useState(searchParams.get('create') === '1');
+  const [createOtpShowing, setCreateOtpShowing] = useState(false);
+  const [otpResult, setOtpResult] = useState<{ username: string; oneTimePassword: string } | null>(null);
 
   const refreshUsers = useCallback(async () => {
     const list = await admin.listUsers();
@@ -39,8 +42,11 @@ export function UsersPage() {
 
   const handleDialogOpenChange = (open: boolean) => {
     setCreateOpen(open);
-    if (!open && searchParams.has('create')) {
-      setSearchParams({}, { replace: true });
+    if (!open) {
+      setCreateOtpShowing(false);
+      if (searchParams.has('create')) {
+        setSearchParams({}, { replace: true });
+      }
     }
   };
 
@@ -110,25 +116,43 @@ export function UsersPage() {
         loading={admin.loading && !usersLoaded}
         onDownload={admin.downloadUserVault}
         onRefreshOtp={admin.refreshOtp}
+        onResetUser={admin.resetUser}
         onDeleteUser={handleDeleteUser}
         onLockUser={handleLockUser}
         onUnlockUser={handleUnlockUser}
         onExpireUser={handleExpireUser}
         onReactivateUser={handleReactivateUser}
         onEmailVault={admin.emailUserVault}
+        onOtpRefreshed={setOtpResult}
         onRowClick={handleRowClick}
       />
 
-      <Dialog open={createOpen} onOpenChange={handleDialogOpenChange}>
-        <DialogContent>
+      <Dialog open={createOpen} onOpenChange={createOtpShowing ? () => {} : handleDialogOpenChange}>
+        <DialogContent showCloseButton={!createOtpShowing}>
           <DialogHeader>
-            <DialogTitle>Create User</DialogTitle>
+            <DialogTitle>{createOtpShowing ? 'One-Time Password' : 'Create User'}</DialogTitle>
           </DialogHeader>
           <CreateUserForm
             onCreateUser={handleCreateUser}
             loading={admin.loading}
             onDone={() => handleDialogOpenChange(false)}
+            onOtpVisibleChange={setCreateOtpShowing}
           />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={otpResult !== null} onOpenChange={() => {}}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>One-Time Password</DialogTitle>
+          </DialogHeader>
+          {otpResult && (
+            <OtpDisplay
+              username={otpResult.username}
+              oneTimePassword={otpResult.oneTimePassword}
+              onDone={() => setOtpResult(null)}
+            />
+          )}
         </DialogContent>
       </Dialog>
     </div>

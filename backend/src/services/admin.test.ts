@@ -53,7 +53,6 @@ vi.mock('../utils/s3.js', () => ({
 }));
 
 vi.mock('./vault.js', () => ({
-  createFirstVault: vi.fn().mockResolvedValue('vault-1'),
   deleteVault: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -89,11 +88,6 @@ function makeAdmin(overrides: Partial<User> = {}): User {
     oneTimePasswordHash: '$2b$12$otphash',
     role: 'admin',
     status: 'pending_first_login',
-    passkeyCredentialId: null,
-    passkeyPublicKey: null,
-    passkeyCounter: 0,
-    passkeyTransports: null,
-    passkeyAaguid: null,
     encryptionSalt: 'base64salt==',
     createdAt: '2024-01-01T00:00:00.000Z',
     lastLoginAt: null,
@@ -189,14 +183,14 @@ describe('adminLogin — passkeyRequired: true (prod)', () => {
   });
 
   it('returns 401 when user is not admin role', async () => {
-    mockVerifyPasskeyToken.mockResolvedValue('admin-1');
+    mockVerifyPasskeyToken.mockResolvedValue({ userId: 'admin-1', credentialId: 'cred-1', passkeyName: 'My Key' });
     mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user' }));
     const result = await adminLogin({ passkeyToken: 'valid.token', password: 'correct' });
     expect(result.error).toBe(ERRORS.INVALID_CREDENTIALS);
   });
 
   it('succeeds with valid passkey token and correct password', async () => {
-    mockVerifyPasskeyToken.mockResolvedValue('admin-1');
+    mockVerifyPasskeyToken.mockResolvedValue({ userId: 'admin-1', credentialId: 'cred-1', passkeyName: 'My Key' });
     mockGetUserById.mockResolvedValue(makeAdmin({ status: 'active' }));
     mockVerifyPw.mockResolvedValue(true);
     const result = await adminLogin({ passkeyToken: 'valid.token', password: 'correct' });

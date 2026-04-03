@@ -46,6 +46,9 @@ vi.mock('../services/passkey.js', () => ({
 vi.mock('../utils/dynamodb.js', () => ({
   getUserByCredentialId: vi.fn(),
   updateUser: vi.fn().mockResolvedValue(undefined),
+  listPasskeyCredentials: vi.fn().mockResolvedValue([]),
+  createPasskeyCredential: vi.fn().mockResolvedValue(undefined),
+  updatePasskeyCounter: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { handler } from './auth.js';
@@ -279,12 +282,16 @@ describe('POST /auth/passkey/verify', () => {
 
   it('returns passkeyToken on successful verification', async () => {
     mockGetUserByCredentialId.mockResolvedValue({
-      userId: 'user-1', username: 'alice', encryptionSalt: 'salt',
-      passkeyCredentialId: 'cred-1', passkeyPublicKey: 'pubkey', passkeyCounter: 0,
-      passkeyTransports: null, passkeyAaguid: null,
-      role: 'user', status: 'active', passwordHash: '', oneTimePasswordHash: null,
-      createdAt: '', lastLoginAt: null, createdBy: null, failedLoginAttempts: 0, lockedUntil: null,
-      plan: 'free' as const, otpExpiresAt: null,
+      user: {
+        userId: 'user-1', username: 'alice', encryptionSalt: 'salt',
+        role: 'user', status: 'active', passwordHash: '', oneTimePasswordHash: null,
+        createdAt: '', lastLoginAt: null, createdBy: null, failedLoginAttempts: 0, lockedUntil: null,
+        plan: 'free' as const, otpExpiresAt: null,
+      },
+      credential: {
+        credentialId: 'cred-1', userId: 'user-1', name: 'My Key', publicKey: 'pubkey',
+        counter: 0, transports: null, aaguid: '', createdAt: '2024-01-01T00:00:00Z',
+      },
     });
     mockVerifyPasskeyAssertion.mockResolvedValue({ verified: true, newCounter: 1 });
     const res = await handler(makeEvent(API_PATHS.AUTH_PASSKEY_VERIFY, 'POST', {
@@ -300,14 +307,6 @@ describe('POST /auth/passkey/verify', () => {
 describe('GET /auth/passkey/register/challenge', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    config.features.passkeyRequired = true;
-  });
-
-  it('returns 404 when passkeyRequired is false', async () => {
-    config.features.passkeyRequired = false;
-    mockRequireAuth.mockResolvedValue({ user: { ...mockUser, status: 'pending_passkey_setup' }, errorResponse: null });
-    const res = await handler(makeEvent(API_PATHS.AUTH_PASSKEY_REGISTER_CHALLENGE, 'GET'));
-    expect(res.statusCode).toBe(404);
   });
 
   it('returns 401 when unauthenticated', async () => {
@@ -316,14 +315,14 @@ describe('GET /auth/passkey/register/challenge', () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it('returns 400 when status is not pending_passkey_setup', async () => {
-    mockRequireAuth.mockResolvedValue({ user: activeUser, errorResponse: null });
+  it('returns 403 when status is not active or pending_first_login', async () => {
+    mockRequireAuth.mockResolvedValue({ user: { ...mockUser, status: 'locked' }, errorResponse: null });
     const res = await handler(makeEvent(API_PATHS.AUTH_PASSKEY_REGISTER_CHALLENGE, 'GET'));
-    expect(res.statusCode).toBe(400);
+    expect(res.statusCode).toBe(403);
   });
 
-  it('returns challengeJwt when status is pending_passkey_setup', async () => {
-    mockRequireAuth.mockResolvedValue({ user: { ...mockUser, status: 'pending_passkey_setup' }, errorResponse: null });
+  it('returns challengeJwt when user is active', async () => {
+    mockRequireAuth.mockResolvedValue({ user: activeUser, errorResponse: null });
     const res = await handler(makeEvent(API_PATHS.AUTH_PASSKEY_REGISTER_CHALLENGE, 'GET'));
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.body).data.challengeJwt).toBe('challenge.jwt.token');
@@ -333,13 +332,12 @@ describe('GET /auth/passkey/register/challenge', () => {
 describe('POST /auth/passkey/register', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    config.features.passkeyRequired = true;
     mockValidatePow.mockReturnValue({ valid: true, errorResponse: null });
     vi.mocked(verifyChallengeJwt).mockResolvedValue('base64urlchallenge');
   });
 
   it('returns 400 when attestation is invalid', async () => {
-    mockRequireAuth.mockResolvedValue({ user: { ...mockUser, status: 'pending_passkey_setup' }, errorResponse: null });
+    mockRequireAuth.mockResolvedValue({ user: activeUser, errorResponse: null });
     mockVerifyPasskeyAttestation.mockResolvedValue({ verified: false, credentialId: '', publicKey: '', counter: 0, aaguid: '', transports: [] });
     const res = await handler(makeEvent(API_PATHS.AUTH_PASSKEY_REGISTER, 'POST', {
       challengeJwt: 'valid',
@@ -348,16 +346,20 @@ describe('POST /auth/passkey/register', () => {
     expect(res.statusCode).toBe(400);
   });
 
-  it('sets status to active on successful registration', async () => {
-    mockRequireAuth.mockResolvedValue({ user: { ...mockUser, status: 'pending_passkey_setup' }, errorResponse: null });
+  it('creates passkey credential on successful registration', async () => {
+    mockRequireAuth.mockResolvedValue({ user: activeUser, errorResponse: null });
     mockVerifyPasskeyAttestation.mockResolvedValue({
       verified: true, credentialId: 'cred-1', publicKey: 'pubkey', counter: 0, aaguid: 'aaguid', transports: ['internal'],
     });
+    const { createPasskeyCredential } = await import('../utils/dynamodb.js');
     const res = await handler(makeEvent(API_PATHS.AUTH_PASSKEY_REGISTER, 'POST', {
       challengeJwt: 'valid',
       attestation: { id: 'cred-1', rawId: 'cred-1', response: {}, type: 'public-key', clientExtensionResults: {} },
     }));
     expect(res.statusCode).toBe(200);
-    expect(vi.mocked(updateUser)).toHaveBeenCalledWith('user-1', expect.objectContaining({ status: 'active' }));
+    expect(vi.mocked(createPasskeyCredential)).toHaveBeenCalledWith(expect.objectContaining({
+      credentialId: 'cred-1',
+      userId: 'user-1',
+    }));
   });
 });

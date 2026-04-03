@@ -1,8 +1,8 @@
-// prod login: passkeyToken from passkey verification step; dev/beta login: username directly
+// Passkey login: passkeyToken only; password login: username + password
 export interface LoginRequest {
   passkeyToken?: string;
   username?: string;
-  password: string;
+  password?: string;
 }
 
 export interface LoginResponse {
@@ -41,6 +41,7 @@ export interface SelfChangePasswordRequest {
 
 export interface ChangePasswordResponse {
   success: boolean;
+  offerPasskeySetup?: boolean;
 }
 
 export interface PasskeyChallengeResponse {
@@ -90,8 +91,37 @@ export interface PasskeyAttestationJSON {
 export interface PasskeyRegisterRequest {
   challengeJwt: string;
   attestation: PasskeyAttestationJSON;
+  name?: string;
 }
 
 export interface PasskeyRegisterResponse {
+  success: boolean;
+}
+
+// Multi-passkey management
+
+export interface PasskeyCredential {
+  credentialId: string;
+  userId: string;
+  name: string;
+  publicKey: string;
+  counter: number;
+  transports: string[] | null;
+  aaguid: string;
+  createdAt: string;
+}
+
+export interface PasskeyListItem {
+  credentialId: string;
+  name: string;
+  aaguid: string;
+  createdAt: string;
+}
+
+export interface PasskeyListResponse {
+  passkeys: PasskeyListItem[];
+}
+
+export interface PasskeyRevokeResponse {
   success: boolean;
 }

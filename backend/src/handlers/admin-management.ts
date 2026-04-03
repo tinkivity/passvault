@@ -10,7 +10,7 @@ import {
   ReactivateUserSchema,
   EmailVaultSchema,
 } from './admin-management.schemas.js';
-import { createUserInvitation, listUsers, refreshOtp, deleteNewUser, lockUser, unlockUser, expireUser, retireUser, reactivateUser, updateUserProfile, getStats, listLoginEvents, adminEmailUserVault } from '../services/admin.js';
+import { createUserInvitation, listUsers, refreshOtp, resetUser, deleteNewUser, lockUser, unlockUser, expireUser, retireUser, reactivateUser, updateUserProfile, getStats, listLoginEvents, adminEmailUserVault } from '../services/admin.js';
 import { downloadVault, listVaults } from '../services/vault.js';
 import { parseBody } from '../utils/request.js';
 
@@ -23,6 +23,7 @@ router.delete(API_PATHS.ADMIN_USER,              [pow(HIGH), adminActive()],    
 router.patch (API_PATHS.ADMIN_USER,              [pow(HIGH), adminActive(), validate(UpdateUserSchema)],     handleUpdateUser);
 router.get   (API_PATHS.ADMIN_USER_VAULT,        [pow(HIGH), adminActive()],                                 handleDownloadUserVault);
 router.post  (API_PATHS.ADMIN_USER_REFRESH_OTP,  [pow(HIGH), adminActive()],                                 handleRefreshOtp);
+router.post  (API_PATHS.ADMIN_USER_RESET,       [pow(HIGH), adminActive()],                                 handleResetUser);
 router.post  (API_PATHS.ADMIN_USER_LOCK,         [pow(HIGH), adminActive()],                                 handleLockUser);
 router.post  (API_PATHS.ADMIN_USER_UNLOCK,       [pow(HIGH), adminActive()],                                 handleUnlockUser);
 router.post  (API_PATHS.ADMIN_USER_EXPIRE,       [pow(HIGH), adminActive()],                                 handleExpireUser);
@@ -62,6 +63,14 @@ async function handleDeleteUser(_event: APIGatewayProxyEvent, params: Record<str
 
 async function handleRefreshOtp(_event: APIGatewayProxyEvent, params: Record<string, string>): Promise<APIGatewayProxyResult> {
   const result = await refreshOtp(params.userId);
+  if (result.error) {
+    return error(result.error, result.statusCode || 400);
+  }
+  return success(result.response);
+}
+
+async function handleResetUser(_event: APIGatewayProxyEvent, params: Record<string, string>): Promise<APIGatewayProxyResult> {
+  const result = await resetUser(params.userId);
   if (result.error) {
     return error(result.error, result.statusCode || 400);
   }
