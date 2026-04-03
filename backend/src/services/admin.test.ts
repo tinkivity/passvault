@@ -31,6 +31,8 @@ vi.mock('../utils/dynamodb.js', () => ({
   listVaultsByUser: vi.fn().mockResolvedValue([]),
   getVaultRecord: vi.fn().mockResolvedValue(null),
   deleteVaultRecord: vi.fn().mockResolvedValue(undefined),
+  listPasskeyCredentials: vi.fn().mockResolvedValue([]),
+  deletePasskeyCredential: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../utils/crypto.js', () => ({
@@ -64,8 +66,8 @@ vi.mock('./passkey.js', () => ({
   verifyPasskeyToken: vi.fn(),
 }));
 
-import { adminLogin, createUserInvitation, listUsers, refreshOtp, deleteNewUser, getStats, lockUser, unlockUser, expireUser, retireUser, verifyEmailToken, reactivateUser, updateUserProfile, adminEmailUserVault } from './admin.js';
-import { getUserByUsername, getUserById, getUserByRegistrationToken, updateUser, createUser, listAllUsers, deleteUser, getLoginCountSince, listVaultsByUser } from '../utils/dynamodb.js';
+import { adminLogin, createUserInvitation, listUsers, refreshOtp, resetUser, deleteNewUser, getStats, lockUser, unlockUser, expireUser, retireUser, verifyEmailToken, reactivateUser, updateUserProfile, adminEmailUserVault } from './admin.js';
+import { getUserByUsername, getUserById, getUserByRegistrationToken, updateUser, createUser, listAllUsers, deleteUser, getLoginCountSince, listVaultsByUser, listPasskeyCredentials, deletePasskeyCredential } from '../utils/dynamodb.js';
 import { verifyPassword } from '../utils/crypto.js';
 import { verifyPasskeyToken } from './passkey.js';
 import { config } from '../config.js';
@@ -79,6 +81,8 @@ const mockUpdateUser = vi.mocked(updateUser);
 const mockListAllUsers = vi.mocked(listAllUsers);
 const mockGetUserByRegistrationToken = vi.mocked(getUserByRegistrationToken);
 const mockGetLoginCountSince = vi.mocked(getLoginCountSince);
+const mockListPasskeyCredentials = vi.mocked(listPasskeyCredentials);
+const mockDeletePasskeyCredential = vi.mocked(deletePasskeyCredential);
 
 function makeAdmin(overrides: Partial<User> = {}): User {
   return {
@@ -841,5 +845,61 @@ describe('verifyEmailToken', () => {
     const result = await verifyEmailToken('tok1');
     expect(result.response?.success).toBe(true);
     expect(mockUpdateUser).toHaveBeenCalledWith('user-1', expect.objectContaining({ status: 'pending_first_login' }));
+  });
+});
+
+// ── resetUser() ──────────────────────────────────────────────────────────────
+
+describe('resetUser', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('returns 404 when user not found', async () => {
+    mockGetUserById.mockResolvedValue(null);
+    const result = await resetUser('user-1');
+    expect(result.statusCode).toBe(404);
+  });
+
+  it('returns 403 when target is admin', async () => {
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'admin', status: 'active' }));
+    const result = await resetUser('admin-1');
+    expect(result.statusCode).toBe(403);
+  });
+
+  it('returns 403 when target is retired', async () => {
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', status: 'retired' }));
+    const result = await resetUser('user-1');
+    expect(result.statusCode).toBe(403);
+  });
+
+  it('succeeds for active user — generates OTP, deletes passkeys, sets status to pending_first_login', async () => {
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', status: 'active', userId: 'user-1', username: 'alice@example.com' }));
+    mockListPasskeyCredentials.mockResolvedValue([
+      { credentialId: 'cred-1', userId: 'user-1', name: 'Key 1', publicKey: 'pk1', counter: 0, transports: null, aaguid: '', createdAt: '2024-01-01T00:00:00Z' },
+      { credentialId: 'cred-2', userId: 'user-1', name: 'Key 2', publicKey: 'pk2', counter: 0, transports: null, aaguid: '', createdAt: '2024-01-01T00:00:00Z' },
+    ]);
+    const result = await resetUser('user-1');
+    expect(result.error).toBeUndefined();
+    expect(result.response?.success).toBe(true);
+    expect(result.response?.oneTimePassword).toBe('ABCDEFGH12345678');
+    expect(result.response?.username).toBe('alice@example.com');
+    expect(mockDeletePasskeyCredential).toHaveBeenCalledWith('cred-1');
+    expect(mockDeletePasskeyCredential).toHaveBeenCalledWith('cred-2');
+    expect(mockDeletePasskeyCredential).toHaveBeenCalledTimes(2);
+    expect(mockUpdateUser).toHaveBeenCalledWith('user-1', expect.objectContaining({
+      status: 'pending_first_login',
+      passwordHash: '$2b$12$newhash',
+      oneTimePasswordHash: '$2b$12$newhash',
+    }));
+  });
+
+  it('succeeds for locked user', async () => {
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', status: 'locked', userId: 'user-1', username: 'bob@example.com' }));
+    mockListPasskeyCredentials.mockResolvedValue([]);
+    const result = await resetUser('user-1');
+    expect(result.error).toBeUndefined();
+    expect(result.response?.success).toBe(true);
+    expect(mockUpdateUser).toHaveBeenCalledWith('user-1', expect.objectContaining({
+      status: 'pending_first_login',
+    }));
   });
 });

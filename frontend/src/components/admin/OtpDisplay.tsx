@@ -9,14 +9,16 @@ interface OtpDisplayProps {
 }
 
 export function OtpDisplay({ username, oneTimePassword, onDone }: OtpDisplayProps) {
-  const [copied, setCopied] = useState(false);
+  const [hasCopied, setHasCopied] = useState(false);
+  const [showCheck, setShowCheck] = useState(false);
   const [revealed, setRevealed] = useState(false);
 
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(oneTimePassword);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setHasCopied(true);
+      setShowCheck(true);
+      setTimeout(() => setShowCheck(false), 2000);
     } catch {
       // ignore
     }
@@ -41,11 +43,11 @@ export function OtpDisplay({ username, oneTimePassword, onDone }: OtpDisplayProp
             {revealed ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           </Button>
           <Button variant="secondary" size="icon" onClick={handleCopy} title="Copy">
-            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+            {showCheck ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
           </Button>
         </div>
       </div>
-      <Button onClick={onDone} disabled={!copied}>Done</Button>
+      <Button onClick={onDone} disabled={!hasCopied}>Done</Button>
     </div>
   );
 }

@@ -25,7 +25,7 @@ function getUserIdFromToken(token: string): string {
 
 export function OnboardingPage() {
   const navigate = useNavigate();
-  const { token, username } = useAuthContext();
+  const { token, username, patchAuth } = useAuthContext();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState('');
@@ -40,6 +40,7 @@ export function OnboardingPage() {
       const userId = getUserIdFromToken(token);
       const attestation = await registerPasskey(challengeJwt, userId, username);
       await api.registerPasskey({ challengeJwt, attestation, name: passkeyName }, token);
+      patchAuth({ status: 'active' });
       navigate(ROUTES.UI.ROOT, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Passkey registration failed');

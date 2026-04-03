@@ -107,7 +107,7 @@ export async function handlePasskeyRegister(
   if (user!.role !== requiredRole) return error(ERRORS.FORBIDDEN, 403);
 
   if (requiredRole === 'user') {
-    if (user!.status !== 'active') return error(ERRORS.FORBIDDEN, 403);
+    if (user!.status !== 'active' && user!.status !== 'pending_first_login') return error(ERRORS.FORBIDDEN, 403);
   } else {
     if (user!.status !== 'active' && user!.status !== 'pending_passkey_setup') return error(ERRORS.PASSKEY_SETUP_REQUIRED, 400);
   }

@@ -362,4 +362,16 @@ describe('POST /auth/passkey/register', () => {
       userId: 'user-1',
     }));
   });
+
+  it('allows passkey registration for pending_first_login users', async () => {
+    mockRequireAuth.mockResolvedValue({ user: { ...mockUser, status: 'pending_first_login' }, errorResponse: null });
+    mockVerifyPasskeyAttestation.mockResolvedValue({
+      verified: true, credentialId: 'cred-1', publicKey: 'pubkey', counter: 0, aaguid: 'aaguid', transports: ['internal'],
+    });
+    const res = await handler(makeEvent(API_PATHS.AUTH_PASSKEY_REGISTER, 'POST', {
+      challengeJwt: 'valid',
+      attestation: { id: 'cred-1', rawId: 'cred-1', response: {}, type: 'public-key', clientExtensionResults: {} },
+    }));
+    expect(res.statusCode).toBe(200);
+  });
 });

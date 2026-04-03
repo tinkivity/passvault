@@ -69,6 +69,7 @@ export function UserDetailPage() {
   const [refreshedOtp, setRefreshedOtp] = useState<{ username: string; oneTimePassword: string } | null>(null);
   const [retireConfirm, setRetireConfirm] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [resetConfirm, setResetConfirm] = useState(false);
   const [emailedVaultId, setEmailedVaultId] = useState<string | null>(null);
 
   // Edit state
@@ -321,9 +322,23 @@ export function UserDetailPage() {
           )}
 
           {user.status !== 'pending_first_login' && user.status !== 'retired' && (
-            <Button variant="ghost" size="sm" onClick={handleResetUser} disabled={admin.loading}>
-              Reset User
-            </Button>
+            resetConfirm ? (
+              <>
+                <div className="w-full text-xs text-destructive mb-1">
+                  This will delete all passkeys, clear the password, and generate a new one-time password. The user will need to set up their account again. Existing vaults and their encrypted content will not be affected.
+                </div>
+                <Button variant="destructive" size="sm" onClick={() => { setResetConfirm(false); handleResetUser(); }} disabled={admin.loading}>
+                  Confirm reset
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setResetConfirm(false)}>
+                  Cancel
+                </Button>
+              </>
+            ) : (
+              <Button variant="ghost" size="sm" onClick={() => setResetConfirm(true)} disabled={admin.loading}>
+                Reset Login
+              </Button>
+            )
           )}
 
           {user.status === 'active' && (

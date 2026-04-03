@@ -1171,7 +1171,7 @@ Deployment details have moved to dedicated guides:
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** — Quick start and overview
 - **[cdk/DEPLOYMENT.md](cdk/DEPLOYMENT.md)** — Full deployment guide (SSM secrets, CDK context variables, SES email, monitoring, troubleshooting)
 - **[cdk/ARCHITECTURE.md](cdk/ARCHITECTURE.md)** — CDK constructs, stack composition, resource naming
-- **[scripts/README.md](scripts/README.md)** — Post-deploy scripts (init-admin, seed-dev, deploy-ui, cleanup)
+- **[scripts/README.md](scripts/README.md)** — Post-deploy scripts (init-admin, seed-dev, setup, cleanup)
 
 ## 8. Development Phases
 

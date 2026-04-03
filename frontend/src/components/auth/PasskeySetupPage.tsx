@@ -26,7 +26,7 @@ function getUserIdFromToken(token: string): string {
 
 export function PasskeySetupPage() {
   const navigate = useNavigate();
-  const { token, username, role } = useAuthContext();
+  const { token, username, role, patchAuth } = useAuthContext();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState('');
@@ -52,6 +52,7 @@ export function PasskeySetupPage() {
       } else {
         await api.registerPasskey({ challengeJwt, attestation, name: passkeyName }, token);
       }
+      patchAuth({ status: 'active' });
       navigate(ROUTES.UI.ROOT, { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Passkey registration failed');

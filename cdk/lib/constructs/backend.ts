@@ -223,8 +223,10 @@ export class BackendConstruct extends Construct {
     // IAM: passkey credentials table — auth + admin-auth read/write
     storage.passkeyCredentialsTable.grantReadWriteData(this.authFn);
     storage.passkeyCredentialsTable.grantReadWriteData(this.adminAuthFn);
+    storage.passkeyCredentialsTable.grantReadWriteData(this.adminMgmtFn);
     this.authFn.addEnvironment('PASSKEY_CREDENTIALS_TABLE_NAME', storage.passkeyCredentialsTable.tableName);
     this.adminAuthFn.addEnvironment('PASSKEY_CREDENTIALS_TABLE_NAME', storage.passkeyCredentialsTable.tableName);
+    this.adminMgmtFn.addEnvironment('PASSKEY_CREDENTIALS_TABLE_NAME', storage.passkeyCredentialsTable.tableName);
 
     // IAM: grant vaults table access to vault + admin-mgmt Lambdas
     storage.vaultsTable.grantReadWriteData(this.vaultFn);

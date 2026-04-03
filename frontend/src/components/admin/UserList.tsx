@@ -187,7 +187,7 @@ function getUserColumns(
   onDownload: UserListProps['onDownload'],
   onPickVault: (user: UserSummary) => void,
   onRefreshOtp: (userId: string) => Promise<void>,
-  onResetUser: (userId: string) => Promise<void>,
+  onSetResetTarget: (user: UserSummary) => void,
   onDeleteUser: (user: UserSummary) => void,
   onSetLockTarget: (user: UserSummary) => void,
   onSetUnlockTarget: (user: UserSummary) => void,
@@ -395,12 +395,9 @@ function getUserColumns(
                 {user.status !== 'pending_first_login' && user.status !== 'retired' && (
                   <>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      onClick={() => onResetUser(user.userId)}
-                      disabled={actionLoading === user.userId + ':reset'}
-                    >
+                    <DropdownMenuItem onClick={() => onSetResetTarget(user)}>
                       <ArrowPathIcon className="mr-2 h-4 w-4" />
-                      reset user
+                      reset login
                     </DropdownMenuItem>
                   </>
                 )}
@@ -436,6 +433,8 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser
   const [reactivateLoading, setReactivateLoading] = useState(false);
   const [reactivateDate, setReactivateDate] = useState(defaultExpiresAt());
   const [reactivatePerpetual, setReactivatePerpetual] = useState(false);
+  const [resetTarget, setResetTarget] = useState<UserSummary | null>(null);
+  const [resetLoading, setResetLoading] = useState(false);
   const [vaultPickerUser, setVaultPickerUser] = useState<UserSummary | null>(null);
 
   const isProd = config.isProd;
@@ -472,13 +471,15 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser
     }
   }
 
-  async function handleResetUser(userId: string) {
-    setActionLoading(userId + ':reset');
+  async function handleResetConfirm() {
+    if (!resetTarget) return;
+    setResetLoading(true);
     try {
-      const result = await onResetUser(userId);
+      const result = await onResetUser(resetTarget.userId);
       onOtpRefreshed?.(result);
+      setResetTarget(null);
     } finally {
-      setActionLoading(null);
+      setResetLoading(false);
     }
   }
 
@@ -543,7 +544,7 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser
       onDownload,
       handlePickVault,
       handleRefreshOtp,
-      handleResetUser,
+      setResetTarget,
       setDeleteTarget,
       setLockTarget,
       setUnlockTarget,
@@ -869,6 +870,31 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser
               disabled={expireLoading}
             >
               {expireLoading ? 'Expiring…' : 'Expire user'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Reset login confirmation */}
+      <AlertDialog
+        open={resetTarget !== null}
+        onOpenChange={(open) => { if (!open) setResetTarget(null); }}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset login?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will delete all passkeys, clear the password, and generate a new one-time password for <strong>{resetTarget?.username}</strong>. The user will need to set up their account again. Existing vaults and their encrypted content will not be affected.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={handleResetConfirm}
+              disabled={resetLoading}
+            >
+              {resetLoading ? 'Resetting…' : 'Reset login'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
