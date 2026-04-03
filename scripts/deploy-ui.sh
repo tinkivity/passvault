@@ -84,6 +84,17 @@ echo "  Region      : $REGION"
 [[ -n "$PROFILE" ]] && echo "  AWS profile : $PROFILE"
 echo ""
 
+# ── AWS access check ─────────────────────────────────────────────────────────
+if ! aws sts get-caller-identity --region "$REGION" &>/dev/null; then
+  echo "✗ No AWS access — cannot reach AWS STS."
+  echo "  Your SSO session may have expired. Run:"
+  [[ -n "$PROFILE" ]] \
+    && echo "    aws sso login --profile $PROFILE" \
+    || echo "    aws sso login"
+  echo ""
+  exit 1
+fi
+
 # ── Cleanup on exit ───────────────────────────────────────────────────────────
 VITE_PID=""
 

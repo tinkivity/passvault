@@ -58,12 +58,15 @@ describe('kill-switch handler', () => {
     mockLambdaSend.mockReset();
     mockSchedulerSend.mockReset();
     mockSchedulerSend.mockResolvedValue({}); // CreateSchedule always succeeds by default
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   afterEach(() => {
     for (const key of Object.keys(ENV_VARS)) {
       delete process.env[key];
     }
+    vi.restoreAllMocks();
   });
 
   it('ignores a non-ALARM SNS message (state=OK)', async () => {

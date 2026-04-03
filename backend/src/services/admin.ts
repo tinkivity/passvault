@@ -74,7 +74,7 @@ export async function adminLogin(request: LoginRequest): Promise<{ response?: Lo
   });
 
   const loginEventId = randomUUID();
-  recordLoginEvent(loginEventId, user.userId, user.username, true).catch(err => {
+  recordLoginEvent(loginEventId, user.userId, true).catch(err => {
     console.error('Failed to record admin login event:', err);
   });
 
@@ -389,7 +389,14 @@ export async function verifyEmailToken(
 }
 
 export async function listLoginEvents(): Promise<ListLoginEventsResponse> {
-  const events = await getLoginEvents(500);
+  const [rawEvents, users] = await Promise.all([getLoginEvents(500), listAllUsers()]);
+  const usernameMap = new Map(users.map(u => [u.userId, u.username]));
+  const events = rawEvents
+    .filter(ev => ev.timestamp)
+    .map(ev => ({
+      ...ev,
+      username: usernameMap.get(ev.userId) ?? 'unknown',
+    }));
   return { events };
 }
 
@@ -485,7 +492,7 @@ async function recordFailedAttempt(userId: string, username: string, currentAtte
       ? new Date(Date.now() + LIMITS.RATE_LIMIT_WINDOW_MINUTES * 60 * 1000).toISOString()
       : null;
   await updateUser(userId, { failedLoginAttempts: newCount, lockedUntil });
-  recordLoginEvent(randomUUID(), userId, username, false).catch(err => {
+  recordLoginEvent(randomUUID(), userId, false).catch(err => {
     console.error('Failed to record failed admin login event:', err);
   });
 }

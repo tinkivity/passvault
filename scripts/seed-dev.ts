@@ -257,8 +257,6 @@ async function seedUser(user: SeedUser): Promise<CreatedUser> {
         expiresAt: user.expiresAt,
         oneTimePasswordHash: null,
         otpExpiresAt: null,
-        registrationToken: null,
-        registrationTokenExpiresAt: null,
         passkeyCredentialId: null,
         passkeyPublicKey: null,
         passkeyCounter: 0,

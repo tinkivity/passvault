@@ -48,6 +48,7 @@ function aggregateByDay(events: LoginEventSummary[], range: RangeKey): { label: 
   const dates = buildDateRange(range);
   const counts: Record<string, number> = Object.fromEntries(dates.map(d => [d, 0]));
   events.forEach(ev => {
+    if (!ev.timestamp) return;
     const d = ev.timestamp.slice(0, 10);
     if (d in counts) counts[d]++;
   });
@@ -59,6 +60,7 @@ function aggregateByHour(events: LoginEventSummary[]): { label: string; logins: 
   const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0') + ':00');
   const counts: Record<string, number> = Object.fromEntries(hours.map(h => [h, 0]));
   events.forEach(ev => {
+    if (!ev.timestamp) return;
     if (ev.timestamp.slice(0, 10) === todayDate) {
       const hour = ev.timestamp.slice(11, 13) + ':00';
       if (hour in counts) counts[hour]++;
