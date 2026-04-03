@@ -1,5 +1,6 @@
 export const ROUTES = {
   LOGIN:           '/login',
+  ONBOARDING:      '/onboarding',
   CHANGE_PASSWORD: '/change-password',
   PASSKEY_SETUP:   '/passkey-setup',
 

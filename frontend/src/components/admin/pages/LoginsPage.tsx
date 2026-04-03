@@ -246,6 +246,15 @@ const loginColumns: ColumnDef<LoginEventSummary>[] = [
     cell: ({ row }) => <span className="font-mono">{row.original.username}</span>,
   },
   {
+    id: 'passkey',
+    header: 'Passkey',
+    size: 144,
+    accessorFn: row => row.passkeyName ?? '',
+    cell: ({ row }) => row.original.passkeyName
+      ? <span>{row.original.passkeyName}</span>
+      : <span className="text-muted-foreground">password</span>,
+  },
+  {
     accessorKey: 'timestamp',
     header: 'Login time (UTC)',
     cell: ({ row }) => (

@@ -11,7 +11,7 @@ Type modules re-exported from `src/types/`:
 | Module | Contents |
 |---|---|
 | `api` | `ApiResponse<T>`, `ApiError`, request/response shapes |
-| `auth` | `LoginRequest`, `LoginResponse`, passkey payloads |
+| `auth` | `LoginRequest`, `LoginResponse`, `PasskeyCredential`, `PasskeyListResponse`, passkey request/response types |
 | `user` | `User`, `UserStatus`, `UserRole`, `UserSummary` |
 | `admin` | `AdminStats`, admin action request/response types |
 | `vault` | `Vault`, vault CRUD payloads |
@@ -37,7 +37,7 @@ Exported from `src/constants.ts`:
 - **`POW_HEADERS`** -- header names for PoW solution transport.
 - **`PASSKEY_CONFIG`** -- WebAuthn RP name, challenge/token expiry.
 - **`ERRORS`** -- standardised error message strings used by backend responses and frontend display.
-- **`LIMITS`** -- file size cap (1 MB), username length, rate-limit window, vault limits per plan.
+- **`LIMITS`** -- file size cap (1 MB), username length, rate-limit window, vault limits per plan, passkey limits per role (`MAX_PASSKEYS_USER=10`, `MAX_PASSKEYS_ADMIN=2`).
 
 ## Importing
 

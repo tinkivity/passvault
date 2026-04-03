@@ -8,6 +8,7 @@ export class StorageConstruct extends Construct {
   public readonly usersTable: dynamodb.Table;
   public readonly loginEventsTable: dynamodb.Table;
   public readonly vaultsTable: dynamodb.Table;
+  public readonly passkeyCredentialsTable: dynamodb.Table;
   public readonly filesBucket: s3.Bucket;
   public readonly frontendBucket: s3.Bucket;
 
@@ -55,6 +56,18 @@ export class StorageConstruct extends Construct {
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
     this.vaultsTable.addGlobalSecondaryIndex({
+      indexName: 'byUser',
+      partitionKey: { name: 'userId', type: dynamodb.AttributeType.STRING },
+    });
+
+    // DynamoDB passkey credentials table (multi-passkey support)
+    this.passkeyCredentialsTable = new dynamodb.Table(this, 'PasskeyCredentialsTable', {
+      tableName: `passvault-passkey-credentials-${env}`,
+      partitionKey: { name: 'credentialId', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+    this.passkeyCredentialsTable.addGlobalSecondaryIndex({
       indexName: 'byUser',
       partitionKey: { name: 'userId', type: dynamodb.AttributeType.STRING },
     });

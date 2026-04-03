@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink, useNavigate, useParams } from 'react-router-dom';
-import { Vault, Plus, MoreHorizontal, Download, Mail, Pencil, Lock, LayoutDashboard, Users, ScrollText } from 'lucide-react';
+import { Vault, Plus, MoreHorizontal, Download, Mail, Pencil, Lock, LayoutDashboard, Users, ScrollText, UserPlus } from 'lucide-react';
 import type { VaultSummary } from '@passvault/shared';
 import { LIMITS } from '@passvault/shared';
 import logo from '../../assets/logo.png';
@@ -229,6 +229,17 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
                       <Users className="h-4 w-4 shrink-0" />
                       <span>Users</span>
                     </SidebarMenuButton>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger render={<SidebarMenuAction showOnHover />}>
+                        <MoreHorizontal className="h-4 w-4" />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent side="right" align="start">
+                        <DropdownMenuItem onClick={() => navigate(`${ROUTES.UI.ADMIN.USERS}?create=1`)}>
+                          <UserPlus className="mr-2 h-4 w-4" />
+                          Create user
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
                     <SidebarMenuButton render={<NavLink to={ROUTES.UI.ADMIN.LOGINS} />} tooltip="Logins">

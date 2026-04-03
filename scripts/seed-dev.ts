@@ -11,7 +11,7 @@
  * Usage (standalone):
  *   ENVIRONMENT=dev FILES_BUCKET=passvault-files-dev-xxxx npx tsx scripts/seed-dev.ts
  *
- * Usage (via deploy-ui.sh):
+ * Usage (via setup.sh):
  *   Called automatically on first dev startup — FILES_BUCKET is injected from CFN outputs.
  *
  * Idempotent: users that already exist are skipped.
@@ -257,11 +257,6 @@ async function seedUser(user: SeedUser): Promise<CreatedUser> {
         expiresAt: user.expiresAt,
         oneTimePasswordHash: null,
         otpExpiresAt: null,
-        passkeyCredentialId: null,
-        passkeyPublicKey: null,
-        passkeyCounter: 0,
-        passkeyTransports: null,
-        passkeyAaguid: null,
         encryptionSalt,
         createdAt: now,
         lastLoginAt: null,

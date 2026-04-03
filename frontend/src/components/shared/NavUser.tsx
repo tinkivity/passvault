@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { ChevronsUpDown, LogOut, BadgeCheck, Bell, Sparkles, KeyRound } from 'lucide-react';
+import { ChevronsUpDown, LogOut, BadgeCheck, Bell, Sparkles, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth.js';
 import { AccountDialog } from './AccountDialog.js';
 import { NotificationsDialog } from './NotificationsDialog.js';
-import { ChangePasswordDialog } from './ChangePasswordDialog.js';
+import { SecurityDialog } from './SecurityDialog.js';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   SidebarMenu,
@@ -31,7 +31,7 @@ export function NavUser({ onLogout }: NavUserProps) {
 
   const [accountOpen, setAccountOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
-  const [pwOpen, setPwOpen] = useState(false);
+  const [securityOpen, setSecurityOpen] = useState(false);
 
   const label = displayName ?? firstName ?? username ?? '';
   const initials = label[0]?.toUpperCase() ?? '?';
@@ -106,9 +106,9 @@ export function NavUser({ onLogout }: NavUserProps) {
                     Notifications
                   </DropdownMenuItem>
                 )}
-                <DropdownMenuItem onClick={() => setPwOpen(true)}>
-                  <KeyRound className="mr-2 h-4 w-4" />
-                  Change Password
+                <DropdownMenuItem onClick={() => setSecurityOpen(true)}>
+                  <ShieldCheck className="mr-2 h-4 w-4" />
+                  Security
                 </DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
@@ -126,7 +126,7 @@ export function NavUser({ onLogout }: NavUserProps) {
       {role === 'user' && (
         <NotificationsDialog open={notifOpen} onOpenChange={setNotifOpen} />
       )}
-      <ChangePasswordDialog open={pwOpen} onOpenChange={setPwOpen} />
+      <SecurityDialog open={securityOpen} onOpenChange={setSecurityOpen} />
     </>
   );
 }

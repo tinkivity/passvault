@@ -110,7 +110,19 @@ export function VaultShell() {
                 secondsLeft={secondsLeft}
               />
               <main className="flex-1 overflow-auto bg-muted p-6">
-                <Outlet />
+                {!isAdminRoute && vaults.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full text-center">
+                    <h2 className="text-lg font-semibold mb-2">No vaults yet</h2>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Create your first vault to start storing passwords securely.
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Use the sidebar to create a new vault.
+                    </p>
+                  </div>
+                ) : (
+                  <Outlet />
+                )}
               </main>
             </SidebarInset>
           </div>

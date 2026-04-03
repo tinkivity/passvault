@@ -1,5 +1,6 @@
 import type { APIGatewayProxyEvent } from 'aws-lambda';
 import { verifyToken, type TokenPayload } from '../utils/jwt.js';
+import { getUserById } from '../utils/dynamodb.js';
 import { error } from '../utils/response.js';
 import { ERRORS } from '@passvault/shared';
 
@@ -29,11 +30,17 @@ export async function authenticate(event: APIGatewayProxyEvent): Promise<TokenPa
 
 // Gate that enforces authentication. Returns the verified token payload on
 // success, or a ready-to-return 401 response if no valid token is present.
-// Handlers destructure { user, errorResponse } and return early if errorResponse is set.
+// The status field is refreshed from the database so handlers always see the
+// current status, even if it changed after the JWT was issued (e.g. during onboarding).
 export async function requireAuth(event: APIGatewayProxyEvent) {
   const payload = await authenticate(event);
   if (!payload) {
     return { user: null, errorResponse: error(ERRORS.UNAUTHORIZED, 401) };
+  }
+  // Refresh status from DB — JWT status may be stale after onboarding transitions
+  const dbUser = await getUserById(payload.userId);
+  if (dbUser) {
+    payload.status = dbUser.status;
   }
   return { user: payload, errorResponse: null };
 }

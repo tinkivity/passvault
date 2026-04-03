@@ -29,6 +29,9 @@ router.get (API_PATHS.AUTH_PASSKEY_CHALLENGE,          [],                      
 router.post(API_PATHS.AUTH_PASSKEY_VERIFY,             [pow(MEDIUM), honeypot(), validate(PasskeyVerifySchema)],     (e) => passkey.handlePasskeyVerify(e, 'user'));
 router.get (API_PATHS.AUTH_PASSKEY_REGISTER_CHALLENGE, [auth()],                                                     (e) => passkey.handlePasskeyRegisterChallenge(e, 'user'));
 router.post(API_PATHS.AUTH_PASSKEY_REGISTER,           [pow(MEDIUM), auth(), validate(PasskeyRegisterSchema)],       (e) => passkey.handlePasskeyRegister(e, 'user'));
+router.get (API_PATHS.AUTH_PASSKEYS,                   [auth()],                                                       (e) => passkey.handleListPasskeys(e, 'user'));
+router.delete(API_PATHS.AUTH_PASSKEY_REVOKE,           [auth()],                                                       (e) => passkey.handleRevokePasskey(e, 'user'));
+router.patch(API_PATHS.AUTH_PASSKEY_REVOKE,            [auth()],                                                       (e) => passkey.handleRenamePasskey(e, 'user'));
 router.get (API_PATHS.AUTH_VERIFY_EMAIL,               [],                                                             handleVerifyEmail);
 router.post(API_PATHS.AUTH_LOGOUT,                     [auth(), validate(LogoutSchema)],                               handleLogout);
 router.patch(API_PATHS.AUTH_PROFILE,                   [auth(), validate(UpdateProfileSchema)],                        handleUpdateProfile);

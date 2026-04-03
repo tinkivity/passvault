@@ -14,9 +14,10 @@ interface CreateUserFormProps {
   onCreateUser: (req: CreateUserRequest) => Promise<{ username: string; oneTimePassword: string }>;
   loading: boolean;
   onDone?: () => void;
+  onOtpVisibleChange?: (visible: boolean) => void;
 }
 
-export function CreateUserForm({ onCreateUser, loading, onDone }: CreateUserFormProps) {
+export function CreateUserForm({ onCreateUser, loading, onDone, onOtpVisibleChange }: CreateUserFormProps) {
   const [email, setEmail] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -47,6 +48,7 @@ export function CreateUserForm({ onCreateUser, loading, onDone }: CreateUserForm
       };
       const result = await onCreateUser(req);
       setCreated(result);
+      onOtpVisibleChange?.(true);
       setEmail('');
       setFirstName('');
       setLastName('');
@@ -64,7 +66,7 @@ export function CreateUserForm({ onCreateUser, loading, onDone }: CreateUserForm
       <OtpDisplay
         username={created.username}
         oneTimePassword={created.oneTimePassword}
-        onDone={() => { setCreated(null); onDone?.(); }}
+        onDone={() => { setCreated(null); onOtpVisibleChange?.(false); onDone?.(); }}
       />
     );
   }

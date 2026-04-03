@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
+import { Loader2, KeyRound, Lock } from 'lucide-react';
 import { api } from '../../services/api.js';
 import { registerPasskey } from '../../services/passkey.js';
 import { useAuthContext } from '../../context/AuthContext.js';
@@ -16,7 +16,6 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import logo from '../../assets/logo.png';
-import { config } from '../../config.js';
 import { ROUTES } from '../../routes.js';
 
 function getUserIdFromToken(token: string): string {
@@ -24,34 +23,23 @@ function getUserIdFromToken(token: string): string {
   return payload.userId as string;
 }
 
-export function PasskeySetupPage() {
+export function OnboardingPage() {
   const navigate = useNavigate();
-  const { token, username, role, patchAuth } = useAuthContext();
+  const { token, username, patchAuth } = useAuthContext();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState('');
 
-  // Admin in prod: passkey is mandatory (no skip)
-  const isMandatory = role === 'admin' && config.passkeyRequired;
-
-  const handleRegister = async () => {
+  const handleRegisterPasskey = async () => {
     if (!token || !username) return;
     setLoading(true);
     setError(null);
     try {
       const passkeyName = name.trim() || 'Passkey';
-      const { challengeJwt } = role === 'admin'
-        ? await api.getAdminPasskeyRegisterChallenge(token)
-        : await api.getPasskeyRegisterChallenge(token);
-
+      const { challengeJwt } = await api.getPasskeyRegisterChallenge(token);
       const userId = getUserIdFromToken(token);
       const attestation = await registerPasskey(challengeJwt, userId, username);
-
-      if (role === 'admin') {
-        await api.registerAdminPasskey({ challengeJwt, attestation, name: passkeyName }, token);
-      } else {
-        await api.registerPasskey({ challengeJwt, attestation, name: passkeyName }, token);
-      }
+      await api.registerPasskey({ challengeJwt, attestation, name: passkeyName }, token);
       patchAuth({ status: 'active' });
       navigate(ROUTES.UI.ROOT, { replace: true });
     } catch (err) {
@@ -61,8 +49,8 @@ export function PasskeySetupPage() {
     }
   };
 
-  const handleSkip = () => {
-    navigate(ROUTES.UI.ROOT, { replace: true });
+  const handlePasswordPath = () => {
+    navigate(ROUTES.CHANGE_PASSWORD, { replace: true });
   };
 
   return (
@@ -71,11 +59,10 @@ export function PasskeySetupPage() {
         <Card>
           <img src={logo} alt="PassVault" className="w-full h-32 object-contain px-10 pt-6 bg-card" />
           <CardHeader className="text-center">
-            <CardTitle className="text-xl">Register Your Passkey</CardTitle>
+            <CardTitle className="text-xl">Welcome to PassVault</CardTitle>
             <CardDescription>
-              {isMandatory
-                ? 'Set up a passkey (fingerprint, face ID, or security key) to secure your account. This is required for administrators.'
-                : 'Set up a passkey to sign in with biometrics or a security key instead of your password. You can also do this later from Security settings.'}
+              Choose how you want to secure your account. A passkey lets you sign in with
+              biometrics or a security key. You can also set a traditional password instead.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
@@ -90,14 +77,27 @@ export function PasskeySetupPage() {
               />
             </div>
             <ErrorMessage message={error} />
-            <Button onClick={handleRegister} disabled={loading} className="w-full">
-              {loading ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Waiting for passkey...</> : 'Register passkey'}
+            <Button onClick={handleRegisterPasskey} disabled={loading} className="w-full">
+              {loading ? (
+                <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Waiting for passkey...</>
+              ) : (
+                <><KeyRound className="h-3.5 w-3.5" /> Set up passkey</>
+              )}
             </Button>
-            {!isMandatory && (
-              <Button variant="ghost" onClick={handleSkip} className="w-full" disabled={loading}>
-                Set up later
-              </Button>
-            )}
+
+            <div className="flex items-center gap-3 text-xs text-muted-foreground">
+              <div className="flex-1 border-t border-border" />
+              or
+              <div className="flex-1 border-t border-border" />
+            </div>
+
+            <Button variant="ghost" onClick={handlePasswordPath} disabled={loading} className="w-full">
+              <Lock className="h-3.5 w-3.5" /> Set a password instead
+            </Button>
+
+            <p className="text-xs text-center text-muted-foreground">
+              You can set up a passkey later from Security settings.
+            </p>
           </CardContent>
         </Card>
       </div>

@@ -24,6 +24,7 @@ vi.mock('../utils/dynamodb.js', () => ({
   getUserById: vi.fn(),
   updateUser: vi.fn().mockResolvedValue(undefined),
   recordLoginEvent: vi.fn().mockResolvedValue(undefined),
+  listPasskeyCredentials: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('../utils/crypto.js', () => ({
@@ -46,7 +47,7 @@ vi.mock('../utils/ses.js', () => ({
 }));
 
 import { login, changePassword } from './auth.js';
-import { getUserByUsername, getUserById, updateUser } from '../utils/dynamodb.js';
+import { getUserByUsername, getUserById, updateUser, listPasskeyCredentials } from '../utils/dynamodb.js';
 import { verifyPassword, hashPassword } from '../utils/crypto.js';
 import { verifyPasskeyToken } from './passkey.js';
 import { config } from '../config.js';
@@ -58,6 +59,7 @@ const mockVerifyPw = vi.mocked(verifyPassword);
 const mockVerifyPasskeyToken = vi.mocked(verifyPasskeyToken);
 const mockUpdateUser = vi.mocked(updateUser);
 const mockHashPw = vi.mocked(hashPassword);
+const mockListPasskeyCredentials = vi.mocked(listPasskeyCredentials);
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -69,11 +71,6 @@ function makeUser(overrides: Partial<User> = {}): User {
     oneTimePasswordHash: '$2b$12$otphash',
     role: 'user',
     status: 'pending_first_login',
-    passkeyCredentialId: null,
-    passkeyPublicKey: null,
-    passkeyCounter: 0,
-    passkeyTransports: null,
-    passkeyAaguid: null,
     encryptionSalt: 'base64salt==',
     createdAt: '2024-01-01T00:00:00.000Z',
     lastLoginAt: null,
@@ -92,6 +89,7 @@ describe('login — user not found (dev/beta)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     config.features.passkeyRequired = false;
+    mockListPasskeyCredentials.mockResolvedValue([]);
   });
 
   it('returns 401 when user does not exist', async () => {
@@ -147,68 +145,44 @@ describe('login — active user (dev/beta, passkeyRequired: false)', () => {
   });
 });
 
-// ── login() — prod (passkeyRequired: true) ────────────────────────────────────
+// ── login() — per-user passkey ────────────────────────────────────────────────
 
-describe('login — passkeyRequired: true (prod)', () => {
+describe('login — user with passkey registered', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    config.features.passkeyRequired = true;
-  });
-
-  it('returns 401 when passkeyToken is missing', async () => {
-    const result = await login({ password: 'correct' });
-    expect(result.error).toBe(ERRORS.INVALID_PASSKEY);
-    expect(result.statusCode).toBe(401);
-    expect(mockGetUserById).not.toHaveBeenCalled();
   });
 
   it('returns 401 when passkeyToken is invalid', async () => {
     mockVerifyPasskeyToken.mockRejectedValue(new Error('jwt expired'));
-    const result = await login({ passkeyToken: 'bad.token', password: 'correct' });
+    const result = await login({ passkeyToken: 'bad.token' });
     expect(result.error).toBe(ERRORS.INVALID_PASSKEY);
     expect(result.statusCode).toBe(401);
   });
 
   it('returns 401 when user not found by userId from token', async () => {
-    mockVerifyPasskeyToken.mockResolvedValue('user-1');
+    mockVerifyPasskeyToken.mockResolvedValue({ userId: 'user-1', credentialId: 'cred-1', passkeyName: 'My Key' });
     mockGetUserById.mockResolvedValue(null);
-    const result = await login({ passkeyToken: 'valid.token', password: 'correct' });
+    const result = await login({ passkeyToken: 'valid.token' });
     expect(result.error).toBe(ERRORS.INVALID_CREDENTIALS);
     expect(result.statusCode).toBe(401);
   });
 
-  it('returns 401 for wrong password after valid passkey', async () => {
-    mockVerifyPasskeyToken.mockResolvedValue('user-1');
+  it('succeeds with valid passkey token — no password required', async () => {
+    mockVerifyPasskeyToken.mockResolvedValue({ userId: 'user-1', credentialId: 'cred-1', passkeyName: 'My Key' });
     mockGetUserById.mockResolvedValue(makeUser({ status: 'active' }));
-    mockVerifyPw.mockResolvedValue(false);
-    const result = await login({ passkeyToken: 'valid.token', password: 'wrong' });
-    expect(result.error).toBe(ERRORS.INVALID_CREDENTIALS);
-    expect(mockUpdateUser).toHaveBeenCalledWith('user-1', expect.objectContaining({ failedLoginAttempts: 1 }));
-  });
-
-  it('succeeds with valid passkey token and correct password', async () => {
-    mockVerifyPasskeyToken.mockResolvedValue('user-1');
-    mockGetUserById.mockResolvedValue(makeUser({ status: 'active' }));
-    mockVerifyPw.mockResolvedValue(true);
-    const result = await login({ passkeyToken: 'valid.token', password: 'correct' });
+    const result = await login({ passkeyToken: 'valid.token' });
     expect(result.error).toBeUndefined();
     expect(result.response?.token).toBe('signed.jwt.token');
     expect(result.response?.username).toBe('alice');
-  });
-});
-
-describe('login — pending_passkey_setup (prod)', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    config.features.passkeyRequired = true;
-    mockVerifyPasskeyToken.mockResolvedValue('user-1');
-    mockGetUserById.mockResolvedValue(makeUser({ status: 'pending_passkey_setup' }));
-    mockVerifyPw.mockResolvedValue(true);
+    expect(mockVerifyPw).not.toHaveBeenCalled();
   });
 
-  it('returns requirePasskeySetup flag when passkeyRequired is true', async () => {
-    const result = await login({ passkeyToken: 'valid.token', password: 'correct' });
-    expect(result.response?.requirePasskeySetup).toBe(true);
+  it('rejects password login when user has passkeys registered', async () => {
+    mockGetUserByUsername.mockResolvedValue(makeUser({ status: 'active' }));
+    mockListPasskeyCredentials.mockResolvedValueOnce([{ credentialId: 'cred-1', userId: 'user-1', name: 'My Key', publicKey: 'pubkey', counter: 0, transports: null, aaguid: 'aaguid', createdAt: '2024-01-01T00:00:00Z' }]);
+    const result = await login({ username: 'alice', password: 'correct' });
+    expect(result.error).toBe(ERRORS.INVALID_PASSKEY);
+    expect(result.statusCode).toBe(401);
   });
 });
 
@@ -218,6 +192,7 @@ describe('login — account lockout (dev/beta)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     config.features.passkeyRequired = false;
+    mockListPasskeyCredentials.mockResolvedValue([]);
   });
 
   it('returns 429 when lockedUntil is in the future', async () => {
@@ -269,6 +244,7 @@ describe('login — input validation (dev/beta)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     config.features.passkeyRequired = false;
+    mockListPasskeyCredentials.mockResolvedValue([]);
   });
 
   it('returns 401 for oversized username without hitting DynamoDB', async () => {
@@ -310,6 +286,7 @@ describe('changePassword — passkeyRequired: false (dev/beta)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     config.features.passkeyRequired = false;
+    mockListPasskeyCredentials.mockResolvedValue([]);
   });
 
   it('sets status to active', async () => {
@@ -323,26 +300,12 @@ describe('changePassword — passkeyRequired: false (dev/beta)', () => {
   });
 });
 
-describe('changePassword — passkeyRequired: true (prod)', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    config.features.passkeyRequired = true;
-  });
-
-  it('sets status to pending_passkey_setup', async () => {
-    const result = await changePassword('user-1', 'alice', { newPassword: 'StrongPass123!' });
-    expect(result.error).toBeUndefined();
-    expect(mockUpdateUser).toHaveBeenCalledWith(
-      'user-1',
-      expect.objectContaining({ status: 'pending_passkey_setup' }),
-    );
-  });
-});
 
 describe('changePassword — rejects OTP as new password', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     config.features.passkeyRequired = false;
+    mockListPasskeyCredentials.mockResolvedValue([]);
   });
 
   it('returns 400 when new password matches the OTP', async () => {
@@ -380,6 +343,7 @@ describe('login — OTP expiry', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     config.features.passkeyRequired = false;
+    mockListPasskeyCredentials.mockResolvedValue([]);
   });
 
   it('returns 401 OTP_EXPIRED when otpExpiresAt is in the past', async () => {
@@ -409,6 +373,7 @@ describe('login — user status checks (dev/beta)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     config.features.passkeyRequired = false;
+    mockListPasskeyCredentials.mockResolvedValue([]);
   });
 
   it('returns 403 ACCOUNT_SUSPENDED when admin has set status to locked', async () => {

@@ -7,6 +7,12 @@ import { OtpDisplay } from '../OtpDisplay.js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { ArrowDownTrayIcon, EnvelopeIcon, ArchiveBoxIcon } from '@heroicons/react/24/outline';
 import { config } from '../../../config.js';
 import { ROUTES } from '../../../routes.js';
@@ -63,6 +69,7 @@ export function UserDetailPage() {
   const [refreshedOtp, setRefreshedOtp] = useState<{ username: string; oneTimePassword: string } | null>(null);
   const [retireConfirm, setRetireConfirm] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [resetConfirm, setResetConfirm] = useState(false);
   const [emailedVaultId, setEmailedVaultId] = useState<string | null>(null);
 
   // Edit state
@@ -133,24 +140,16 @@ export function UserDetailPage() {
     );
   }
 
-  if (refreshedOtp) {
-    return (
-      <div>
-        <Button variant="ghost" size="sm" className="mb-4" onClick={handleBack}>
-          ← Users
-        </Button>
-        <OtpDisplay
-          username={refreshedOtp.username}
-          oneTimePassword={refreshedOtp.oneTimePassword}
-          onDone={() => setRefreshedOtp(null)}
-        />
-      </div>
-    );
-  }
 
   const handleRefreshOtp = async () => {
     const result = await admin.refreshOtp(user.userId);
     setRefreshedOtp(result);
+  };
+
+  const handleResetUser = async () => {
+    const result = await admin.resetUser(user.userId);
+    setRefreshedOtp(result);
+    setUser(u => u ? { ...u, status: 'pending_first_login' } : u);
   };
 
   const handleDelete = async () => {
@@ -322,6 +321,26 @@ export function UserDetailPage() {
             </Button>
           )}
 
+          {user.status !== 'pending_first_login' && user.status !== 'retired' && (
+            resetConfirm ? (
+              <>
+                <div className="w-full text-xs text-destructive mb-1">
+                  This will delete all passkeys, clear the password, and generate a new one-time password. The user will need to set up their account again. Existing vaults and their encrypted content will not be affected.
+                </div>
+                <Button variant="destructive" size="sm" onClick={() => { setResetConfirm(false); handleResetUser(); }} disabled={admin.loading}>
+                  Confirm reset
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => setResetConfirm(false)}>
+                  Cancel
+                </Button>
+              </>
+            ) : (
+              <Button variant="ghost" size="sm" onClick={() => setResetConfirm(true)} disabled={admin.loading}>
+                Reset Login
+              </Button>
+            )
+          )}
+
           {user.status === 'active' && (
             <Button variant="outline" size="sm" onClick={handleLock} disabled={admin.loading}>
               Lock
@@ -417,6 +436,21 @@ export function UserDetailPage() {
           />
         ))
       )}
+
+      <Dialog open={refreshedOtp !== null} onOpenChange={() => {}}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>One-Time Password</DialogTitle>
+          </DialogHeader>
+          {refreshedOtp && (
+            <OtpDisplay
+              username={refreshedOtp.username}
+              oneTimePassword={refreshedOtp.oneTimePassword}
+              onDone={() => setRefreshedOtp(null)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

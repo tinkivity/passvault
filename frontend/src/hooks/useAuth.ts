@@ -33,10 +33,10 @@ export function useAuth() {
     }
   }, []);
 
-  // prod step 4-6: password + passkeyToken → session JWT
+  // Passkey login: passkeyToken required, password optional (users skip it, admins provide it)
   const completeLogin = useCallback(async (
     passkeyToken: string,
-    password: string,
+    password?: string,
   ) => {
     setLoading(true);
     setError(null);
@@ -51,11 +51,7 @@ export function useAuth() {
         firstName: res.firstName ?? null,
         lastName: res.lastName ?? null,
         displayName: res.displayName ?? null,
-        status: res.requirePasswordChange
-          ? 'pending_first_login'
-          : res.requirePasskeySetup
-            ? 'pending_passkey_setup'
-            : 'active',
+        status: res.requirePasswordChange ? 'pending_first_login' : 'active',
         plan: res.plan ?? null,
         loginEventId: res.loginEventId ?? null,
       });
@@ -70,7 +66,7 @@ export function useAuth() {
     }
   }, [setAuth]);
 
-  // dev/beta direct login: username + password (works for both user and admin roles)
+  // Direct login: username + password
   const login = useCallback(async (username: string, password: string) => {
     setLoading(true);
     setError(null);
@@ -105,7 +101,7 @@ export function useAuth() {
     setLoading(true);
     setError(null);
     try {
-      await api.changePassword(req, token);
+      return await api.changePassword(req, token);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Password change failed';
       setError(msg);
@@ -156,7 +152,7 @@ export function useAuth() {
     setLoading(true);
     setError(null);
     try {
-      await api.adminChangePassword(req, token);
+      return await api.adminChangePassword(req, token);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Password change failed';
       setError(msg);

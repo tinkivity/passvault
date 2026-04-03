@@ -48,7 +48,7 @@ cd ..
 ENVIRONMENT=dev ADMIN_EMAIL=you@example.com npx tsx scripts/init-admin.ts
 
 # 7. Start local UI for testing
-./scripts/dev-ui.sh --profile my-profile
+./scripts/setup.sh --env dev --profile my-profile
 ```
 
 ---
@@ -67,6 +67,6 @@ For complete instructions covering all environments, custom domains, SES email, 
 |----------|-------------|
 | [cdk/DEPLOYMENT.md](cdk/DEPLOYMENT.md) | Full deployment guide (SSM, CDK context, SES, monitoring) |
 | [cdk/ARCHITECTURE.md](cdk/ARCHITECTURE.md) | CDK constructs, DynamoDB tables, Lambda definitions, API Gateway |
-| [scripts/README.md](scripts/README.md) | Post-deploy scripts (init-admin, seed-dev, cleanup, deploy-ui) |
+| [scripts/README.md](scripts/README.md) | Post-deploy scripts (init-admin, seed-dev, cleanup, setup) |
 | [BOTPROTECTION.md](BOTPROTECTION.md) | Bot defense layers, CloudFront flat-rate plan, kill switch, cost analysis |
 | [COSTS.md](COSTS.md) | Detailed cost projections per user count |

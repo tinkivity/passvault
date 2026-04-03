@@ -43,33 +43,51 @@ export async function verifyChallengeJwt(token: string): Promise<string> {
 
 interface PasskeyTokenPayload {
   userId: string;
+  credentialId: string;
+  passkeyName: string;
   type: 'passkey-verified';
 }
 
-export async function generatePasskeyToken(userId: string): Promise<string> {
+export interface PasskeyTokenResult {
+  userId: string;
+  credentialId: string;
+  passkeyName: string;
+}
+
+export async function generatePasskeyToken(userId: string, credentialId: string, passkeyName: string): Promise<string> {
   const secret = await getJwtSecret();
-  const payload: PasskeyTokenPayload = { userId, type: 'passkey-verified' };
+  const payload: PasskeyTokenPayload = { userId, credentialId, passkeyName, type: 'passkey-verified' };
   return jwt.sign(payload, secret, { expiresIn: PASSKEY_CONFIG.PASSKEY_TOKEN_EXPIRY_SECONDS });
 }
 
-export async function verifyPasskeyToken(token: string): Promise<string> {
+export async function verifyPasskeyToken(token: string): Promise<PasskeyTokenResult> {
   const secret = await getJwtSecret();
   const payload = jwt.verify(token, secret) as PasskeyTokenPayload;
   if (payload.type !== 'passkey-verified') {
     throw new Error('Invalid passkey token type');
   }
-  return payload.userId;
+  return { userId: payload.userId, credentialId: payload.credentialId, passkeyName: payload.passkeyName };
 }
 
 // ---------------------------------------------------------------------------
 // WebAuthn verification helpers
 // ---------------------------------------------------------------------------
 
-function getRpConfig(): { rpId: string; origin: string } {
+function getRpConfig(requestOrigin?: string): { rpId: string; origin: string } {
   const rpId = process.env.PASSKEY_RP_ID;
   const origin = process.env.PASSKEY_ORIGIN;
-  if (!rpId || !origin) throw new Error('PASSKEY_RP_ID and PASSKEY_ORIGIN env vars are required');
-  return { rpId, origin };
+  if (rpId && origin) return { rpId, origin };
+
+  // Dev/beta: derive from the request origin header when env vars aren't set
+  if (requestOrigin) {
+    try {
+      const url = new URL(requestOrigin);
+      return { rpId: url.hostname, origin: requestOrigin };
+    } catch {
+      // fall through
+    }
+  }
+  throw new Error('PASSKEY_RP_ID and PASSKEY_ORIGIN env vars are required (or pass a valid request origin)');
 }
 
 export interface StoredCredential {
@@ -88,8 +106,9 @@ export async function verifyPasskeyAssertion(
   assertion: AuthenticationResponseJSON,
   expectedChallenge: string,
   storedCredential: StoredCredential,
+  requestOrigin?: string,
 ): Promise<AssertionVerificationResult> {
-  const { rpId, origin } = getRpConfig();
+  const { rpId, origin } = getRpConfig(requestOrigin);
 
   const result = await verifyAuthenticationResponse({
     response: assertion,
@@ -122,8 +141,9 @@ export interface AttestationVerificationResult {
 export async function verifyPasskeyAttestation(
   attestation: RegistrationResponseJSON,
   expectedChallenge: string,
+  requestOrigin?: string,
 ): Promise<AttestationVerificationResult> {
-  const { rpId, origin } = getRpConfig();
+  const { rpId, origin } = getRpConfig(requestOrigin);
 
   const result = await verifyRegistrationResponse({
     response: attestation,
@@ -147,7 +167,7 @@ export async function verifyPasskeyAttestation(
 
   return {
     verified: true,
-    credentialId: Buffer.from(credential.id).toString('base64url'),
+    credentialId: credential.id,
     publicKey: Buffer.from(credential.publicKey).toString('base64url'),
     counter: credential.counter,
     aaguid: aaguid ?? '',

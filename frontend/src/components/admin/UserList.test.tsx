@@ -50,6 +50,7 @@ function renderList(overrides?: {
   onUnlockUser?: ReturnType<typeof vi.fn>;
   onExpireUser?: ReturnType<typeof vi.fn>;
   onReactivateUser?: ReturnType<typeof vi.fn>;
+  onOtpRefreshed?: ReturnType<typeof vi.fn>;
   onRowClick?: ReturnType<typeof vi.fn>;
   users?: UserSummary[];
   loading?: boolean;
@@ -60,12 +61,14 @@ function renderList(overrides?: {
       loading={overrides?.loading ?? false}
       onDownload={vi.fn()}
       onRefreshOtp={overrides?.onRefreshOtp ?? vi.fn()}
+      onResetUser={vi.fn()}
       onDeleteUser={overrides?.onDeleteUser ?? vi.fn()}
       onLockUser={overrides?.onLockUser ?? vi.fn()}
       onUnlockUser={overrides?.onUnlockUser ?? vi.fn()}
       onExpireUser={overrides?.onExpireUser ?? vi.fn()}
       onReactivateUser={overrides?.onReactivateUser ?? vi.fn()}
       onEmailVault={vi.fn()}
+      onOtpRefreshed={overrides?.onOtpRefreshed ?? vi.fn()}
       onRowClick={overrides?.onRowClick}
     />,
   );
@@ -204,6 +207,7 @@ describe('UserList', () => {
         loading={false}
         onDownload={onDownload}
         onRefreshOtp={vi.fn()}
+        onResetUser={vi.fn()}
         onDeleteUser={vi.fn()}
         onLockUser={vi.fn()}
         onUnlockUser={vi.fn()}
@@ -314,30 +318,15 @@ describe('UserList', () => {
     expect(onReactivateUser).toHaveBeenCalledWith('u1', expect.anything());
   });
 
-  it('calls onRefreshOtp and shows OtpDisplay on success', async () => {
-    const onRefreshOtp = vi.fn().mockResolvedValue({
-      username: 'alice',
-      oneTimePassword: 'NEWOTP99',
-    });
-    renderList({ onRefreshOtp });
+  it('calls onRefreshOtp and onOtpRefreshed on success', async () => {
+    const otpResult = { username: 'alice', oneTimePassword: 'NEWOTP99' };
+    const onRefreshOtp = vi.fn().mockResolvedValue(otpResult);
+    const onOtpRefreshed = vi.fn();
+    renderList({ onRefreshOtp, onOtpRefreshed });
     await userEvent.click(screen.getByRole('button', { name: 'Actions for alice@example.com' }));
     await userEvent.click(await screen.findByText(/refresh otp/i));
     expect(onRefreshOtp).toHaveBeenCalledWith('u2');
-    expect(await screen.findByText('NEWOTP99')).toBeInTheDocument();
-  });
-
-  it('"Done" on OtpDisplay returns to the user list', async () => {
-    const onRefreshOtp = vi.fn().mockResolvedValue({
-      username: 'alice@example.com',
-      oneTimePassword: 'NEWOTP99',
-    });
-    renderList({ onRefreshOtp });
-    await userEvent.click(screen.getByRole('button', { name: 'Actions for alice@example.com' }));
-    await userEvent.click(await screen.findByText(/refresh otp/i));
-    await screen.findByText('NEWOTP99');
-    await userEvent.click(screen.getByText('Done'));
-    const tbody = screen.getAllByRole('rowgroup')[1];
-    expect(within(tbody).getByText('alice@example.com')).toBeInTheDocument();
+    expect(onOtpRefreshed).toHaveBeenCalledWith(otpResult);
   });
 
   it('shows confirm/cancel buttons before calling onDeleteUser', async () => {

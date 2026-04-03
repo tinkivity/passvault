@@ -15,12 +15,18 @@ vi.mock('../utils/jwt.js', () => ({
   verifyToken: vi.fn(),
 }));
 
+vi.mock('../utils/dynamodb.js', () => ({
+  getUserById: vi.fn().mockResolvedValue({ status: 'active' }),
+}));
+
 import { extractToken, authenticate, requireAuth, requireRole } from './auth.js';
 import { verifyToken } from '../utils/jwt.js';
+import { getUserById } from '../utils/dynamodb.js';
 import type { APIGatewayProxyEvent } from 'aws-lambda';
 import type { TokenPayload } from '../utils/jwt.js';
 
 const mockVerify = vi.mocked(verifyToken);
+const mockGetUserById = vi.mocked(getUserById);
 
 const activeUser: TokenPayload = {
   userId: 'user-1',
@@ -118,6 +124,14 @@ describe('requireAuth', () => {
     );
     expect(errorResponse).toBeNull();
     expect(user?.userId).toBe('user-1');
+  });
+
+  it('refreshes user status from the database', async () => {
+    // JWT has pending_first_login, but DB has active
+    mockVerify.mockResolvedValue({ ...activeUser, status: 'pending_first_login' });
+    // getUserById already returns { status: 'active' } from the mock
+    const result = await requireAuth(makeEvent({ Authorization: 'Bearer valid' }));
+    expect(result.user?.status).toBe('active');
   });
 });
 

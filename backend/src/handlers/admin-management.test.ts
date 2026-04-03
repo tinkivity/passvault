@@ -25,6 +25,7 @@ vi.mock('../services/admin.js', () => ({
   createUserInvitation: vi.fn(),
   listUsers: vi.fn(),
   refreshOtp: vi.fn(),
+  resetUser: vi.fn(),
   deleteNewUser: vi.fn(),
   getStats: vi.fn(),
   lockUser: vi.fn(),
@@ -43,7 +44,7 @@ vi.mock('../services/vault.js', () => ({
 }));
 
 import { handler } from './admin-management.js';
-import { createUserInvitation, listUsers, refreshOtp, deleteNewUser, getStats } from '../services/admin.js';
+import { createUserInvitation, listUsers, refreshOtp, resetUser, deleteNewUser, getStats } from '../services/admin.js';
 import { requireAdminActive } from '../middleware/auth.js';
 import { validatePow } from '../middleware/pow.js';
 import type { APIGatewayProxyEvent } from 'aws-lambda';
@@ -52,6 +53,7 @@ import type { TokenPayload } from '../utils/jwt.js';
 const mockCreateUser = vi.mocked(createUserInvitation);
 const mockListUsers = vi.mocked(listUsers);
 const mockRefreshOtp = vi.mocked(refreshOtp);
+const mockResetUser = vi.mocked(resetUser);
 const mockDeleteNewUser = vi.mocked(deleteNewUser);
 const mockGetStats = vi.mocked(getStats);
 const mockRequireAdminActive = vi.mocked(requireAdminActive);
@@ -240,5 +242,25 @@ describe('GET /admin/stats', () => {
     const res = await handler(makeEvent(API_PATHS.ADMIN_STATS, 'GET'));
     expect(res.statusCode).toBe(403);
     expect(mockGetStats).not.toHaveBeenCalled();
+  });
+});
+
+// ── POST /api/admin/users/{userId}/reset ────────────────────────────────────
+
+describe('POST /api/admin/users/{userId}/reset', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockValidatePow.mockReturnValue({ valid: true, errorResponse: null });
+  });
+
+  it('returns 200 on success', async () => {
+    adminAuthOk();
+    mockResetUser.mockResolvedValue({
+      response: { success: true, username: 'alice@example.com', oneTimePassword: 'NEWPASS', userId: 'u1' },
+    });
+    const res = await handler(makeEvent('/api/admin/users/u1/reset', 'POST'));
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body).data.oneTimePassword).toBe('NEWPASS');
+    expect(mockResetUser).toHaveBeenCalled();
   });
 });

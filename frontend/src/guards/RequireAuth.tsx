@@ -8,7 +8,7 @@ export function RequireAuth() {
   if (!token) return <Navigate to={ROUTES.LOGIN} replace />;
 
   if (status === 'pending_first_login') {
-    return <Navigate to={ROUTES.CHANGE_PASSWORD} replace />;
+    return <Navigate to={role === 'admin' ? ROUTES.CHANGE_PASSWORD : ROUTES.ONBOARDING} replace />;
   }
   if (status === 'pending_passkey_setup') {
     return <Navigate to={ROUTES.PASSKEY_SETUP} replace />;

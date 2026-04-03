@@ -2,6 +2,7 @@ import { Navigate, Outlet, createBrowserRouter } from 'react-router-dom';
 import { useAuthContext } from './context/AuthContext.js';
 import { ROUTES } from './routes.js';
 import { LoginPage } from './components/auth/LoginPage.js';
+import { OnboardingPage } from './components/auth/OnboardingPage.js';
 import { PasswordChangePage } from './components/auth/PasswordChangePage.js';
 import { PasskeySetupPage } from './components/auth/PasskeySetupPage.js';
 import { VaultShell } from './components/vault/VaultShell.js';
@@ -23,7 +24,7 @@ function RequireAuth() {
 
   // Redirect users mid-onboarding to the right step
   if (status === 'pending_first_login') {
-    return <Navigate to={ROUTES.CHANGE_PASSWORD} replace />;
+    return <Navigate to={role === 'admin' ? ROUTES.CHANGE_PASSWORD : ROUTES.ONBOARDING} replace />;
   }
   if (status === 'pending_passkey_setup') {
     return <Navigate to={ROUTES.PASSKEY_SETUP} replace />;
@@ -41,11 +42,12 @@ function RequireAdmin() {
   return <Outlet />;
 }
 
-function RequireOnboarding(props: { step: 'password' | 'passkey' }) {
+function RequireOnboarding(props: { step: 'onboarding' | 'password' | 'passkey' }) {
   const { token, status } = useAuthContext();
   if (!token) return <Navigate to={ROUTES.LOGIN} replace />;
 
-  const expectedStatus = props.step === 'password' ? 'pending_first_login' : 'pending_passkey_setup';
+  const expectedStatus =
+    props.step === 'passkey' ? 'pending_passkey_setup' : 'pending_first_login';
   if (status !== expectedStatus) {
     return <Navigate to={ROUTES.UI.ROOT} replace />;
   }
@@ -61,7 +63,12 @@ export const router = createBrowserRouter([
   // Login (both user and admin)
   { path: ROUTES.LOGIN, element: <LoginPage /> },
 
-  // Onboarding (both user and admin share same routes)
+  // Onboarding
+  {
+    path: ROUTES.ONBOARDING,
+    element: <RequireOnboarding step="onboarding" />,
+    children: [{ index: true, element: <OnboardingPage /> }],
+  },
   {
     path: ROUTES.CHANGE_PASSWORD,
     element: <RequireOnboarding step="password" />,

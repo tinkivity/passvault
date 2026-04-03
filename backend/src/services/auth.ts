@@ -7,46 +7,54 @@ import {
   type SelfChangePasswordRequest,
   type ChangePasswordResponse,
   type UpdateProfileRequest,
-  type UserStatus,
+  type UserRole,
 } from '@passvault/shared';
-import { getUserById, getUserByUsername, updateUser, recordLoginEvent } from '../utils/dynamodb.js';
+import { config } from '../config.js';
+import { getUserById, getUserByUsername, updateUser, recordLoginEvent, listPasskeyCredentials } from '../utils/dynamodb.js';
 import { randomUUID } from 'crypto';
 import { hashPassword, verifyPassword } from '../utils/crypto.js';
 import { validatePassword } from '../utils/password.js';
 import { signToken } from '../utils/jwt.js';
 import { verifyPasskeyToken } from './passkey.js';
-import { config } from '../config.js';
+
 
 export async function login(request: LoginRequest): Promise<{ response?: LoginResponse; error?: string; statusCode?: number }> {
-  if (typeof request.password !== 'string' || request.password.length > LIMITS.MAX_PASSWORD_LENGTH) {
-    return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
-  }
-
   let user;
+  let passkeyLogin = false;
+  let passkeyCredentialId: string | undefined;
+  let passkeyName: string | undefined;
 
-  if (config.features.passkeyRequired) {
-    // prod: passkey token identifies the user; password is the second factor
-    if (!request.passkeyToken) {
-      return { error: ERRORS.INVALID_PASSKEY, statusCode: 401 };
-    }
-    let userId: string;
+  if (request.passkeyToken) {
+    // Passkey login path: passkeyToken identifies the user
+    let tokenResult: { userId: string; credentialId: string; passkeyName: string };
     try {
-      userId = await verifyPasskeyToken(request.passkeyToken);
+      tokenResult = await verifyPasskeyToken(request.passkeyToken);
     } catch {
       return { error: ERRORS.INVALID_PASSKEY, statusCode: 401 };
     }
-    user = await getUserById(userId);
+    user = await getUserById(tokenResult.userId);
     if (!user) {
       return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
     }
+    passkeyLogin = true;
+    passkeyCredentialId = tokenResult.credentialId;
+    passkeyName = tokenResult.passkeyName;
   } else {
-    // dev/beta: traditional username (email) + password
+    // Username + password login path
     if (typeof request.username !== 'string' || request.username.length > LIMITS.EMAIL_MAX_LENGTH) {
+      return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
+    }
+    if (typeof request.password !== 'string' || request.password.length > LIMITS.MAX_PASSWORD_LENGTH) {
       return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
     }
     user = await getUserByUsername(request.username);
     if (!user) {
       return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
+    }
+    // If user has passkeys registered, they must use passkey login
+    const creds = await listPasskeyCredentials(user.userId);
+    if (creds.length > 0) {
+      return { error: ERRORS.INVALID_PASSKEY, statusCode: 401 };
     }
   }
 
@@ -72,25 +80,28 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
     return { error: ERRORS.ACCOUNT_LOCKED, statusCode: 429 };
   }
 
-  // First-time login: verify against OTP hash
-  if (user.status === 'pending_first_login') {
-    if (!user.oneTimePasswordHash) {
-      return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
-    }
-    if (user.otpExpiresAt && new Date(user.otpExpiresAt) < now) {
-      return { error: ERRORS.OTP_EXPIRED, statusCode: 401 };
-    }
-    const otpValid = await verifyPassword(request.password, user.oneTimePasswordHash);
-    if (!otpValid) {
-      await recordFailedAttempt(user.userId, user.username, user.failedLoginAttempts ?? 0);
-      return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
-    }
-  } else {
-    // Normal login (active, pending_passkey_setup, expired): verify against password hash
-    const passwordValid = await verifyPassword(request.password, user.passwordHash);
-    if (!passwordValid) {
-      await recordFailedAttempt(user.userId, user.username, user.failedLoginAttempts ?? 0);
-      return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
+  // Passkey users: passkeyToken already verified above — skip password check
+  if (!passkeyLogin) {
+    // First-time login: verify against OTP hash
+    if (user.status === 'pending_first_login') {
+      if (!user.oneTimePasswordHash) {
+        return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
+      }
+      if (user.otpExpiresAt && new Date(user.otpExpiresAt) < now) {
+        return { error: ERRORS.OTP_EXPIRED, statusCode: 401 };
+      }
+      const otpValid = await verifyPassword(request.password!, user.oneTimePasswordHash);
+      if (!otpValid) {
+        await recordFailedAttempt(user.userId, user.username, user.failedLoginAttempts ?? 0);
+        return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
+      }
+    } else {
+      // Normal login (active, expired): verify against password hash
+      const passwordValid = await verifyPassword(request.password!, user.passwordHash);
+      if (!passwordValid) {
+        await recordFailedAttempt(user.userId, user.username, user.failedLoginAttempts ?? 0);
+        return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
+      }
     }
   }
 
@@ -101,7 +112,7 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
   });
 
   const loginEventId = randomUUID();
-  recordLoginEvent(loginEventId, user.userId, true).catch(err => {
+  recordLoginEvent(loginEventId, user.userId, true, passkeyCredentialId, passkeyName).catch(err => {
     console.error('Failed to record login event:', err);
   });
 
@@ -125,8 +136,6 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
 
   if (user.status === 'pending_first_login') {
     response.requirePasswordChange = true;
-  } else if (user.status === 'pending_passkey_setup' && config.features.passkeyRequired) {
-    response.requirePasskeySetup = true;
   }
 
   return { response };
@@ -136,6 +145,7 @@ export async function changePassword(
   userId: string,
   username: string,
   request: ChangePasswordRequest,
+  role: UserRole = 'user',
 ): Promise<{ response?: ChangePasswordResponse; error?: string; statusCode?: number; details?: string[] }> {
   const validation = validatePassword(request.newPassword, username);
   if (!validation.valid) {
@@ -151,7 +161,11 @@ export async function changePassword(
   }
 
   const newHash = await hashPassword(request.newPassword);
-  const nextStatus: UserStatus = config.features.passkeyRequired ? 'pending_passkey_setup' : 'active';
+
+  // Admin in prod: must set up passkey after first password change
+  const nextStatus = (role === 'admin' && config.features.passkeyRequired) ? 'pending_passkey_setup' : 'active';
+
+  const isFirstLogin = user?.status === 'pending_first_login';
 
   await updateUser(userId, {
     passwordHash: newHash,
@@ -160,7 +174,9 @@ export async function changePassword(
     otpExpiresAt: null,
   });
 
-  return { response: { success: true } };
+  // Offer passkey setup after first password change (users go to optional setup; admin in prod goes to mandatory setup)
+  const offerPasskeySetup = isFirstLogin ? true : undefined;
+  return { response: { success: true, offerPasskeySetup } };
 }
 
 export async function selfChangePassword(

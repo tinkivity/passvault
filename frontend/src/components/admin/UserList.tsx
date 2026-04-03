@@ -53,7 +53,6 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { OtpDisplay } from './OtpDisplay.js';
 import { DateRangeFilter } from './DateRangeFilter.js';
 import { DataTable } from './DataTable.js';
 import { config } from '../../config.js';
@@ -85,6 +84,8 @@ interface UserListProps {
   onExpireUser: (userId: string) => Promise<void>;
   onReactivateUser: (userId: string, expiresAt: string | null) => Promise<void>;
   onEmailVault: (userId: string) => Promise<void>;
+  onResetUser: (userId: string) => Promise<{ username: string; oneTimePassword: string }>;
+  onOtpRefreshed?: (result: { username: string; oneTimePassword: string }) => void;
   onRowClick?: (user: UserSummary) => void;
 }
 
@@ -186,6 +187,7 @@ function getUserColumns(
   onDownload: UserListProps['onDownload'],
   onPickVault: (user: UserSummary) => void,
   onRefreshOtp: (userId: string) => Promise<void>,
+  onSetResetTarget: (user: UserSummary) => void,
   onDeleteUser: (user: UserSummary) => void,
   onSetLockTarget: (user: UserSummary) => void,
   onSetUnlockTarget: (user: UserSummary) => void,
@@ -368,7 +370,7 @@ function getUserColumns(
                   user details
                 </DropdownMenuItem>
 
-                {/* Existing: refresh OTP + delete — only for pending_first_login */}
+                {/* Refresh OTP + delete — only for pending_first_login */}
                 {user.status === 'pending_first_login' && (
                   <>
                     <DropdownMenuSeparator />
@@ -388,6 +390,17 @@ function getUserColumns(
                     </DropdownMenuItem>
                   </>
                 )}
+
+                {/* Reset user — available for non-pending, non-retired users */}
+                {user.status !== 'pending_first_login' && user.status !== 'retired' && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => onSetResetTarget(user)}>
+                      <ArrowPathIcon className="mr-2 h-4 w-4" />
+                      reset login
+                    </DropdownMenuItem>
+                  </>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
@@ -399,7 +412,7 @@ function getUserColumns(
   return cols;
 }
 
-export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUser, onLockUser, onUnlockUser, onExpireUser, onReactivateUser, onEmailVault, onRowClick }: UserListProps) {
+export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser, onDeleteUser, onLockUser, onUnlockUser, onExpireUser, onReactivateUser, onEmailVault, onOtpRefreshed, onRowClick }: UserListProps) {
   const [selectedStatuses, setSelectedStatuses] = useState<Set<UserStatus>>(new Set());
   const [selectedPlans, setSelectedPlans] = useState<Set<UserPlan>>(new Set());
   const [usernameFilter, setUsernameFilter] = useState('');
@@ -407,7 +420,6 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUse
   const [createdTo, setCreatedTo] = useState('');
   const [lastLoginFrom, setLastLoginFrom] = useState('');
   const [lastLoginTo, setLastLoginTo] = useState('');
-  const [refreshedOtp, setRefreshedOtp] = useState<{ username: string; oneTimePassword: string } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<UserSummary | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -421,6 +433,8 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUse
   const [reactivateLoading, setReactivateLoading] = useState(false);
   const [reactivateDate, setReactivateDate] = useState(defaultExpiresAt());
   const [reactivatePerpetual, setReactivatePerpetual] = useState(false);
+  const [resetTarget, setResetTarget] = useState<UserSummary | null>(null);
+  const [resetLoading, setResetLoading] = useState(false);
   const [vaultPickerUser, setVaultPickerUser] = useState<UserSummary | null>(null);
 
   const isProd = config.isProd;
@@ -451,9 +465,21 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUse
     setActionLoading(userId + ':refresh');
     try {
       const result = await onRefreshOtp(userId);
-      setRefreshedOtp(result);
+      onOtpRefreshed?.(result);
     } finally {
       setActionLoading(null);
+    }
+  }
+
+  async function handleResetConfirm() {
+    if (!resetTarget) return;
+    setResetLoading(true);
+    try {
+      const result = await onResetUser(resetTarget.userId);
+      onOtpRefreshed?.(result);
+      setResetTarget(null);
+    } finally {
+      setResetLoading(false);
     }
   }
 
@@ -518,6 +544,7 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUse
       onDownload,
       handlePickVault,
       handleRefreshOtp,
+      setResetTarget,
       setDeleteTarget,
       setLockTarget,
       setUnlockTarget,
@@ -532,15 +559,6 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUse
     [onDownload, handlePickVault, onRowClick, onEmailVault, actionLoading, isProd],
   );
 
-  if (refreshedOtp) {
-    return (
-      <OtpDisplay
-        username={refreshedOtp.username}
-        oneTimePassword={refreshedOtp.oneTimePassword}
-        onDone={() => setRefreshedOtp(null)}
-      />
-    );
-  }
 
   const hasFilters = selectedStatuses.size > 0 || selectedPlans.size > 0 || usernameFilter !== '' ||
     createdFrom !== '' || createdTo !== '' || lastLoginFrom !== '' || lastLoginTo !== '';
@@ -852,6 +870,31 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onDeleteUse
               disabled={expireLoading}
             >
               {expireLoading ? 'Expiring…' : 'Expire user'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Reset login confirmation */}
+      <AlertDialog
+        open={resetTarget !== null}
+        onOpenChange={(open) => { if (!open) setResetTarget(null); }}
+      >
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset login?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will delete all passkeys, clear the password, and generate a new one-time password for <strong>{resetTarget?.username}</strong>. The user will need to set up their account again. Existing vaults and their encrypted content will not be affected.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={handleResetConfirm}
+              disabled={resetLoading}
+            >
+              {resetLoading ? 'Resetting…' : 'Reset login'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

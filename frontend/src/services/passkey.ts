@@ -35,6 +35,7 @@ export async function registerPasskey(
   challengeJwt: string,
   userId: string,
   username: string,
+  existingCredentialIds: string[] = [],
 ): Promise<PasskeyAttestationJSON> {
   const challenge = extractChallengeFromJwt(challengeJwt);
   const result = await startRegistration({
@@ -50,6 +51,7 @@ export async function registerPasskey(
         { alg: -7, type: 'public-key' },   // ES256
         { alg: -257, type: 'public-key' }, // RS256
       ],
+      excludeCredentials: existingCredentialIds.map(id => ({ id, type: 'public-key' as const })),
       authenticatorSelection: {
         residentKey: 'preferred',
         userVerification: 'preferred',

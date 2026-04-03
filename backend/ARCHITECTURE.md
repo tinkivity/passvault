@@ -78,11 +78,36 @@ Services in `src/services/` contain business logic, called by handlers.
 
 **challenge.ts** -- Generates proof-of-work challenges with a random prefix and configurable difficulty, returned to clients before authenticated requests.
 
+## Passkey Credentials Table
+
+Passkey credentials are stored in a dedicated DynamoDB table (`passvault-passkey-credentials-{env}`) rather than as attributes on the user record. This supports a multi-passkey model where users can register multiple passkeys (max 10 for users, max 2 for admins).
+
+**Table schema:**
+- Partition key: `credentialId` (String, base64url)
+- GSI `byUser`: partition key `userId` -- used to list all credentials for a user
+
+**CRUD functions** (in `dynamodb.ts`):
+- `createPasskeyCredential` -- stores a new credential with public key, counter, transports, aaguid, and user-assigned name
+- `getPasskeyCredential` -- fetches a single credential by ID (used during login verification)
+- `listPasskeyCredentials` -- queries the `byUser` GSI to return all credentials for a user
+- `deletePasskeyCredential` -- removes a credential by ID (revocation)
+- `updatePasskeyCounter` -- increments the signature counter after successful authentication
+
+`getUserByCredentialId` resolves a credential ID to its owning user by first querying the credentials table (O(1) lookup via partition key), then fetching the user record. This replaces the previous approach of scanning the users table.
+
+**Endpoints:**
+- `GET /api/auth/passkeys` -- lists the authenticated user's passkey credentials
+- `DELETE /api/auth/passkeys/{credentialId}` -- revokes a specific passkey credential
+- `GET /api/admin/passkeys` -- lists the authenticated admin's passkey credentials
+- `DELETE /api/admin/passkeys/{credentialId}` -- revokes a specific admin passkey credential
+
+Login events now include `passkeyCredentialId` and `passkeyName` fields, enabling audit trails that identify which specific passkey was used for each login.
+
 ## Utility Layer
 
 | File | Purpose |
 |---|---|
-| `dynamodb.ts` | DynamoDB document client wrapper. User and login-event CRUD, queries by email and credential ID, GSI lookups. |
+| `dynamodb.ts` | DynamoDB document client wrapper. User, passkey-credential, and login-event CRUD, queries by email and credential ID, GSI lookups. |
 | `s3.ts` | S3 client wrapper for vault file storage (put, get, delete, list, copy). |
 | `jwt.ts` | JWT signing and verification using the secret fetched from SSM Parameter Store. |
 | `crypto.ts` | Cryptographic helpers (random token generation, hashing). |

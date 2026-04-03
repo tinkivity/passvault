@@ -522,6 +522,7 @@ Protection Layers:
   - Request: `{ "challengeJwt": "string", "assertion": PasskeyAssertionJSON }`
   - Response: `{ "passkeyToken": "string", "username": "string", "encryptionSalt": "string" }`
   - Verifies the passkey assertion against the stored credential
+  - The credential ID from the assertion is recorded in the resulting login event (`passkeyCredentialId`, `passkeyName`)
   - Returns a short-lived passkey token (5 min) encoding the userId; used with POST /admin/login
 
 - **POST /api/admin/login** (PoW HIGH + honeypot)
@@ -544,10 +545,19 @@ Protection Layers:
 - **GET /api/admin/passkey/register/challenge** (Requires admin auth, status must be "pending_passkey_setup")
   - Response: `{ "challengeJwt": "string" }`
 
-- **POST /api/admin/passkey/register** (Requires admin auth, status must be "pending_passkey_setup", PoW HIGH)
-  - Request: `{ "challengeJwt": "string", "attestation": PasskeyAttestationJSON }`
+- **POST /api/admin/passkey/register** (Requires admin auth, status "pending_passkey_setup" or "active", PoW HIGH)
+  - Request: `{ "challengeJwt": "string", "attestation": PasskeyAttestationJSON, "name": "string" }`
   - Response: `{ "success": true }`
-  - Verifies and stores the passkey credential; changes admin status to "active"
+  - Verifies and stores the passkey credential in the credentials table; changes admin status to "active" if currently "pending_passkey_setup"
+  - Rejects registration if the admin already has 2 passkeys or if a credential with the same aaguid already exists
+
+- **GET /api/admin/passkeys** (Requires admin auth)
+  - Response: `{ "passkeys": [{ "credentialId": "string", "name": "string", "aaguid": "string", "createdAt": "string" }] }`
+  - Lists all passkey credentials for the authenticated admin
+
+- **DELETE /api/admin/passkeys/{credentialId}** (Requires admin auth, PoW HIGH)
+  - Response: `{ "success": true }`
+  - Revokes (deletes) a specific passkey credential; the admin must retain at least one passkey in prod
 
 > **Passkey endpoints (dev/beta)**: When `passkeyRequired=false`, the passkey challenge/verify/register endpoints are still deployed but will not be exercised by the UI. POST /admin/login accepts `username` + `password` directly.
 
@@ -640,6 +650,7 @@ Protection Layers:
 - **POST /api/auth/passkey/verify** (PoW MEDIUM + honeypot)
   - Request: `{ "challengeJwt": "string", "assertion": PasskeyAssertionJSON }`
   - Response: `{ "passkeyToken": "string", "username": "string", "encryptionSalt": "string" }`
+  - The credential ID from the assertion is recorded in the resulting login event (`passkeyCredentialId`, `passkeyName`)
 
 - **GET /api/auth/verify-email?token=** (no auth, no PoW — prod only)
   - Validates the `registrationToken` from the invitation email
@@ -669,10 +680,19 @@ Protection Layers:
 - **GET /api/auth/passkey/register/challenge** (Requires user auth, status must be "pending_passkey_setup")
   - Response: `{ "challengeJwt": "string" }`
 
-- **POST /api/auth/passkey/register** (Requires user auth, status must be "pending_passkey_setup", PoW MEDIUM)
-  - Request: `{ "challengeJwt": "string", "attestation": PasskeyAttestationJSON }`
+- **POST /api/auth/passkey/register** (Requires user auth, status "pending_passkey_setup" or "active", PoW MEDIUM)
+  - Request: `{ "challengeJwt": "string", "attestation": PasskeyAttestationJSON, "name": "string" }`
   - Response: `{ "success": true }`
-  - Verifies and stores the passkey credential; changes user status to "active"
+  - Verifies and stores the passkey credential in the credentials table; changes user status to "active" if currently "pending_passkey_setup"
+  - Rejects registration if the user already has 10 passkeys or if a credential with the same aaguid already exists
+
+- **GET /api/auth/passkeys** (Requires user auth)
+  - Response: `{ "passkeys": [{ "credentialId": "string", "name": "string", "aaguid": "string", "createdAt": "string" }] }`
+  - Lists all passkey credentials for the authenticated user
+
+- **DELETE /api/auth/passkeys/{credentialId}** (Requires user auth, PoW MEDIUM)
+  - Response: `{ "success": true }`
+  - Revokes (deletes) a specific passkey credential; the user must retain at least one passkey in prod
 
 > **Passkey endpoints (dev/beta)**: When `passkeyRequired=false`, the passkey challenge/verify/register endpoints are still deployed but will not be exercised by the UI. POST /auth/login accepts `username` + `password` directly.
 
@@ -753,11 +773,17 @@ Attributes:
 - otpExpiresAt:             ISO timestamp when the one-time password expires (String, nullable)
 - registrationToken:        UUID for email verification link (String, nullable) — prod only
 - registrationTokenExpiresAt: ISO timestamp (String, nullable) — 7 days after user creation
-- passkeyCredentialId:      WebAuthn credential ID (String, base64url, nullable)
-- passkeyPublicKey:         COSE-encoded public key (String, base64url, nullable)
-- passkeyCounter:           signature counter for replay protection (Number)
-- passkeyTransports:        list of transport hints (List of Strings, nullable)
-- passkeyAaguid:            authenticator attestation GUID (String, nullable) — audit only
+- passkeyCredentialId:      **Deprecated** — passkey credentials are now stored in a separate `passvault-passkey-credentials-{env}` table (see below)
+
+**Passkey Credentials Table** (`passvault-passkey-credentials-{env}`):
+- credentialId:             WebAuthn credential ID (String, base64url) — partition key
+- userId:                   owning user's ID (String) — GSI `byUser` partition key
+- name:                     user-assigned label for the credential (String)
+- publicKey:                COSE-encoded public key (String, base64url)
+- counter:                  signature counter for replay protection (Number)
+- transports:               list of transport hints (List of Strings, nullable)
+- aaguid:                   authenticator attestation GUID (String) — used for duplicate provider prevention
+- createdAt:                ISO timestamp (String)
 - encryptionSalt:           salt for password-based key derivation (String, base64)
 - createdAt:                ISO timestamp (String)
 - lastLoginAt:              ISO timestamp (String, nullable)
@@ -949,7 +975,10 @@ s3://passvault-files-{env}/
   - WebAuthn challenges are encoded in short-lived signed JWTs (5-minute expiry, same JWT secret as session tokens)
   - Passkey tokens (issued after successful assertion) are short-lived JWTs (5-minute expiry) containing userId
   - Signature counter checked on every login to detect cloned credentials (replay protection)
-  - One passkey per user; re-registration overwrites the existing credential
+  - Multi-passkey model: users may register up to 10 passkeys, admins up to 2
+  - Duplicate provider prevention: registering a second credential with the same aaguid is rejected
+  - Login events track `passkeyCredentialId` and `passkeyName` for audit purposes
+  - Users with registered passkeys cannot change their password (password login is disabled once passkeys are present)
   - Mandatory for all users and admin after initial password setup (prod only)
   - `PASSKEY_RP_ID` and `PASSKEY_ORIGIN` environment variables configure the relying party for each deployment
 
@@ -1142,7 +1171,7 @@ Deployment details have moved to dedicated guides:
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** — Quick start and overview
 - **[cdk/DEPLOYMENT.md](cdk/DEPLOYMENT.md)** — Full deployment guide (SSM secrets, CDK context variables, SES email, monitoring, troubleshooting)
 - **[cdk/ARCHITECTURE.md](cdk/ARCHITECTURE.md)** — CDK constructs, stack composition, resource naming
-- **[scripts/README.md](scripts/README.md)** — Post-deploy scripts (init-admin, seed-dev, deploy-ui, cleanup)
+- **[scripts/README.md](scripts/README.md)** — Post-deploy scripts (init-admin, seed-dev, setup, cleanup)
 
 ## 8. Development Phases
 
@@ -1222,7 +1251,7 @@ All phases are complete. The build plan was documented in the now-deleted `IMPLE
   - Backend: `@simplewebauthn/server` — verifies registration and authentication responses
   - Frontend: `@simplewebauthn/browser` — calls `startAuthentication()` and `startRegistration()`
   - Challenge transport: stateless signed JWT (no DynamoDB table needed)
-  - Credential storage: DynamoDB attributes on user record (`passkeyCredentialId`, `passkeyPublicKey`, `passkeyCounter`, `passkeyTransports`, `passkeyAaguid`)
+  - Credential storage: dedicated DynamoDB table `passvault-passkey-credentials-{env}` (credentialId PK, byUser GSI on userId)
 - [x] **WebAuthn parameters**:
   - Relying Party ID: `PASSKEY_RP_ID` env var (e.g. `vault.example.com`)
   - Relying Party Origin: `PASSKEY_ORIGIN` env var (e.g. `https://vault.example.com`)
@@ -1295,7 +1324,7 @@ Session timeouts vary by environment (see Section 2.5):
   - Account recovery flow (admin-assisted password reset + passkey reset)
   - Passkey recovery codes (recovery codes in case of lost authenticator)
   - Passkey reset capability (admin can clear passkey for locked-out users)
-  - Multiple passkey support (register backup authenticator / device)
+  - ~~Multiple passkey support (register backup authenticator / device)~~ **Implemented** -- users: max 10, admins: max 2
   - Configurable session timeout preferences (per user or global)
   - "Extend session" button to add time before auto-logout
   - Audio/visual warning alerts before auto-logout (e.g., 10 seconds warning)

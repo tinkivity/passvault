@@ -9,8 +9,8 @@ import {
   DeleteCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { randomUUID } from 'crypto';
-import type { User, VaultSummary } from '@passvault/shared';
-import { DYNAMODB_TABLE, LOGIN_EVENTS_TABLE, VAULTS_TABLE } from '../config.js';
+import type { User, VaultSummary, PasskeyCredential } from '@passvault/shared';
+import { DYNAMODB_TABLE, LOGIN_EVENTS_TABLE, VAULTS_TABLE, PASSKEY_CREDENTIALS_TABLE } from '../config.js';
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
@@ -90,16 +90,79 @@ export async function getUserByRegistrationToken(token: string): Promise<Pick<Us
   return (result.Items?.[0] as Pick<User, 'userId' | 'status' | 'registrationTokenExpiresAt' | 'username'>) ?? null;
 }
 
-export async function getUserByCredentialId(credentialId: string): Promise<User | null> {
-  const result = await docClient.send(
-    new ScanCommand({
-      TableName: DYNAMODB_TABLE,
-      FilterExpression: '#cid = :cid',
-      ExpressionAttributeNames: { '#cid': 'passkeyCredentialId' },
-      ExpressionAttributeValues: { ':cid': credentialId },
+export async function getUserByCredentialId(credentialId: string): Promise<{ user: User; credential: PasskeyCredential } | null> {
+  const credential = await getPasskeyCredential(credentialId);
+  if (!credential) return null;
+  const user = await getUserById(credential.userId);
+  if (!user) return null;
+  return { user, credential };
+}
+
+// ── Passkey credentials CRUD ─────────────────────────────────────────────────
+
+export async function createPasskeyCredential(credential: PasskeyCredential): Promise<void> {
+  await docClient.send(
+    new PutCommand({
+      TableName: PASSKEY_CREDENTIALS_TABLE,
+      Item: credential,
+      ConditionExpression: 'attribute_not_exists(credentialId)',
     }),
   );
-  return (result.Items?.[0] as User) || null;
+}
+
+export async function getPasskeyCredential(credentialId: string): Promise<PasskeyCredential | null> {
+  const result = await docClient.send(
+    new GetCommand({
+      TableName: PASSKEY_CREDENTIALS_TABLE,
+      Key: { credentialId },
+    }),
+  );
+  return (result.Item as PasskeyCredential) ?? null;
+}
+
+export async function listPasskeyCredentials(userId: string): Promise<PasskeyCredential[]> {
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: PASSKEY_CREDENTIALS_TABLE,
+      IndexName: 'byUser',
+      KeyConditionExpression: 'userId = :uid',
+      ExpressionAttributeValues: { ':uid': userId },
+    }),
+  );
+  return (result.Items as PasskeyCredential[]) ?? [];
+}
+
+export async function deletePasskeyCredential(credentialId: string): Promise<void> {
+  await docClient.send(
+    new DeleteCommand({
+      TableName: PASSKEY_CREDENTIALS_TABLE,
+      Key: { credentialId },
+    }),
+  );
+}
+
+export async function updatePasskeyCounter(credentialId: string, newCounter: number): Promise<void> {
+  await docClient.send(
+    new UpdateCommand({
+      TableName: PASSKEY_CREDENTIALS_TABLE,
+      Key: { credentialId },
+      UpdateExpression: 'SET #c = :c',
+      ExpressionAttributeNames: { '#c': 'counter' },
+      ExpressionAttributeValues: { ':c': newCounter },
+    }),
+  );
+}
+
+export async function renamePasskeyCredential(credentialId: string, name: string): Promise<void> {
+  await docClient.send(
+    new UpdateCommand({
+      TableName: PASSKEY_CREDENTIALS_TABLE,
+      Key: { credentialId },
+      UpdateExpression: 'SET #n = :n',
+      ExpressionAttributeNames: { '#n': 'name' },
+      ExpressionAttributeValues: { ':n': name },
+    }),
+  );
 }
 
 export async function deleteUser(userId: string): Promise<void> {
@@ -120,20 +183,26 @@ export async function listAllUsers(): Promise<User[]> {
   return (result.Items as User[]) || [];
 }
 
-export async function recordLoginEvent(eventId: string, userId: string, success: boolean): Promise<void> {
+export async function recordLoginEvent(
+  eventId: string,
+  userId: string,
+  success: boolean,
+  passkeyCredentialId?: string,
+  passkeyName?: string,
+): Promise<void> {
   const now = new Date();
   const expiresAt = Math.floor(now.getTime() / 1000) + 90 * 24 * 60 * 60; // 90 days TTL
+  const item: Record<string, unknown> = {
+    eventId,
+    userId,
+    timestamp: now.toISOString(),
+    success,
+    expiresAt,
+  };
+  if (passkeyCredentialId) item.passkeyCredentialId = passkeyCredentialId;
+  if (passkeyName) item.passkeyName = passkeyName;
   await docClient.send(
-    new PutCommand({
-      TableName: LOGIN_EVENTS_TABLE,
-      Item: {
-        eventId,
-        userId,
-        timestamp: now.toISOString(),
-        success,
-        expiresAt,
-      },
-    }),
+    new PutCommand({ TableName: LOGIN_EVENTS_TABLE, Item: item }),
   );
 }
 

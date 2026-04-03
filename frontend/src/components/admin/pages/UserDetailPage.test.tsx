@@ -187,11 +187,12 @@ describe('UserDetailPage', () => {
     expect(await screen.findByText('Users List')).toBeInTheDocument();
   });
 
-  it('shows OtpDisplay after Refresh OTP succeeds', async () => {
-    mockAdmin.refreshOtp.mockResolvedValue({ username: 'bob', oneTimePassword: 'NEWOTP99' });
+  it('shows OTP dialog after Refresh OTP succeeds', async () => {
+    mockAdmin.refreshOtp.mockResolvedValue({ username: 'bob@example.com', oneTimePassword: 'NEWOTP99' });
     renderDetail(pendingUser);
     await userEvent.click(screen.getByText('Refresh OTP'));
-    expect(await screen.findByText('NEWOTP99')).toBeInTheDocument();
+    expect(await screen.findByText('One-Time Password')).toBeInTheDocument();
+    expect(screen.getByTitle('Reveal')).toBeInTheDocument();
   });
 
   it('navigates back to users list when back button is clicked', async () => {

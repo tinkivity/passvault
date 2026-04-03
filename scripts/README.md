@@ -32,7 +32,7 @@ AWS credentials must be configured. The DynamoDB users table must already exist.
 
 Populates a dev stack with ready-to-use test accounts and sample vault content (writes directly to DynamoDB and S3).
 
-**When to run:** After deploying a dev stack, to get working test accounts without going through the OTP / change-password flow. Called automatically by `deploy-ui.sh` on first dev startup.
+**When to run:** After deploying a dev stack, to get working test accounts without going through the OTP / change-password flow. Called automatically by `setup.sh` on first dev startup.
 
 **Safety:** Refuses to run against beta or prod.
 
@@ -53,7 +53,7 @@ Idempotent -- users that already exist are skipped.
 
 ---
 
-## deploy-ui.sh
+## setup.sh
 
 Builds and deploys the frontend, or starts a local Vite dev server pointed at a deployed stack.
 
@@ -63,16 +63,16 @@ Builds and deploys the frontend, or starts a local Vite dev server pointed at a 
 
 ```bash
 # Local dev server (writes .env.local, cleans up on exit)
-./scripts/deploy-ui.sh --env dev
+./scripts/setup.sh --env dev
 
 # Deploy to beta (S3 + CloudFront invalidation)
-./scripts/deploy-ui.sh --env beta
+./scripts/setup.sh --env beta
 
 # Deploy to prod (requires confirmation)
-./scripts/deploy-ui.sh --env prod
+./scripts/setup.sh --env prod
 
 # With explicit AWS profile and region
-./scripts/deploy-ui.sh --env beta --profile my-profile --region eu-central-1
+./scripts/setup.sh --env beta --profile my-profile --region eu-central-1
 ```
 
 **Options:**

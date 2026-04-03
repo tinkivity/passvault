@@ -38,6 +38,7 @@ After constructing the frontend, the stack sets `FRONTEND_ORIGIN` on all Lambdas
 | `passvault-users-{env}` | `userId` | `username-index` (PK: username), `registrationToken-index` (PK: registrationToken, projected: userId, status, registrationTokenExpiresAt, username) | PITR in prod; RETAIN on delete |
 | `passvault-vaults-{env}` | `vaultId` | `byUser` (PK: userId) | RETAIN on delete |
 | `passvault-login-events-{env}` | `eventId` | none | TTL on `expiresAt` (90 days); DESTROY on delete |
+| `passvault-passkey-credentials-{env}` | `credentialId` | `byUser` (PK: userId) | DESTROY on delete |
 
 All tables use PAY_PER_REQUEST billing.
 
@@ -81,6 +82,7 @@ The JWT signing secret is stored in SSM Parameter Store (`/passvault/{env}/jwt-s
 - **Users table**: read/write for auth, admin-auth, admin-mgmt, vault, digest
 - **Vaults table**: read/write for vault and admin-mgmt; read for digest
 - **Login events table**: write for auth and admin-auth; read for admin-mgmt and digest
+- **Passkey credentials table**: read/write for auth and admin-auth
 - **Files bucket**: read/write for vault and admin-mgmt; read for digest
 
 ### API Gateway
@@ -113,6 +115,8 @@ All routes are nested under `/api`:
       /verify               POST -> authFn
       /register             POST -> authFn
       /register/challenge   GET  -> authFn
+    /passkeys               GET  -> authFn
+      /{credentialId}       DELETE -> authFn
   /admin
     /login                  POST -> adminAuthFn
     /change-password        POST -> adminAuthFn
@@ -121,6 +125,8 @@ All routes are nested under `/api`:
       /verify               POST -> adminAuthFn
       /register             POST -> adminAuthFn
       /register/challenge   GET  -> adminAuthFn
+    /passkeys               GET  -> adminAuthFn
+      /{credentialId}       DELETE -> adminAuthFn
     /users                  GET, POST -> adminMgmtFn
     /users/{userId}         DELETE, PATCH -> adminMgmtFn
     /users/{userId}/vault   GET  -> adminMgmtFn
