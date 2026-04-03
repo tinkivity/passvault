@@ -1,0 +1,96 @@
+# Frontend Testing
+
+## Running Tests
+
+```bash
+# All frontend tests
+npm test --workspace=frontend
+
+# Watch mode
+npm run test:watch --workspace=frontend
+
+# Single file
+npx vitest run src/components/admin/UserList.test.tsx --workspace=frontend
+```
+
+## Type Checking
+
+```bash
+npm run typecheck --workspace=frontend
+# or directly:
+cd frontend && npx tsc --noEmit
+```
+
+No AWS credentials or deployed stack required.
+
+---
+
+## Test Inventory
+
+### Services and Hooks
+
+| File | Tests | Covers |
+|------|-------|--------|
+| `services/honeypot.test.ts` | 6 | Hidden field generation, timing |
+| `hooks/useAutoLogout.test.ts` | 7 | Timer countdown, auto-logout, activity reset |
+| `hooks/useVault.computeWarnings.test.ts` | 8 | `computeWarnings` — duplicate/weak password detection |
+| `context/AuthContext.test.tsx` | 4 | Auth state, plan field, logout |
+
+### Components
+
+| File | Tests | Covers |
+|------|-------|--------|
+| `components/vault/CountdownTimer.test.tsx` | 8 | Timer display, expiry callback |
+| `components/vault/ConfirmDialog.test.tsx` | 5 | Confirm/cancel dialog |
+| `components/admin/OtpDisplay.test.tsx` | 5 | OTP display, copy, Done |
+| `components/admin/AdminBreadcrumbs.test.tsx` | 10 | Breadcrumb rendering for all routes |
+| `components/admin/AdminSidebar.test.tsx` | 15 | Sidebar nav, collapsible sections |
+| `components/admin/CreateUserForm.test.tsx` | 14 | Email validation, plan toggle, expiresAt, OTP display |
+| `components/admin/UserList.test.tsx` | 41 | Table, sorting, filters, row actions, confirmation dialogs |
+| `components/admin/pages/DashboardPage.test.tsx` | 9 | Stats cards, chart rendering |
+| `components/admin/pages/AdminPage.test.tsx` | 10 | Admin account management |
+| `components/admin/pages/UserDetailPage.test.tsx` | 26 | User detail, inline edit, lifecycle buttons |
+| `components/admin/pages/LoginsPage.test.tsx` | 34 | Login events table, sorting, filtering |
+| `components/layout/Layout.test.tsx` | 11 | Layout rendering, environment banner |
+
+---
+
+## Adding a Test
+
+Place test files alongside the source with a `.test.ts` or `.test.tsx` suffix. Vitest discovers them automatically.
+
+```
+src/components/vault/
+  SecretField.tsx
+  SecretField.test.tsx   <- here
+```
+
+---
+
+## Manual UI Testing
+
+Use `scripts/dev-ui.sh` to test against a deployed dev stack:
+
+```bash
+# Start local dev server pointing at the deployed dev backend
+./scripts/dev-ui.sh --profile my-profile
+```
+
+The script reads API URL from CloudFormation outputs, writes `.env.local`, starts Vite at `http://localhost:5173`, and cleans up on exit.
+
+### What to test manually
+
+**Admin flow:**
+1. Log in with OTP (printed on first run) at `/login`
+2. Change password when prompted
+3. Create a test user from the dashboard
+
+**User flow:**
+1. Log in with test user OTP
+2. Change password
+3. Add/edit vault items, verify encryption round-trip
+4. Download encrypted backup
+
+**Session timeouts (dev):** view=5 min, edit=10 min, admin=24 hours.
+
+See [../scripts/README.md](../scripts/README.md) for full script documentation.

@@ -195,3 +195,55 @@ VITE_ADMIN_TIMEOUT_SECONDS=86400
    ```
 
 5. **Add a guard** if the page requires auth/admin — compose with existing guards in the router.
+
+---
+
+## Encryption Flow
+
+Vault content is encrypted end-to-end in the browser. The server only stores encrypted blobs.
+
+1. **Key derivation**: `Argon2id(password, user.encryptionSalt)` → 256-bit key (via `services/crypto.ts`)
+2. **Encrypt on save**: `JSON.stringify(VaultFile)` → `AES-256-GCM(plaintext, key, random IV)` → base64 → `PUT /api/vault/:id`
+3. **Decrypt on load**: `GET /api/vault/:id` → base64 → `AES-256-GCM-decrypt` → `JSON.parse()` → `VaultFile`
+4. **Warning codes**: `computeWarnings()` runs before every save, storing `warningCodes` inside the encrypted blob (zero-knowledge)
+5. **Key lifecycle**: derived after login, held in `EncryptionContext`, cleared on logout
+
+The derived key never leaves the browser and is never persisted to disk.
+
+### Key functions (`services/crypto.ts`)
+
+| Function | Purpose |
+|----------|---------|
+| `deriveKey(password, salt)` | Argon2id → CryptoKey (AES-256-GCM) |
+| `encrypt(plaintext, key)` | AES-256-GCM encrypt → `{ ciphertext, iv, salt }` |
+| `decrypt(encrypted, key)` | AES-256-GCM decrypt → plaintext string |
+| `verifyPassword(password, salt, ciphertext)` | Derives temp key, attempts decrypt, returns boolean |
+
+---
+
+## Proof of Work
+
+Every API request requires solving a SHA-256 PoW challenge. The solver runs in a **Web Worker** (`services/pow-solver.ts`) to avoid blocking the UI thread.
+
+Flow: `GET /api/challenge` → `{ nonce, difficulty, timestamp, ttl }` → worker finds solution → headers attached to the actual request.
+
+Difficulty levels: LOW (public), MEDIUM (auth), HIGH (admin/vault). Dev stacks skip PoW entirely (`powEnabled: false`).
+
+---
+
+## Honeypot
+
+`services/honeypot.ts` generates hidden form fields and tracks timing. The login form includes a hidden `email_confirm` field — bots fill it, humans don't. Submit time < 1s is rejected as bot-like.
+
+---
+
+## Auto-Logout
+
+`hooks/useAutoLogout.ts` manages session timeouts. A countdown timer is always visible in the shell header. Timeouts are configured per environment via `config.timeouts`:
+
+| Environment | View mode | Edit mode | Admin |
+|-------------|-----------|-----------|-------|
+| Dev/Beta | 5 min | 10 min | 24 hours |
+| Prod | 60 sec | 120 sec | 8 hours |
+
+User activity (mouse, keyboard, touch) resets the countdown. On expiry, `logout()` is called automatically.
