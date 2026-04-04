@@ -197,7 +197,8 @@ echo "── Summary "
 if [[ "$TEST_EXIT_CODE" -eq 0 ]]; then
   echo "  All tests passed."
 else
-  echo "  Some tests failed (exit code $TEST_EXIT_CODE)."
+  echo "  Tests failed with exit code $TEST_EXIT_CODE."
+  echo "  Review the failure details above."
 fi
 echo ""
 
