@@ -108,5 +108,10 @@
   "accountExpiredMessage": "Your account has expired. You can still view your vaults but cannot make changes. Please contact your administrator to reactivate your account.",
   "comment": "Comment",
   "previousPage": "Previous page",
-  "nextPage": "Next page"
+  "nextPage": "Next page",
+  "copy": "Copy",
+  "copied": "Copied!",
+  "showingRange": "{{from}}-{{to}} of {{total}}",
+  "help": "Help",
+  "helpComingSoon": "Help — coming soon"
 }

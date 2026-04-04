@@ -108,5 +108,10 @@
   "accountExpiredMessage": "Ihr Konto ist abgelaufen. Sie können Ihre Tresore weiterhin einsehen, aber keine Änderungen vornehmen. Bitte kontaktieren Sie Ihren Administrator zur Reaktivierung.",
   "comment": "Kommentar",
   "previousPage": "Vorherige Seite",
-  "nextPage": "Nächste Seite"
+  "nextPage": "Nächste Seite",
+  "copy": "Kopieren",
+  "copied": "Kopiert!",
+  "showingRange": "{{from}}-{{to}} von {{total}}",
+  "help": "Hilfe",
+  "helpComingSoon": "Hilfe — demnächst verfügbar"
 }

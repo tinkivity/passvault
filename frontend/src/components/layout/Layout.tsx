@@ -1,11 +1,31 @@
 import React from 'react';
 import { Loader2, Sun, Moon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
+import { QuestionMarkCircleIcon, GlobeAltIcon } from '@heroicons/react/24/outline';
 import { cn } from '@/lib/utils';
 import { Button as UIButton } from '@/components/ui/button';
 import { Input as UIInput } from '@/components/ui/input';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { EnvironmentBanner } from './EnvironmentBanner.js';
 import { useTheme } from '../../hooks/useTheme.js';
+
+const LANGUAGES = [
+  { code: 'en', label: 'EN' },
+  { code: 'de', label: 'DE' },
+  { code: 'fr', label: 'FR' },
+  { code: 'ru', label: 'RU' },
+] as const;
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -13,19 +33,58 @@ interface LayoutProps {
 
 export function Layout({ children }: LayoutProps) {
   const { isDark, toggleTheme } = useTheme();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+
+  const handleLanguageChange = (lang: string) => {
+    void i18n.changeLanguage(lang);
+    localStorage.setItem('pv_language', lang);
+  };
+
   return (
     <div className="min-h-screen flex flex-col bg-muted text-foreground">
       <EnvironmentBanner />
-      <div className="absolute top-2 right-2 z-10">
+      <div className="absolute top-2 right-2 z-10 flex items-center gap-1">
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger
+              className="inline-flex items-center justify-center rounded-md h-8 w-8 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
+              disabled
+              aria-label={t('helpComingSoon')}
+            >
+              <QuestionMarkCircleIcon className="h-4 w-4" />
+            </TooltipTrigger>
+            <TooltipContent>{t('helpComingSoon')}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         <UIButton
           variant="ghost"
           size="icon"
           onClick={toggleTheme}
           aria-label={isDark ? t('switchToLight') : t('switchToDark')}
+          title={isDark ? t('switchToLight') : t('switchToDark')}
         >
           {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
         </UIButton>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            className="inline-flex items-center justify-center rounded-md h-8 w-8 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+            title={t('language')}
+            aria-label={t('language')}
+          >
+            <GlobeAltIcon className="h-4 w-4" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {LANGUAGES.map(({ code, label }) => (
+              <DropdownMenuItem
+                key={code}
+                onClick={() => handleLanguageChange(code)}
+                className={i18n.language?.startsWith(code) ? 'font-semibold' : undefined}
+              >
+                {label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       <main className="flex-1 flex flex-col items-center justify-center p-4">
         {children}

@@ -1,6 +1,12 @@
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { SunIcon, MoonIcon, GlobeAltIcon } from '@heroicons/react/24/outline';
+import {
+  QuestionMarkCircleIcon,
+  SunIcon,
+  MoonIcon,
+  GlobeAltIcon,
+  ArrowRightStartOnRectangleIcon,
+} from '@heroicons/react/24/outline';
 import { useTheme } from '../../hooks/useTheme.js';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -11,14 +17,21 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 interface ShellHeaderProps {
   breadcrumbs: ReactNode;
   secondsLeft: number;
   onExtend?: () => void;
+  onLogout?: () => void;
 }
 
-export function ShellHeader({ breadcrumbs, secondsLeft, onExtend }: ShellHeaderProps) {
+export function ShellHeader({ breadcrumbs, secondsLeft, onExtend, onLogout }: ShellHeaderProps) {
   const { isDark, toggleTheme } = useTheme();
   const { t, i18n } = useTranslation();
 
@@ -65,6 +78,35 @@ export function ShellHeader({ breadcrumbs, secondsLeft, onExtend }: ShellHeaderP
             {t('extend')}
           </Button>
         )}
+        <TooltipProvider>
+          {/* 1. Help — disabled / coming soon */}
+          <Tooltip>
+            <TooltipTrigger
+              className="inline-flex items-center justify-center rounded-md h-7 w-7 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
+              disabled
+              aria-label={t('helpComingSoon')}
+            >
+              <QuestionMarkCircleIcon className="w-4 h-4" />
+            </TooltipTrigger>
+            <TooltipContent>{t('helpComingSoon')}</TooltipContent>
+          </Tooltip>
+
+          {/* 2. Light / Dark mode toggle */}
+          <Tooltip>
+            <TooltipTrigger
+              className="inline-flex items-center justify-center rounded-md h-7 w-7 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+              onClick={toggleTheme}
+              aria-label={isDark ? t('switchToLight') : t('switchToDark')}
+            >
+              {isDark
+                ? <SunIcon className="w-4 h-4" />
+                : <MoonIcon className="w-4 h-4" />}
+            </TooltipTrigger>
+            <TooltipContent>{isDark ? t('switchToLight') : t('switchToDark')}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+
+        {/* 3. Language selector */}
         <DropdownMenu>
           <DropdownMenuTrigger
             className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-7 w-7"
@@ -85,17 +127,22 @@ export function ShellHeader({ breadcrumbs, secondsLeft, onExtend }: ShellHeaderP
             ))}
           </DropdownMenuContent>
         </DropdownMenu>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={toggleTheme}
-          title={isDark ? t('switchToLight') : t('switchToDark')}
-          aria-label={isDark ? t('switchToLight') : t('switchToDark')}
-        >
-          {isDark
-            ? <SunIcon className="w-4 h-4" />
-            : <MoonIcon className="w-4 h-4" />}
-        </Button>
+
+        {/* 4. Logout */}
+        {onLogout && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger
+                className="inline-flex items-center justify-center rounded-md h-7 w-7 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+                onClick={onLogout}
+                aria-label={t('logOut')}
+              >
+                <ArrowRightStartOnRectangleIcon className="w-4 h-4" />
+              </TooltipTrigger>
+              <TooltipContent>{t('logOut')}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
       </div>
     </header>
   );

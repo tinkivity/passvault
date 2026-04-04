@@ -108,5 +108,10 @@
   "accountExpiredMessage": "Votre compte a expir\u00e9. Vous pouvez toujours consulter vos coffres mais ne pouvez pas effectuer de modifications. Veuillez contacter votre administrateur.",
   "comment": "Commentaire",
   "previousPage": "Page pr\u00e9c\u00e9dente",
-  "nextPage": "Page suivante"
+  "nextPage": "Page suivante",
+  "copy": "Copier",
+  "copied": "Copi\u00e9 !",
+  "showingRange": "{{from}}-{{to}} sur {{total}}",
+  "help": "Aide",
+  "helpComingSoon": "Aide — bient\u00f4t disponible"
 }

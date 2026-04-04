@@ -293,7 +293,7 @@ function getUserColumns(
               }>
                 <EllipsisHorizontalIcon className="h-4 w-4" />
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              <DropdownMenuContent align="end" className="min-w-[200px]">
                 {/* 1. Lock user — only shown when active */}
                 {user.status === 'active' && (
                   <DropdownMenuItem

@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Eye, EyeOff, Copy, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -8,6 +9,7 @@ interface SecretFieldProps {
 }
 
 export function SecretField({ value, label }: SecretFieldProps) {
+  const { t } = useTranslation();
   const [visible, setVisible] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -27,8 +29,8 @@ export function SecretField({ value, label }: SecretFieldProps) {
         variant="ghost"
         size="icon-sm"
         onClick={() => setVisible(v => !v)}
-        title={visible ? 'Hide' : 'Show'}
-        aria-label={visible ? 'Hide' : 'Show'}
+        title={visible ? t('hide') : t('show')}
+        aria-label={visible ? t('hide') : t('show')}
         className="shrink-0"
       >
         {visible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
@@ -38,8 +40,8 @@ export function SecretField({ value, label }: SecretFieldProps) {
         variant="ghost"
         size="icon-sm"
         onClick={handleCopy}
-        title="Copy"
-        aria-label="Copy to clipboard"
+        title={copied ? t('copied') : t('copy')}
+        aria-label={t('copy')}
         className="shrink-0"
       >
         {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}

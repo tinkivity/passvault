@@ -153,6 +153,11 @@ export function VaultShell() {
     setVaults(prev => prev.filter(v => v.vaultId !== vaultId));
   }, [deleteVault]);
 
+  // Reset vault timeout on every route change within a vault
+  useEffect(() => {
+    if (vaultId) resetVaultTimeout(vaultId);
+  }, [pathname, vaultId, resetVaultTimeout]);
+
   const isAdminRoute = pathname.startsWith(ROUTES.UI.ADMIN.ROOT);
   const shellContext = { vaults, catalog, refreshVaults, resetVaultTimeout };
 
@@ -180,6 +185,7 @@ export function VaultShell() {
                 breadcrumbs={isAdminRoute ? <AdminBreadcrumbs /> : <VaultBreadcrumbs />}
                 secondsLeft={secondsLeft}
                 onExtend={handleExtendSession}
+                onLogout={handleLogout}
               />
               <main className="flex-1 overflow-auto bg-muted p-6">
                 {!isAdminRoute && vaults.length === 0 ? (

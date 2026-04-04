@@ -26,13 +26,14 @@ const CATEGORY_KEYS: { value: VaultItemCategory; key: string }[] = [
 function MaskedInput({
   id, value, onChange, label,
 }: { id: string; value: string; onChange: (v: string) => void; label: string }) {
+  const { t } = useTranslation();
   const [visible, setVisible] = useState(false);
   return (
     <div className="space-y-1">
       <Label htmlFor={id}>{label}</Label>
       <div className="flex gap-1">
         <Input id={id} type={visible ? 'text' : 'password'} autoComplete="off" value={value} onChange={e => onChange(e.target.value)} className="font-mono" />
-        <Button type="button" variant="ghost" size="icon-sm" title={visible ? 'Hide' : 'Show'} onClick={() => setVisible(v => !v)}>
+        <Button type="button" variant="ghost" size="icon-sm" title={visible ? t('hide') : t('show')} onClick={() => setVisible(v => !v)}>
           {visible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
         </Button>
       </div>
@@ -43,16 +44,17 @@ function MaskedInput({
 function PasswordInput({
   id, value, onChange, label,
 }: { id: string; value: string; onChange: (v: string) => void; label: string }) {
+  const { t } = useTranslation();
   const [visible, setVisible] = useState(false);
   return (
     <div className="space-y-1">
       <Label htmlFor={id}>{label}</Label>
       <div className="flex gap-1">
         <Input id={id} type={visible ? 'text' : 'password'} autoComplete="off" value={value} onChange={e => onChange(e.target.value)} className="font-mono" />
-        <Button type="button" variant="ghost" size="icon-sm" title={visible ? 'Hide' : 'Show'} onClick={() => setVisible(v => !v)}>
+        <Button type="button" variant="ghost" size="icon-sm" title={visible ? t('hide') : t('show')} onClick={() => setVisible(v => !v)}>
           {visible ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
         </Button>
-        <Button type="button" variant="outline" size="icon-sm" title="Generate password" onClick={() => onChange(generateSecurePassword())}>
+        <Button type="button" variant="outline" size="icon-sm" title={t('generatePassword')} onClick={() => onChange(generateSecurePassword())}>
           <RefreshCw className="h-3.5 w-3.5" />
         </Button>
       </div>

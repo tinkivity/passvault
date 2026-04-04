@@ -153,8 +153,8 @@ export function DataTable<TData, TValue>({
         <div className="flex items-center justify-between gap-4 text-sm text-muted-foreground">
           <span>
             {totalRows === 0
-              ? '0 results'
-              : `${start}–${end} of ${totalRows}`}
+              ? t('noResults')
+              : t('showingRange', { from: start, to: end, total: totalRows })}
           </span>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">

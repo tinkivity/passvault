@@ -89,7 +89,8 @@ export class ApiClient {
     const json: ApiResponse<T> = await res.json();
 
     if (!res.ok || !json.success) {
-      throw new ApiError(json.error ?? `HTTP ${res.status}`, res.status);
+      const msg = json.error ? `(API) ${json.error}` : `(API) HTTP ${res.status}`;
+      throw new ApiError(msg, res.status);
     }
 
     return json.data as T;
