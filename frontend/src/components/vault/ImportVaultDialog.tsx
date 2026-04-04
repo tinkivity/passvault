@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import type { VaultDownloadResponse } from '@passvault/shared';
+import { deriveKey, decrypt, clearKey } from '../../services/crypto.js';
 import {
   Dialog,
   DialogContent,
@@ -108,7 +109,7 @@ export function ImportVaultDialog({ open, onOpenChange, onImport }: ImportVaultD
 
     try {
       // Import crypto functions directly to do a temporary decrypt
-      const { deriveKey, decrypt, clearKey } = await import('../../services/crypto.js');
+      // deriveKey, decrypt, clearKey imported statically at top
       const tempVaultId = `__import_preview_${Date.now()}`;
       try {
         await deriveKey(tempVaultId, password, fileData.encryptionSalt);

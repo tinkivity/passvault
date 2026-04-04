@@ -4,6 +4,7 @@ import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import type { VaultSummary, VaultDownloadResponse } from '@passvault/shared';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useEncryptionContext } from '../../context/EncryptionContext.js';
+import { deriveKey as deriveCryptoKey, decrypt as decryptContent, encrypt as encryptContent, clearKey as clearCryptoKey } from '../../services/crypto.js';
 import { useAutoLogout } from '../../hooks/useAutoLogout.js';
 import { useVaults } from '../../hooks/useVaults.js';
 import { useWarningCatalog } from '../../hooks/useWarningCatalog.js';
@@ -105,7 +106,7 @@ export function VaultShell() {
   }, [createVault, deriveKey, navigate]);
 
   const handleImportVault = useCallback(async (displayName: string, fileData: VaultDownloadResponse, password: string) => {
-    const { deriveKey: deriveCryptoKey, decrypt: decryptContent, encrypt: encryptContent, clearKey: clearCryptoKey } = await import('../../services/crypto.js');
+    // deriveCryptoKey, decryptContent, encryptContent, clearCryptoKey imported statically at top
     const tempId = `__import_${Date.now()}`;
     try {
       // Decrypt both files with original salt
