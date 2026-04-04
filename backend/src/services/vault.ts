@@ -202,6 +202,13 @@ export async function putVault(
 
   const lastModified = await putVaultSplitFiles(vaultId, request.encryptedIndex, request.encryptedItems);
 
+  recordAuditEvent({
+    category: 'vault_operations',
+    action: 'vault_saved',
+    userId,
+    details: { vaultId },
+  }).catch(err => console.error('Failed to record audit event:', err));
+
   return {
     response: {
       success: true,

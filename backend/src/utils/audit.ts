@@ -20,7 +20,7 @@ const TTL_SECONDS = 90 * 24 * 60 * 60; // 90 days
 
 let cachedConfig: AuditConfig | undefined;
 let cacheTimestamp = 0;
-const CACHE_TTL_MS = 60_000;
+const CACHE_TTL_MS = 5_000; // 5s — short TTL so config changes propagate quickly across Lambdas
 
 export async function getAuditConfig(): Promise<AuditConfig> {
   if (cachedConfig && Date.now() - cacheTimestamp < CACHE_TTL_MS) return cachedConfig;

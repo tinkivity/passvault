@@ -410,7 +410,7 @@ export function VaultItemDetailPage() {
           <ItemView
             item={item}
             isExpired={isExpired}
-            onEdit={() => setEditing(true)}
+            onEdit={() => { setEditing(true); if (vaultId) resetVaultTimeout(vaultId); }}
             onDelete={() => setShowDeleteDialog(true)}
           />
         )}

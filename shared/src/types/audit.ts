@@ -7,7 +7,7 @@ export type AuditAction =
   | 'user_created' | 'user_locked' | 'user_unlocked' | 'user_expired'
   | 'user_retired' | 'user_reset' | 'user_reactivated' | 'user_updated' | 'user_deleted'
   // vault_operations
-  | 'vault_created' | 'vault_deleted' | 'vault_renamed'
+  | 'vault_created' | 'vault_deleted' | 'vault_renamed' | 'vault_saved'
   // system
   | 'password_changed' | 'passkey_registered' | 'passkey_revoked' | 'email_changed';
 

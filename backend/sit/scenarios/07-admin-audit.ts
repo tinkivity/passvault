@@ -64,7 +64,10 @@ export function adminAuditScenarios(ctx: SitContext) {
     });
 
     it('vault_operations events are recorded', async () => {
-      // Rename the vault to trigger a vault_renamed event (audit config is already enabled)
+      // Wait for config cache to expire on vault Lambda (5s TTL + margin)
+      await new Promise(resolve => setTimeout(resolve, 6000));
+
+      // Rename the vault to trigger a vault_renamed event
       const renamePath = `/api/vaults/${ctx.vaultId}`;
       const renameRes = await request<{ success: boolean }>('PATCH', renamePath, {
         body: { displayName: 'SIT Audit Test Vault' },
@@ -73,8 +76,8 @@ export function adminAuditScenarios(ctx: SitContext) {
       });
       expect(renameRes.status).toBe(200);
 
-      // Small delay to allow fire-and-forget audit write to complete
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Allow fire-and-forget audit write to complete
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
       const res = await request<{ success: boolean; data: { events: AuditEvent[] } }>(
         'GET', `${API_PATHS.ADMIN_AUDIT_EVENTS}?category=vault_operations`, {
