@@ -19,6 +19,8 @@ export type UserStatus =
 
 export type UserPlan = 'free' | 'pro' | 'administrator';
 
+export type PreferredLanguage = 'en' | 'de' | 'fr' | 'ru' | 'auto';
+
 export interface User {
   userId: string;
   username: string;              // valid email address
@@ -43,4 +45,5 @@ export interface User {
   notificationPrefs?: NotificationPrefs | null;
   lastDigestSentAt?: string | null;     // ISO 8601; updated after each digest send
   lastBackupSentAt?: string | null;     // ISO 8601; updated after each vault backup send
+  preferredLanguage?: PreferredLanguage;
 }

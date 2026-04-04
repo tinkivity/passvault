@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { LockClosedIcon } from '@heroicons/react/24/outline';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '../../../hooks/useAuth.js';
@@ -15,6 +16,7 @@ import { ROUTES } from '../../../routes.js';
 export function VaultUnlockPage() {
   const { vaultId } = useParams<{ vaultId: string }>();
   const navigate = useNavigate();
+  const { t } = useTranslation('vault');
   const { token, logout } = useAuth();
   const { deriveKey, clearKey } = useEncryptionContext();
   const { vaults } = useVaultShellContext();
@@ -40,7 +42,7 @@ export function VaultUnlockPage() {
           await decrypt(vaultId, res.encryptedContent);
         } catch {
           clearKey(vaultId);
-          setUnlockError('Incorrect password. Please try again.');
+          setUnlockError(t('incorrectPassword'));
           return;
         }
       }
@@ -48,7 +50,7 @@ export function VaultUnlockPage() {
       navigate(ROUTES.UI.ITEMS(vaultId));
     } catch (err) {
       if (!unlockError) {
-        setUnlockError(err instanceof Error ? err.message : 'Failed to unlock vault.');
+        setUnlockError(err instanceof Error ? err.message : t('failedToUnlock'));
       }
     } finally {
       setLoading(false);
@@ -58,7 +60,7 @@ export function VaultUnlockPage() {
   if (!vault) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
-        <p className="text-sm text-muted-foreground">Vault not found.</p>
+        <p className="text-sm text-muted-foreground">{t('vaultNotFound')}</p>
       </div>
     );
   }
@@ -70,12 +72,12 @@ export function VaultUnlockPage() {
           <LockClosedIcon className="h-8 w-8 text-muted-foreground" />
           <h1 className="text-lg font-semibold">{vault.displayName}</h1>
           <p className="text-sm text-muted-foreground">
-            Enter the vault password to open it.
+            {t('enterVaultPassword')}
           </p>
         </div>
         <form onSubmit={handleUnlock} className="space-y-4">
           <div className="space-y-1">
-            <Label htmlFor="vault-password">Password</Label>
+            <Label htmlFor="vault-password">{t('common:password')}</Label>
             <Input
               id="vault-password"
               type="password"
@@ -88,7 +90,7 @@ export function VaultUnlockPage() {
           </div>
           {unlockError && <p className="text-sm text-destructive">{unlockError}</p>}
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-2" />Unlocking…</> : 'Open Vault'}
+            {loading ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-2" />{t('unlocking')}</> : t('openVault')}
           </Button>
         </form>
         <div className="text-center">
@@ -97,7 +99,7 @@ export function VaultUnlockPage() {
             className="text-xs text-muted-foreground hover:underline"
             onClick={() => { logout(); navigate(ROUTES.LOGIN, { replace: true }); }}
           >
-            Sign out instead
+            {t('auth:signOutInstead')}
           </button>
         </div>
       </div>

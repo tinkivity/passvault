@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronsUpDown, LogOut, BadgeCheck, Bell, Sparkles, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth.js';
 import { AccountDialog } from './AccountDialog.js';
@@ -28,6 +29,7 @@ interface NavUserProps {
 export function NavUser({ onLogout }: NavUserProps) {
   const { username, firstName, displayName, role, plan } = useAuth();
   const { isMobile } = useSidebar();
+  const { t } = useTranslation();
 
   const [accountOpen, setAccountOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -35,7 +37,7 @@ export function NavUser({ onLogout }: NavUserProps) {
 
   const label = displayName ?? firstName ?? username ?? '';
   const initials = label[0]?.toUpperCase() ?? '?';
-  const planLabel = plan === 'administrator' ? 'Administrator' : (plan === 'pro' ? 'Pro Plan' : 'Free Plan');
+  const planLabel = plan === 'administrator' ? t('planAdmin') : (plan === 'pro' ? t('planPro') : t('planFree'));
 
   return (
     <>
@@ -87,7 +89,7 @@ export function NavUser({ onLogout }: NavUserProps) {
                   <DropdownMenuGroup>
                     <DropdownMenuItem>
                       <Sparkles className="mr-2 h-4 w-4" />
-                      Upgrade to Pro
+                      {t('upgradeToPro')}
                     </DropdownMenuItem>
                   </DropdownMenuGroup>
                   <DropdownMenuSeparator />
@@ -98,24 +100,24 @@ export function NavUser({ onLogout }: NavUserProps) {
               <DropdownMenuGroup>
                 <DropdownMenuItem onClick={() => setAccountOpen(true)}>
                   <BadgeCheck className="mr-2 h-4 w-4" />
-                  Account
+                  {t('account')}
                 </DropdownMenuItem>
                 {role === 'user' && (
                   <DropdownMenuItem onClick={() => setNotifOpen(true)}>
                     <Bell className="mr-2 h-4 w-4" />
-                    Notifications
+                    {t('notifications')}
                   </DropdownMenuItem>
                 )}
                 <DropdownMenuItem onClick={() => setSecurityOpen(true)}>
                   <ShieldCheck className="mr-2 h-4 w-4" />
-                  Security
+                  {t('security')}
                 </DropdownMenuItem>
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
 
               <DropdownMenuItem onClick={onLogout}>
                 <LogOut className="mr-2 h-4 w-4" />
-                Log out
+                {t('logOut')}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

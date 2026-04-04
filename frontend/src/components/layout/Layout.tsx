@@ -1,5 +1,6 @@
 import React from 'react';
 import { Loader2, Sun, Moon } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { Button as UIButton } from '@/components/ui/button';
 import { Input as UIInput } from '@/components/ui/input';
@@ -12,6 +13,7 @@ interface LayoutProps {
 
 export function Layout({ children }: LayoutProps) {
   const { isDark, toggleTheme } = useTheme();
+  const { t } = useTranslation();
   return (
     <div className="min-h-screen flex flex-col bg-muted text-foreground">
       <EnvironmentBanner />
@@ -20,7 +22,7 @@ export function Layout({ children }: LayoutProps) {
           variant="ghost"
           size="icon"
           onClick={toggleTheme}
-          aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+          aria-label={isDark ? t('switchToLight') : t('switchToDark')}
         >
           {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
         </UIButton>
@@ -71,6 +73,7 @@ export function Button({
   className = '',
   ...props
 }: ButtonProps) {
+  const { t } = useTranslation();
   const variantMap = {
     primary: 'default' as const,
     secondary: 'ghost' as const,
@@ -87,7 +90,7 @@ export function Button({
       {loading ? (
         <>
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          Please wait…
+          {t('pleaseWait')}
         </>
       ) : children}
     </UIButton>

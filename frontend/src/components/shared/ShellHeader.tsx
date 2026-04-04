@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useTranslation } from 'react-i18next';
 import { SunIcon, MoonIcon } from '@heroicons/react/24/outline';
 import { useTheme } from '../../hooks/useTheme.js';
 import { Button } from '@/components/ui/button';
@@ -12,6 +13,7 @@ interface ShellHeaderProps {
 
 export function ShellHeader({ breadcrumbs, secondsLeft }: ShellHeaderProps) {
   const { isDark, toggleTheme } = useTheme();
+  const { t } = useTranslation();
 
   const hours = Math.floor(secondsLeft / 3600);
   const minutes = Math.floor((secondsLeft % 3600) / 60);
@@ -36,8 +38,8 @@ export function ShellHeader({ breadcrumbs, secondsLeft }: ShellHeaderProps) {
           variant="ghost"
           size="icon-sm"
           onClick={toggleTheme}
-          title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-          aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+          title={isDark ? t('switchToLight') : t('switchToDark')}
+          aria-label={isDark ? t('switchToLight') : t('switchToDark')}
         >
           {isDark
             ? <SunIcon className="w-4 h-4" />

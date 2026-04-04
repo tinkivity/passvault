@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { NavLink, useNavigate, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Vault, Plus, MoreHorizontal, Download, Mail, Pencil, Lock, LayoutDashboard, Users, ScrollText, UserPlus } from 'lucide-react';
 import type { VaultSummary } from '@passvault/shared';
 import { LIMITS } from '@passvault/shared';
@@ -57,6 +58,7 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
   const navigate = useNavigate();
   const { vaultId } = useParams<{ vaultId: string }>();
   const { hasKey, clearKey } = useEncryptionContext();
+  const { t } = useTranslation('vault');
   const [emailedVaultId, setEmailedVaultId] = useState<string | null>(null);
   const [renamingVault, setRenamingVault] = useState<VaultSummary | null>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -83,7 +85,7 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
       await onRenameVault(renamingVault.vaultId, renameValue.trim());
       setRenamingVault(null);
     } catch (err) {
-      setRenameError(err instanceof Error ? err.message : 'Failed to rename vault');
+      setRenameError(err instanceof Error ? err.message : t('failedToRename'));
     } finally {
       setRenaming(false);
     }
@@ -101,8 +103,8 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
 
   const handleCreate = async () => {
     if (!newName.trim()) return;
-    if (!newPassword) { setCreateError('Password is required'); return; }
-    if (newPassword !== newConfirm) { setCreateError('Passwords do not match'); return; }
+    if (!newPassword) { setCreateError(t('passwordIsRequired')); return; }
+    if (newPassword !== newConfirm) { setCreateError(t('passwordsDoNotMatch')); return; }
     setCreating(true);
     setCreateError(null);
     try {
@@ -112,7 +114,7 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
       setNewPassword('');
       setNewConfirm('');
     } catch (err) {
-      setCreateError(err instanceof Error ? err.message : 'Failed to create vault');
+      setCreateError(err instanceof Error ? err.message : t('failedToCreate'));
     } finally {
       setCreating(false);
     }
@@ -130,7 +132,7 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
 
         <SidebarContent>
           <SidebarGroup>
-            <SidebarGroupLabel>Vaults</SidebarGroupLabel>
+            <SidebarGroupLabel>{t('common:vaults')}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {vaults.map(vault => {
@@ -149,33 +151,33 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
                       <DropdownMenu>
                         <DropdownMenuTrigger render={<SidebarMenuAction showOnHover />}>
                           <MoreHorizontal className="h-4 w-4" />
-                          <span className="sr-only">Vault actions</span>
+                          <span className="sr-only">{t('vaultActions')}</span>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent side="right" align="start">
                           {unlocked ? (
                             <>
                               <DropdownMenuItem onClick={() => { clearKey(vault.vaultId); navigate(ROUTES.UI.VAULT(vault.vaultId)); }}>
                                 <Lock className="mr-2 h-4 w-4" />
-                                Close vault
+                                {t('closeVault')}
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem onClick={() => openRename(vault)}>
                                 <Pencil className="mr-2 h-4 w-4" />
-                                Rename vault
+                                {t('renameVault')}
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => onDownloadVault(vault.vaultId, vault.displayName)}>
                                 <Download className="mr-2 h-4 w-4" />
-                                Download vault
+                                {t('downloadVault')}
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem onClick={() => navigate(ROUTES.UI.ITEM_NEW(vault.vaultId))}>
                                 <Plus className="mr-2 h-4 w-4" />
-                                New item
+                                {t('newItem')}
                               </DropdownMenuItem>
                               {isProd && (
                                 <DropdownMenuItem onClick={() => handleEmail(vault.vaultId)}>
                                   <Mail className="mr-2 h-4 w-4" />
-                                  {emailedVaultId === vault.vaultId ? 'Email sent!' : 'Email vault'}
+                                  {emailedVaultId === vault.vaultId ? t('emailSent') : t('emailVault')}
                                 </DropdownMenuItem>
                               )}
                             </>
@@ -183,16 +185,16 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
                             <>
                               <DropdownMenuItem onClick={() => navigate(ROUTES.UI.VAULT(vault.vaultId))}>
                                 <Vault className="mr-2 h-4 w-4" />
-                                Open vault
+                                {t('openVault')}
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem onClick={() => openRename(vault)}>
                                 <Pencil className="mr-2 h-4 w-4" />
-                                Rename vault
+                                {t('renameVault')}
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => onDownloadVault(vault.vaultId, vault.displayName)}>
                                 <Download className="mr-2 h-4 w-4" />
-                                Download vault
+                                {t('downloadVault')}
                               </DropdownMenuItem>
                             </>
                           )}
@@ -203,9 +205,9 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
                 })}
                 {canCreate && (
                   <SidebarMenuItem>
-                    <SidebarMenuButton onClick={() => setShowDialog(true)} tooltip="New Vault">
+                    <SidebarMenuButton onClick={() => setShowDialog(true)} tooltip={t('newVault')}>
                       <Plus className="h-4 w-4 shrink-0" />
-                      <span>New Vault</span>
+                      <span>{t('newVault')}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 )}
@@ -215,19 +217,19 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
 
           {role === 'admin' && (
             <SidebarGroup>
-              <SidebarGroupLabel>Administration</SidebarGroupLabel>
+              <SidebarGroupLabel>{t('common:administration')}</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
                   <SidebarMenuItem>
-                    <SidebarMenuButton render={<NavLink to={ROUTES.UI.ADMIN.DASHBOARD} />} tooltip="Dashboard">
+                    <SidebarMenuButton render={<NavLink to={ROUTES.UI.ADMIN.DASHBOARD} />} tooltip={t('common:dashboard')}>
                       <LayoutDashboard className="h-4 w-4 shrink-0" />
-                      <span>Dashboard</span>
+                      <span>{t('common:dashboard')}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
-                    <SidebarMenuButton render={<NavLink to={ROUTES.UI.ADMIN.USERS} />} tooltip="Users">
+                    <SidebarMenuButton render={<NavLink to={ROUTES.UI.ADMIN.USERS} />} tooltip={t('common:users')}>
                       <Users className="h-4 w-4 shrink-0" />
-                      <span>Users</span>
+                      <span>{t('common:users')}</span>
                     </SidebarMenuButton>
                     <DropdownMenu>
                       <DropdownMenuTrigger render={<SidebarMenuAction showOnHover />}>
@@ -236,15 +238,15 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
                       <DropdownMenuContent side="right" align="start">
                         <DropdownMenuItem onClick={() => navigate(`${ROUTES.UI.ADMIN.USERS}?create=1`)}>
                           <UserPlus className="mr-2 h-4 w-4" />
-                          Create user
+                          {t('createUser')}
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
-                    <SidebarMenuButton render={<NavLink to={ROUTES.UI.ADMIN.LOGINS} />} tooltip="Logins">
+                    <SidebarMenuButton render={<NavLink to={ROUTES.UI.ADMIN.LOGINS} />} tooltip={t('common:logins')}>
                       <ScrollText className="h-4 w-4 shrink-0" />
-                      <span>Logins</span>
+                      <span>{t('common:logins')}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 </SidebarMenu>
@@ -263,11 +265,11 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
       <Dialog open={!!renamingVault} onOpenChange={open => { if (!open) setRenamingVault(null); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Rename Vault</DialogTitle>
+            <DialogTitle>{t('renameVault')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div className="space-y-1">
-              <Label htmlFor="rename-vault-name">Name</Label>
+              <Label htmlFor="rename-vault-name">{t('common:name')}</Label>
               <Input
                 id="rename-vault-name"
                 value={renameValue}
@@ -280,9 +282,9 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
             {renameError && <p className="text-sm text-destructive">{renameError}</p>}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRenamingVault(null)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setRenamingVault(null)}>{t('common:cancel')}</Button>
             <Button onClick={handleRename} disabled={renaming || !renameValue.trim()}>
-              {renaming ? 'Saving…' : 'Save'}
+              {renaming ? t('common:saving') : t('common:save')}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -294,11 +296,11 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
       }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>New Vault</DialogTitle>
+            <DialogTitle>{t('newVault')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 py-2">
             <div className="space-y-1">
-              <Label htmlFor="vault-name">Name</Label>
+              <Label htmlFor="vault-name">{t('common:name')}</Label>
               <Input
                 id="vault-name"
                 value={newName}
@@ -309,7 +311,7 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="vault-password">Password</Label>
+              <Label htmlFor="vault-password">{t('common:password')}</Label>
               <Input
                 id="vault-password"
                 type="password"
@@ -319,7 +321,7 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="vault-confirm">Confirm Password</Label>
+              <Label htmlFor="vault-confirm">{t('confirmVaultPassword')}</Label>
               <Input
                 id="vault-confirm"
                 type="password"
@@ -332,9 +334,9 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
             {createError && <p className="text-sm text-destructive">{createError}</p>}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDialog(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setShowDialog(false)}>{t('common:cancel')}</Button>
             <Button onClick={handleCreate} disabled={creating || !newName.trim() || !newPassword}>
-              {creating ? 'Creating…' : 'Create'}
+              {creating ? t('common:creating') : t('common:create')}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -132,6 +132,7 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
     firstName: user.firstName ?? null,
     lastName: user.lastName ?? null,
     displayName: user.displayName ?? null,
+    preferredLanguage: user.preferredLanguage,
   };
 
   if (user.status === 'pending_first_login') {
@@ -218,6 +219,7 @@ export async function updateProfile(
   if ('firstName' in request) updates.firstName = request.firstName ?? null;
   if ('lastName' in request) updates.lastName = request.lastName ?? null;
   if ('displayName' in request) updates.displayName = request.displayName ?? null;
+  if ('preferredLanguage' in request) updates.preferredLanguage = request.preferredLanguage ?? 'auto';
 
   if (request.email !== undefined) {
     if (!LIMITS.EMAIL_PATTERN.test(request.email)) {

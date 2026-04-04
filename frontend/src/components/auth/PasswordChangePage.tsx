@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useAuthContext } from '../../context/AuthContext.js';
@@ -20,6 +21,7 @@ import { ROUTES } from '../../routes.js';
 
 export function PasswordChangePage() {
   const navigate = useNavigate();
+  const { t } = useTranslation('auth');
   const { changePassword, adminChangePassword, logout, loading, role } = useAuth();
   const { username } = useAuthContext();
   const [newPassword, setNewPassword] = useState('');
@@ -32,7 +34,7 @@ export function PasswordChangePage() {
     setError(null);
 
     if (newPassword !== confirm) {
-      setError('Passwords do not match');
+      setError(t('passwordsDoNotMatch'));
       return;
     }
 
@@ -66,14 +68,14 @@ export function PasswordChangePage() {
           <Card>
             <img src={logo} alt="PassVault" className="w-full h-32 object-contain px-10 pt-6 bg-card" />
             <CardHeader className="text-center">
-              <CardTitle className="text-xl">Password Changed</CardTitle>
+              <CardTitle className="text-xl">{t('passwordChanged')}</CardTitle>
               <CardDescription>
-                Your password has been set successfully. Please sign in with your new credentials.
+                {t('passwordChangedDesc')}
               </CardDescription>
             </CardHeader>
             <CardContent>
               <Button onClick={handleContinue} className="w-full">
-                Continue to Login
+                {t('continueToLogin')}
               </Button>
             </CardContent>
           </Card>
@@ -88,15 +90,15 @@ export function PasswordChangePage() {
         <Card>
           <img src={logo} alt="PassVault" className="w-full h-32 object-contain px-10 pt-6 bg-card" />
           <CardHeader className="text-center">
-            <CardTitle className="text-xl">Change Password</CardTitle>
+            <CardTitle className="text-xl">{t('changePassword')}</CardTitle>
             <CardDescription>
-              {username ? `Welcome, ${username}` : 'Set your new password'}
+              {username ? t('welcomeUser', { username }) : t('setYourNewPassword')}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
               <div className="flex flex-col gap-1">
-                <Label htmlFor="new-password">New Password</Label>
+                <Label htmlFor="new-password">{t('newPassword')}</Label>
                 <Input
                   id="new-password"
                   type="password"
@@ -107,7 +109,7 @@ export function PasswordChangePage() {
                 />
               </div>
               <div className="flex flex-col gap-1">
-                <Label htmlFor="confirm-password">Confirm Password</Label>
+                <Label htmlFor="confirm-password">{t('confirmPassword')}</Label>
                 <Input
                   id="confirm-password"
                   type="password"
@@ -118,11 +120,11 @@ export function PasswordChangePage() {
                 />
               </div>
               <p className="text-xs text-muted-foreground">
-                Password must be at least 12 characters with uppercase, lowercase, number, and special character.
+                {t('passwordRequirements')}
               </p>
               <ErrorMessage message={error} />
               <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Please wait...</> : 'Set Password'}
+                {loading ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('common:pleaseWait')}</> : t('setPassword')}
               </Button>
             </form>
           </CardContent>

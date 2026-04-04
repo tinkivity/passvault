@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { ChangePasswordRequest, SelfChangePasswordRequest, PasskeyVerifyResponse, UpdateProfileRequest } from '@passvault/shared';
 import { useAuthContext } from '../context/AuthContext.js';
 import { useEncryptionContext } from '../context/EncryptionContext.js';
@@ -9,8 +10,16 @@ import { createHoneypot, getHoneypotFields } from '../services/honeypot.js';
 export function useAuth() {
   const { token, role, username, firstName, lastName, displayName, status, plan, loginEventId, setAuth, clearAuth, patchAuth } = useAuthContext();
   const { clearKey } = useEncryptionContext();
+  const { i18n } = useTranslation();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const applyLanguagePreference = useCallback((preferredLanguage?: string) => {
+    if (preferredLanguage && preferredLanguage !== 'auto') {
+      localStorage.setItem('pv_language', preferredLanguage);
+      void i18n.changeLanguage(preferredLanguage);
+    }
+  }, [i18n]);
 
   // prod step 1-3: passkey challenge → browser dialog → verify → intermediate result
   const startPasskeyLogin = useCallback(async (): Promise<PasskeyVerifyResponse> => {
@@ -56,6 +65,7 @@ export function useAuth() {
         loginEventId: res.loginEventId ?? null,
       });
 
+      applyLanguagePreference(res.preferredLanguage);
       return res;
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Login failed';
@@ -64,7 +74,7 @@ export function useAuth() {
     } finally {
       setLoading(false);
     }
-  }, [setAuth]);
+  }, [setAuth, applyLanguagePreference]);
 
   // Direct login: username + password
   const login = useCallback(async (username: string, password: string) => {
@@ -86,6 +96,7 @@ export function useAuth() {
         loginEventId: res.loginEventId ?? null,
       });
 
+      applyLanguagePreference(res.preferredLanguage);
       return res;
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Login failed';
@@ -94,7 +105,7 @@ export function useAuth() {
     } finally {
       setLoading(false);
     }
-  }, [setAuth]);
+  }, [setAuth, applyLanguagePreference]);
 
   const changePassword = useCallback(async (req: ChangePasswordRequest) => {
     if (!token) throw new Error('Not authenticated');

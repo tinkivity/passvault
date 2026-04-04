@@ -1,5 +1,6 @@
 import { vi } from 'vitest';
 import '@testing-library/jest-dom';
+import '../i18n.js';
 
 // Mock navigator.clipboard (not implemented in jsdom)
 Object.defineProperty(navigator, 'clipboard', {
