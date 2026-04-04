@@ -34,6 +34,8 @@ This manual explains how to decrypt your PassVault encrypted file **independentl
 3. Click the **"Download Encrypted Backup"** button
 4. Save the file as `passvault-backup.json`
 
+> **v2 note:** Vaults are now stored as two S3 files per vault (`vault-{id}-index.enc` + `vault-{id}-items.enc`). The download endpoint merges both files into a single recovery package. If you are recovering from raw S3 files, you will need both the index and items files.
+
 **Backup File Contents:**
 ```json
 {
@@ -492,6 +494,22 @@ All encoded as base64 in the backup JSON file.
 2. **No Backdoors**: No master keys, no recovery keys without password
 3. **Industry Standard**: Following best practices for end-to-end encryption (like Signal, 1Password)
 4. **User Ownership**: You have full control and portability of your data
+
+---
+
+---
+
+## 6. Emergency Admin Recovery
+
+If the admin account is locked out or compromised, use `init-admin.ts --force` to create a new admin entry:
+
+```bash
+ENVIRONMENT=prod ADMIN_EMAIL=admin@example.com npx tsx scripts/init-admin.ts --force
+```
+
+The `--force` flag bypasses the existing-admin check, creating a new admin record even if one already exists. This is intended for emergency recovery only. The new admin will need to complete the standard onboarding flow (password change + passkey setup in prod).
+
+> **Requirements:** The person running this script must have AWS credentials with DynamoDB write access to the users table. This is by design -- AWS account access is the root of trust.
 
 ---
 

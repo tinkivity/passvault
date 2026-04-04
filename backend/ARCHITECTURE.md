@@ -17,7 +17,7 @@ Eight handler files live in `src/handlers/`. Each exports a `handler` function c
 | **challenge** | `challenge.ts` | Generates proof-of-work challenges (single endpoint, no router) |
 | **health** | `health.ts` | Returns environment name and timestamp (single endpoint, no router) |
 | **ses-notifier** | `ses-notifier.ts` | SNS-triggered; forwards monitoring alerts via SES email |
-| **digest** | `digest.ts` | EventBridge-triggered daily; sends failed-login digests and vault backup emails |
+| **digest** | `digest.ts` | EventBridge-triggered daily; sends vault backup emails (weekly/monthly per user preference) |
 
 The `challenge` and `health` handlers are simple single-endpoint functions. The `ses-notifier` and `digest` handlers are event-driven (SNS and EventBridge respectively) rather than API Gateway-triggered. The remaining four (`auth`, `admin-auth`, `admin-management`, `vault`) use the `Router` abstraction described below.
 
@@ -68,11 +68,11 @@ Four middleware modules live in `src/middleware/`. The router re-exports adapter
 
 Services in `src/services/` contain business logic, called by handlers.
 
-**auth.ts** -- User login (password verification via Argon2/bcrypt, JWT issuance), password changes (admin-initiated and self-service), profile updates, and email token verification. Records login events fire-and-forget.
+**auth.ts** -- User login (password verification via Argon2/bcrypt, JWT issuance), password changes (admin-initiated and self-service), profile updates, email token verification, email change flow (`requestEmailChange`, `verifyEmailChange`, `lockSelf`), and logout. Records audit events fire-and-forget.
 
-**admin.ts** -- Admin-specific login, user invitation creation (generates OTP), user lifecycle management (lock, unlock, expire, retire, reactivate, delete), OTP refresh, stats aggregation, login event listing, and admin-initiated vault email.
+**admin.ts** -- Admin-specific login, user invitation creation (generates OTP, supports `plan: 'administrator'` for multi-admin peer model), user lifecycle management (lock, unlock, expire, retire, reactivate, delete), OTP refresh, stats aggregation, login event listing, audit event listing/config, and admin-initiated vault email. Self-modification prevention: admins cannot change their own plan or expiration. Admin-on-admin lifecycle changes are allowed (peer model).
 
-**vault.ts** -- CRUD operations for encrypted vaults stored in S3. Handles listing, creation, renaming, deletion, download, and email delivery of vault data. Also manages warning codes and vault size tracking.
+**vault.ts** -- CRUD operations for encrypted vaults stored in S3 using split format (index + items). Handles listing, creation, renaming, deletion, download, and email delivery of vault data. Exposes `getVaultIndex` and `getVaultItems` for lazy loading. Also manages warning codes, vault size tracking, and notification preferences. Records vault operations as audit events (fire-and-forget).
 
 **passkey.ts** -- WebAuthn operations using `@simplewebauthn/server`. Generates challenge JWTs, verifies passkey assertions (login) and attestations (registration), and produces passkey tokens consumed by the login flow.
 
@@ -103,12 +103,37 @@ Passkey credentials are stored in a dedicated DynamoDB table (`passvault-passkey
 
 Login events now include `passkeyCredentialId` and `passkeyName` fields, enabling audit trails that identify which specific passkey was used for each login.
 
+## Email Change Flow (v2)
+
+The `auth` service exposes three functions for secure email changes:
+
+- **`requestEmailChange(userId, newEmail)`** — on dev, applies immediately; on beta/prod, generates a 6-digit code, sends verification email to the new address, and sends a fraud-notification email to the old address with a lock link.
+- **`verifyEmailChange(token)`** — verifies the 6-digit code and updates the username.
+- **`lockSelf(token)`** — called from the fraud-notification link; immediately locks the account.
+
+Endpoints: `POST /api/auth/email-change`, `POST /api/auth/verify-email-change`, `POST /api/auth/lock-self`.
+
+## Audit System (v2)
+
+`utils/audit.ts` provides a fire-and-forget, config-aware audit logging utility.
+
+**Key behavior:**
+- Reads `AuditConfig` from the `passvault-config-{env}` DynamoDB table (cached in-process after first read)
+- Before writing an event, checks if the event's category is enabled in the config
+- Events are written to `passvault-audit-{env}` with a 90-day TTL
+- All audit writes are fire-and-forget (`recordAuditEvent().catch(...)`) to avoid impacting request latency
+
+**4 categories**: `authentication`, `admin_actions`, `vault_operations`, `system` (see shared `AuditCategory` type).
+
+Audit events are recorded in the auth, admin, and vault services after significant operations (login, user creation, vault CRUD, password changes, etc.).
+
 ## Utility Layer
 
 | File | Purpose |
 |---|---|
+| `audit.ts` | Configurable audit logging. Reads `AuditConfig` from the config table (cached in-process); writes `AuditEvent` records fire-and-forget to the audit events table. Events are only written if the corresponding category is enabled. Exposes `getAuditConfig`, `updateAuditConfig`, `recordAuditEvent`, and `listAuditEvents`. |
 | `dynamodb.ts` | DynamoDB document client wrapper. User, passkey-credential, and login-event CRUD, queries by email and credential ID, GSI lookups. |
-| `s3.ts` | S3 client wrapper for vault file storage (put, get, delete, list, copy). |
+| `s3.ts` | S3 client wrapper for vault file storage. Uses split format: `getVaultIndexFile`, `getVaultItemsFile`, `putVaultSplitFiles`, `deleteVaultSplitFiles`. Legacy single-file format supported via `getLegacyVaultFile` and `migrateLegacyVaultFile`. |
 | `jwt.ts` | JWT signing and verification using the secret fetched from SSM Parameter Store. |
 | `crypto.ts` | Cryptographic helpers (random token generation, hashing). |
 | `password.ts` | Password hashing (Argon2id primary, bcrypt fallback) and verification with automatic rehashing. |
