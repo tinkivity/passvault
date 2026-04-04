@@ -13,7 +13,7 @@
 
 import { listAllUsers, listVaultsByUser, updateUser } from '../utils/dynamodb.js';
 import { sendEmail, sendEmailWithAttachment } from '../utils/ses.js';
-import { getVaultFile } from '../utils/s3.js';
+import { getVaultIndexFile, getVaultItemsFile } from '../utils/s3.js';
 import { DYNAMODB_TABLE, FILES_BUCKET, LOGIN_EVENTS_TABLE } from '../config.js';
 import type { User } from '@passvault/shared';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
@@ -83,9 +83,15 @@ async function processVaultBackup(user: User, now: Date): Promise<void> {
 
   // Send the first vault as backup (most users have only one)
   const vault = vaults[0];
-  const vaultFile = await getVaultFile(vault.vaultId);
-  if (vaultFile === null) return;
-  const content = vaultFile.content;
+  const [indexFile, itemsFile] = await Promise.all([
+    getVaultIndexFile(vault.vaultId),
+    getVaultItemsFile(vault.vaultId),
+  ]);
+  if (indexFile === null && itemsFile === null) return;
+  const content = JSON.stringify({
+    encryptedIndex: indexFile?.content || '',
+    encryptedItems: itemsFile?.content || '',
+  });
 
   const date = now.toISOString().slice(0, 10);
   const safeName = vault.displayName.replace(/[^a-zA-Z0-9_-]/g, '_');

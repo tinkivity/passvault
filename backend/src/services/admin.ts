@@ -18,7 +18,7 @@ import {
 import { getUserById, getUserByUsername, getUserByRegistrationToken, createUser, updateUser, listAllUsers, deleteUser, recordLoginEvent, getLoginCountSince, getLoginEvents, listVaultsByUser, getVaultRecord, deleteVaultRecord, listPasskeyCredentials, deletePasskeyCredential } from '../utils/dynamodb.js';
 import { hashPassword, verifyPassword, generateOtp, generateSalt } from '../utils/crypto.js';
 import { signToken } from '../utils/jwt.js';
-import { deleteLegacyVaultFile, deleteVaultFile } from '../utils/s3.js';
+import { deleteLegacyVaultFile, deleteVaultSplitFiles } from '../utils/s3.js';
 import { sendEmail } from '../utils/ses.js';
 import { verifyPasskeyToken } from './passkey.js';
 import { deleteVault, sendVaultEmail } from './vault.js';
@@ -355,7 +355,7 @@ export async function deleteNewUser(
   // Delete all user's vaults from S3 and DynamoDB
   const vaults = await listVaultsByUser(userId);
   for (const vault of vaults) {
-    await deleteVaultFile(vault.vaultId);
+    await deleteVaultSplitFiles(vault.vaultId);
     await deleteVaultRecord(vault.vaultId);
   }
   // Also clean up legacy key if it exists

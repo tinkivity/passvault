@@ -15,6 +15,8 @@ import type {
   PasskeyRegisterRequest,
   PasskeyRegisterResponse,
   VaultGetResponse,
+  VaultGetIndexResponse,
+  VaultGetItemsResponse,
   VaultPutRequest,
   VaultPutResponse,
   VaultDownloadResponse,
@@ -394,6 +396,22 @@ export class ApiClient {
 
   async getVault(vaultId: string, token: string): Promise<VaultGetResponse> {
     return this.request<VaultGetResponse>(API_PATHS.VAULT.replace('{vaultId}', encodeURIComponent(vaultId)), {
+      method: 'GET',
+      token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+    });
+  }
+
+  async getVaultIndex(vaultId: string, token: string): Promise<VaultGetIndexResponse> {
+    return this.request<VaultGetIndexResponse>(API_PATHS.VAULT_INDEX.replace('{vaultId}', encodeURIComponent(vaultId)), {
+      method: 'GET',
+      token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+    });
+  }
+
+  async getVaultItems(vaultId: string, token: string): Promise<VaultGetItemsResponse> {
+    return this.request<VaultGetItemsResponse>(API_PATHS.VAULT_ITEMS.replace('{vaultId}', encodeURIComponent(vaultId)), {
       method: 'GET',
       token,
       powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,

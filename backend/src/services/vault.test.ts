@@ -2,12 +2,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ERRORS, LIMITS } from '@passvault/shared';
 
 vi.mock('../utils/s3.js', () => ({
-  getVaultFile: vi.fn(),
-  putVaultFile: vi.fn().mockResolvedValue('2024-06-01T12:00:00.000Z'),
+  getVaultIndexFile: vi.fn(),
+  getVaultItemsFile: vi.fn(),
+  putVaultSplitFiles: vi.fn().mockResolvedValue('2024-06-01T12:00:00.000Z'),
   getVaultFileSize: vi.fn(),
   getLegacyVaultFile: vi.fn().mockResolvedValue(null),
   migrateLegacyVaultFile: vi.fn().mockResolvedValue(undefined),
-  deleteVaultFile: vi.fn().mockResolvedValue(undefined),
+  deleteVaultSplitFiles: vi.fn().mockResolvedValue(undefined),
   deleteLegacyVaultFile: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -23,14 +24,15 @@ vi.mock('../utils/ses.js', () => ({
   sendEmailWithAttachment: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { getVault, putVault, downloadVault, sendVaultEmail, createVault, deleteVault } from './vault.js';
-import { getVaultFile, putVaultFile } from '../utils/s3.js';
+import { getVault, getVaultIndex, getVaultItems, putVault, downloadVault, sendVaultEmail, createVault, deleteVault } from './vault.js';
+import { getVaultIndexFile, getVaultItemsFile, putVaultSplitFiles } from '../utils/s3.js';
 import { getUserById, getVaultRecord, listVaultsByUser, createVaultRecord } from '../utils/dynamodb.js';
 import { sendEmailWithAttachment } from '../utils/ses.js';
 import type { User } from '@passvault/shared';
 
-const mockGetFile = vi.mocked(getVaultFile);
-const mockPutFile = vi.mocked(putVaultFile);
+const mockGetIndexFile = vi.mocked(getVaultIndexFile);
+const mockGetItemsFile = vi.mocked(getVaultItemsFile);
+const mockPutSplitFiles = vi.mocked(putVaultSplitFiles);
 const mockGetUser = vi.mocked(getUserById);
 const mockGetVaultRecord = vi.mocked(getVaultRecord);
 const mockListVaultsByUser = vi.mocked(listVaultsByUser);
@@ -67,20 +69,21 @@ describe('getVault', () => {
     mockGetVaultRecord.mockResolvedValue(VAULT_RECORD);
   });
 
-  it('returns empty content when no file exists', async () => {
-    mockGetFile.mockResolvedValue(null);
+  it('returns empty content when no files exist', async () => {
+    mockGetIndexFile.mockResolvedValue(null);
+    mockGetItemsFile.mockResolvedValue(null);
     const result = await getVault('user-1', 'vault-1');
-    expect(result.response?.encryptedContent).toBe('');
+    expect(result.response?.encryptedIndex).toBe('');
+    expect(result.response?.encryptedItems).toBe('');
     expect(result.error).toBeUndefined();
   });
 
-  it('returns file content when the file exists', async () => {
-    mockGetFile.mockResolvedValue({
-      content: 'encrypted-blob',
-      lastModified: '2024-06-01T12:00:00.000Z',
-    });
+  it('returns file content when both files exist', async () => {
+    mockGetIndexFile.mockResolvedValue({ content: 'encrypted-index', lastModified: '2024-06-01T12:00:00.000Z' });
+    mockGetItemsFile.mockResolvedValue({ content: 'encrypted-items', lastModified: '2024-06-01T12:00:00.000Z' });
     const result = await getVault('user-1', 'vault-1');
-    expect(result.response?.encryptedContent).toBe('encrypted-blob');
+    expect(result.response?.encryptedIndex).toBe('encrypted-index');
+    expect(result.response?.encryptedItems).toBe('encrypted-items');
     expect(result.response?.lastModified).toBe('2024-06-01T12:00:00.000Z');
   });
 
@@ -97,6 +100,62 @@ describe('getVault', () => {
   });
 });
 
+// ── getVaultIndex() ──────────────────────────────────────────────────────────
+
+describe('getVaultIndex', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetVaultRecord.mockResolvedValue(VAULT_RECORD);
+  });
+
+  it('returns encrypted index when file exists', async () => {
+    mockGetIndexFile.mockResolvedValue({ content: 'encrypted-index', lastModified: '2024-06-01T12:00:00.000Z' });
+    const result = await getVaultIndex('user-1', 'vault-1');
+    expect(result.response?.encryptedIndex).toBe('encrypted-index');
+    expect(result.response?.lastModified).toBe('2024-06-01T12:00:00.000Z');
+  });
+
+  it('returns empty when no index file exists', async () => {
+    mockGetIndexFile.mockResolvedValue(null);
+    const result = await getVaultIndex('user-1', 'vault-1');
+    expect(result.response?.encryptedIndex).toBe('');
+  });
+
+  it('returns 404 when vault record not found', async () => {
+    mockGetVaultRecord.mockResolvedValue(null);
+    const result = await getVaultIndex('user-1', 'vault-1');
+    expect(result.statusCode).toBe(404);
+  });
+});
+
+// ── getVaultItems() ──────────────────────────────────────────────────────────
+
+describe('getVaultItems', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetVaultRecord.mockResolvedValue(VAULT_RECORD);
+  });
+
+  it('returns encrypted items when file exists', async () => {
+    mockGetItemsFile.mockResolvedValue({ content: 'encrypted-items', lastModified: '2024-06-01T12:00:00.000Z' });
+    const result = await getVaultItems('user-1', 'vault-1');
+    expect(result.response?.encryptedItems).toBe('encrypted-items');
+    expect(result.response?.lastModified).toBe('2024-06-01T12:00:00.000Z');
+  });
+
+  it('returns empty when no items file exists', async () => {
+    mockGetItemsFile.mockResolvedValue(null);
+    const result = await getVaultItems('user-1', 'vault-1');
+    expect(result.response?.encryptedItems).toBe('');
+  });
+
+  it('returns 404 when vault belongs to different user', async () => {
+    mockGetVaultRecord.mockResolvedValue({ ...VAULT_RECORD, userId: 'other-user' });
+    const result = await getVaultItems('user-1', 'vault-1');
+    expect(result.statusCode).toBe(404);
+  });
+});
+
 // ── putVault() ────────────────────────────────────────────────────────────────
 
 describe('putVault', () => {
@@ -105,31 +164,31 @@ describe('putVault', () => {
     mockGetVaultRecord.mockResolvedValue(VAULT_RECORD);
   });
 
-  it('returns 400 when the content exceeds the maximum size', async () => {
+  it('returns 400 when the combined content exceeds the maximum size', async () => {
     const oversized = 'x'.repeat(LIMITS.MAX_FILE_SIZE_BYTES + 1);
-    const result = await putVault('user-1', 'vault-1', { encryptedContent: oversized });
+    const result = await putVault('user-1', 'vault-1', { encryptedIndex: oversized, encryptedItems: '' });
     expect(result.error).toBe(ERRORS.FILE_TOO_LARGE);
     expect(result.statusCode).toBe(400);
-    expect(mockPutFile).not.toHaveBeenCalled();
+    expect(mockPutSplitFiles).not.toHaveBeenCalled();
   });
 
-  it('stores the content and returns lastModified on success', async () => {
-    const result = await putVault('user-1', 'vault-1', { encryptedContent: 'valid-encrypted-blob' });
+  it('stores both files and returns lastModified on success', async () => {
+    const result = await putVault('user-1', 'vault-1', { encryptedIndex: 'idx-blob', encryptedItems: 'items-blob' });
     expect(result.error).toBeUndefined();
     expect(result.response?.success).toBe(true);
     expect(result.response?.lastModified).toBe('2024-06-01T12:00:00.000Z');
-    expect(mockPutFile).toHaveBeenCalledWith('vault-1', 'valid-encrypted-blob');
+    expect(mockPutSplitFiles).toHaveBeenCalledWith('vault-1', 'idx-blob', 'items-blob');
   });
 
-  it('accepts an empty string (wiping vault)', async () => {
-    const result = await putVault('user-1', 'vault-1', { encryptedContent: '' });
+  it('accepts empty strings (wiping vault)', async () => {
+    const result = await putVault('user-1', 'vault-1', { encryptedIndex: '', encryptedItems: '' });
     expect(result.error).toBeUndefined();
-    expect(mockPutFile).toHaveBeenCalled();
+    expect(mockPutSplitFiles).toHaveBeenCalled();
   });
 
   it('returns 404 when vault record not found', async () => {
     mockGetVaultRecord.mockResolvedValue(null);
-    const result = await putVault('user-1', 'vault-1', { encryptedContent: 'data' });
+    const result = await putVault('user-1', 'vault-1', { encryptedIndex: 'a', encryptedItems: 'b' });
     expect(result.statusCode).toBe(404);
   });
 });
@@ -149,32 +208,34 @@ describe('downloadVault', () => {
     expect(result.statusCode).toBe(404);
   });
 
-  it('returns full metadata and empty content when file does not exist', async () => {
+  it('returns full metadata and empty content when files do not exist', async () => {
     mockGetUser.mockResolvedValue(makeUser());
-    mockGetFile.mockResolvedValue(null);
+    mockGetIndexFile.mockResolvedValue(null);
+    mockGetItemsFile.mockResolvedValue(null);
     const result = await downloadVault('user-1', 'vault-1');
     expect(result.error).toBeUndefined();
-    expect(result.response?.encryptedContent).toBe('');
+    expect(result.response?.encryptedIndex).toBe('');
+    expect(result.response?.encryptedItems).toBe('');
     expect(result.response?.encryptionSalt).toBe('vault-salt==');
     expect(result.response?.username).toBe('alice@example.com');
     expect(result.response?.algorithm).toBeDefined();
     expect(result.response?.parameters).toBeDefined();
   });
 
-  it('returns file content when file exists', async () => {
+  it('returns file content when files exist', async () => {
     mockGetUser.mockResolvedValue(makeUser());
-    mockGetFile.mockResolvedValue({
-      content: 'encrypted-data',
-      lastModified: '2024-06-01T12:00:00.000Z',
-    });
+    mockGetIndexFile.mockResolvedValue({ content: 'enc-idx', lastModified: '2024-06-01T12:00:00.000Z' });
+    mockGetItemsFile.mockResolvedValue({ content: 'enc-items', lastModified: '2024-06-01T12:00:00.000Z' });
     const result = await downloadVault('user-1', 'vault-1');
-    expect(result.response?.encryptedContent).toBe('encrypted-data');
+    expect(result.response?.encryptedIndex).toBe('enc-idx');
+    expect(result.response?.encryptedItems).toBe('enc-items');
     expect(result.response?.lastModified).toBe('2024-06-01T12:00:00.000Z');
   });
 
   it('includes correct Argon2 and AES parameters in download metadata', async () => {
     mockGetUser.mockResolvedValue(makeUser());
-    mockGetFile.mockResolvedValue(null);
+    mockGetIndexFile.mockResolvedValue(null);
+    mockGetItemsFile.mockResolvedValue(null);
     const result = await downloadVault('user-1', 'vault-1');
     const params = result.response?.parameters;
     expect(params?.argon2.memory).toBe(65536);
@@ -212,7 +273,8 @@ describe('sendVaultEmail', () => {
 
   it('sends vault as an attachment and returns success', async () => {
     mockGetUser.mockResolvedValue(makeUser({ username: 'alice@example.com' }));
-    mockGetFile.mockResolvedValue({ content: 'encrypted-data', lastModified: '2024-06-01T12:00:00.000Z' });
+    mockGetIndexFile.mockResolvedValue({ content: 'enc-idx', lastModified: '2024-06-01T12:00:00.000Z' });
+    mockGetItemsFile.mockResolvedValue({ content: 'enc-items', lastModified: '2024-06-01T12:00:00.000Z' });
     const result = await sendVaultEmail('user-1', 'vault-1');
     expect(result.response?.success).toBe(true);
     expect(mockSendEmailWithAttachment).toHaveBeenCalledWith(
@@ -230,12 +292,10 @@ describe('sendVaultEmail', () => {
 
 // ── createVault() ─────────────────────────────────────────────────────────────
 
-import { ERRORS, LIMITS } from '@passvault/shared';
-
 describe('createVault', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockPutFile.mockResolvedValue('2024-06-01T12:00:00.000Z');
+    mockPutSplitFiles.mockResolvedValue('2024-06-01T12:00:00.000Z');
   });
 
   it('returns 404 when user not found', async () => {

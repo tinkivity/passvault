@@ -105,3 +105,25 @@ export interface VaultFile {
   version: 1;
   items: VaultItem[];
 }
+
+// ── Split vault storage (v2) ────────────────────────────────────────────────
+
+export interface VaultIndexEntry {
+  id: string;
+  name: string;
+  category: VaultItemCategory;
+  createdAt: string;
+  updatedAt: string;
+  warningCodes: WarningCode[];
+  comment?: string;
+}
+
+export interface VaultIndexFile {
+  version: 2;
+  entries: VaultIndexEntry[];
+}
+
+export interface VaultItemsFile {
+  version: 2;
+  items: Record<string, VaultItem>;  // keyed by item ID
+}

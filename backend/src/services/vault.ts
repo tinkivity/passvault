@@ -8,6 +8,8 @@ import {
   ENCRYPTION_ALGORITHM,
   SALT_LENGTH,
   type VaultGetResponse,
+  type VaultGetIndexResponse,
+  type VaultGetItemsResponse,
   type VaultPutRequest,
   type VaultPutResponse,
   type VaultDownloadResponse,
@@ -16,7 +18,7 @@ import {
   type WarningCodeDefinition,
 } from '@passvault/shared';
 
-import { getVaultFile, putVaultFile, deleteVaultFile, getLegacyVaultFile, migrateLegacyVaultFile } from '../utils/s3.js';
+import { getVaultIndexFile, getVaultItemsFile, putVaultSplitFiles, deleteVaultSplitFiles, getLegacyVaultFile, migrateLegacyVaultFile } from '../utils/s3.js';
 import { getUserById, createVaultRecord, getVaultRecord, listVaultsByUser, deleteVaultRecord, updateVaultDisplayName } from '../utils/dynamodb.js';
 import { sendEmailWithAttachment } from '../utils/ses.js';
 
@@ -38,13 +40,16 @@ const WARNING_CODE_CATALOG: WarningCodeDefinition[] = [
 ];
 
 async function ensureMigrated(userId: string, vault: { vaultId: string; userId: string; displayName: string; createdAt: string }): Promise<void> {
-  // If new key already exists, nothing to do.
-  const existing = await getVaultFile(vault.vaultId);
+  // If split index key already exists, nothing to do.
+  const existing = await getVaultIndexFile(vault.vaultId);
   if (existing !== null) return;
 
-  // Check for legacy key.
+  // Check for legacy key — migrate to split format (store the single blob as items, empty index).
   const legacy = await getLegacyVaultFile(userId);
   if (legacy !== null) {
+    // Migrate: old single blob becomes items file, empty index.
+    // The legacy file contains encrypted content that the frontend will re-save in split format.
+    await putVaultSplitFiles(vault.vaultId, '', legacy.content);
     await migrateLegacyVaultFile(userId, vault.vaultId);
   }
 }
@@ -70,7 +75,7 @@ export async function createVault(
   const vaultId = uuidv4();
   const encryptionSalt = randomBytes(SALT_LENGTH).toString('base64');
   await createVaultRecord(vaultId, userId, request.displayName, encryptionSalt);
-  await putVaultFile(vaultId, '');
+  await putVaultSplitFiles(vaultId, '', '');
 
   const vault: VaultSummary = {
     vaultId,
@@ -95,7 +100,7 @@ export async function deleteVault(
     return { error: ERRORS.CANNOT_DELETE_LAST_VAULT, statusCode: 400 };
   }
 
-  await deleteVaultFile(vaultId);
+  await deleteVaultSplitFiles(vaultId);
   await deleteVaultRecord(vaultId);
   return { response: { success: true } };
 }
@@ -109,11 +114,50 @@ export async function getVault(userId: string, vaultId: string): Promise<{ respo
   // Auto-migrate legacy S3 key if needed
   await ensureMigrated(userId, vault);
 
-  const file = await getVaultFile(vaultId);
+  const [indexFile, itemsFile] = await Promise.all([
+    getVaultIndexFile(vaultId),
+    getVaultItemsFile(vaultId),
+  ]);
+  const lastModified = indexFile?.lastModified || itemsFile?.lastModified || new Date().toISOString();
   return {
     response: {
-      encryptedContent: file?.content || '',
-      lastModified: file?.lastModified || new Date().toISOString(),
+      encryptedIndex: indexFile?.content || '',
+      encryptedItems: itemsFile?.content || '',
+      lastModified,
+    },
+  };
+}
+
+export async function getVaultIndex(userId: string, vaultId: string): Promise<{ response?: VaultGetIndexResponse; error?: string; statusCode?: number }> {
+  const vault = await getVaultRecord(vaultId);
+  if (!vault || vault.userId !== userId) {
+    return { error: ERRORS.VAULT_NOT_FOUND, statusCode: 404 };
+  }
+
+  await ensureMigrated(userId, vault);
+
+  const indexFile = await getVaultIndexFile(vaultId);
+  return {
+    response: {
+      encryptedIndex: indexFile?.content || '',
+      lastModified: indexFile?.lastModified || new Date().toISOString(),
+    },
+  };
+}
+
+export async function getVaultItems(userId: string, vaultId: string): Promise<{ response?: VaultGetItemsResponse; error?: string; statusCode?: number }> {
+  const vault = await getVaultRecord(vaultId);
+  if (!vault || vault.userId !== userId) {
+    return { error: ERRORS.VAULT_NOT_FOUND, statusCode: 404 };
+  }
+
+  await ensureMigrated(userId, vault);
+
+  const itemsFile = await getVaultItemsFile(vaultId);
+  return {
+    response: {
+      encryptedItems: itemsFile?.content || '',
+      lastModified: itemsFile?.lastModified || new Date().toISOString(),
     },
   };
 }
@@ -128,12 +172,12 @@ export async function putVault(
     return { error: ERRORS.VAULT_NOT_FOUND, statusCode: 404 };
   }
 
-  const contentSize = Buffer.byteLength(request.encryptedContent, 'utf-8');
+  const contentSize = Buffer.byteLength(request.encryptedIndex, 'utf-8') + Buffer.byteLength(request.encryptedItems, 'utf-8');
   if (contentSize > LIMITS.MAX_FILE_SIZE_BYTES) {
     return { error: ERRORS.FILE_TOO_LARGE, statusCode: 400 };
   }
 
-  const lastModified = await putVaultFile(vaultId, request.encryptedContent);
+  const lastModified = await putVaultSplitFiles(vaultId, request.encryptedIndex, request.encryptedItems);
 
   // Fire-and-forget vault backup email if user has on_save preference
   const user = await getUserById(userId);
@@ -166,11 +210,16 @@ export async function downloadVault(
   }
 
   await ensureMigrated(userId, vault);
-  const file = await getVaultFile(vaultId);
+  const [indexFile, itemsFile] = await Promise.all([
+    getVaultIndexFile(vaultId),
+    getVaultItemsFile(vaultId),
+  ]);
+  const lastModified = indexFile?.lastModified || itemsFile?.lastModified || new Date().toISOString();
 
   return {
     response: {
-      encryptedContent: file?.content || '',
+      encryptedIndex: indexFile?.content || '',
+      encryptedItems: itemsFile?.content || '',
       encryptionSalt: vault.encryptionSalt,
       algorithm: ENCRYPTION_ALGORITHM,
       parameters: {
@@ -186,7 +235,7 @@ export async function downloadVault(
           tagSize: AES_PARAMS.tagLength,
         },
       },
-      lastModified: file?.lastModified || new Date().toISOString(),
+      lastModified,
       username: user.username,
     },
   };

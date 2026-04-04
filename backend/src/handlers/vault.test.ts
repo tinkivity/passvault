@@ -22,6 +22,8 @@ vi.mock('../middleware/auth.js', () => ({
 
 vi.mock('../services/vault.js', () => ({
   getVault: vi.fn(),
+  getVaultIndex: vi.fn(),
+  getVaultItems: vi.fn(),
   putVault: vi.fn(),
   downloadVault: vi.fn(),
   listVaults: vi.fn(),
@@ -129,11 +131,11 @@ describe('GET /vault', () => {
   it('returns 200 with vault content', async () => {
     authOk();
     mockGetVault.mockResolvedValue({
-      response: { encryptedContent: 'blob', lastModified: '2024-01-01T00:00:00.000Z' },
+      response: { encryptedIndex: 'idx-blob', encryptedItems: 'items-blob', lastModified: '2024-01-01T00:00:00.000Z' },
     });
     const res = await handler(makeEvent('/api/vaults/vault-1', 'GET'));
     expect(res.statusCode).toBe(200);
-    expect(JSON.parse(res.body).data.encryptedContent).toBe('blob');
+    expect(JSON.parse(res.body).data.encryptedIndex).toBe('idx-blob');
   });
 });
 
@@ -147,20 +149,20 @@ describe('PUT /vault', () => {
 
   it('returns 401 when unauthenticated', async () => {
     authFail();
-    const res = await handler(makeEvent('/api/vaults/vault-1', 'PUT', { encryptedContent: 'x' }));
+    const res = await handler(makeEvent('/api/vaults/vault-1', 'PUT', { encryptedIndex: 'x', encryptedItems: 'y' }));
     expect(res.statusCode).toBe(401);
   });
 
   it('returns 403 when user is not active', async () => {
     authOk(inactiveUser);
-    const res = await handler(makeEvent('/api/vaults/vault-1', 'PUT', { encryptedContent: 'x' }));
+    const res = await handler(makeEvent('/api/vaults/vault-1', 'PUT', { encryptedIndex: 'x', encryptedItems: 'y' }));
     expect(res.statusCode).toBe(403);
   });
 
   it('returns 400 when content is too large', async () => {
     authOk();
     mockPutVault.mockResolvedValue({ error: ERRORS.FILE_TOO_LARGE, statusCode: 400 });
-    const res = await handler(makeEvent('/api/vaults/vault-1', 'PUT', { encryptedContent: 'huge' }));
+    const res = await handler(makeEvent('/api/vaults/vault-1', 'PUT', { encryptedIndex: 'huge', encryptedItems: 'huge' }));
     expect(res.statusCode).toBe(400);
   });
 
@@ -169,7 +171,7 @@ describe('PUT /vault', () => {
     mockPutVault.mockResolvedValue({
       response: { success: true, lastModified: '2024-06-01T12:00:00.000Z' },
     });
-    const res = await handler(makeEvent('/api/vaults/vault-1', 'PUT', { encryptedContent: 'data' }));
+    const res = await handler(makeEvent('/api/vaults/vault-1', 'PUT', { encryptedIndex: 'idx', encryptedItems: 'items' }));
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.body).data.success).toBe(true);
   });
@@ -207,7 +209,8 @@ describe('GET /vault/download', () => {
     authOk();
     mockDownload.mockResolvedValue({
       response: {
-        encryptedContent: 'data',
+        encryptedIndex: 'idx-data',
+        encryptedItems: 'items-data',
         encryptionSalt: 'salt',
         algorithm: 'argon2id+aes-256-gcm',
         parameters: { argon2: { memory: 65536, iterations: 3, parallelism: 4, hashLength: 32 }, aes: { keySize: 256, ivSize: 96, tagSize: 128 } },

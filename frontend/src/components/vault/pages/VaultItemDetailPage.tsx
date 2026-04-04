@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { RefreshCw, Loader2, Eye, EyeOff } from 'lucide-react';
 import Markdown from 'react-markdown';
-import type { VaultFile, VaultItem, VaultItemCategory, VaultSummary } from '@passvault/shared';
+import type { VaultItem, VaultItemCategory, VaultSummary } from '@passvault/shared';
 import { useAuth } from '../../../hooks/useAuth.js';
 import { useVaultShellContext } from '../VaultShell.js';
 import { useVault } from '../../../hooks/useVault.js';
@@ -267,13 +267,14 @@ export function VaultItemDetailPage() {
   const { vaultId, itemId } = useParams<{ vaultId: string; itemId: string }>();
   const navigate = useNavigate();
   const { state } = useLocation();
-  const vault = (state as { vault?: VaultSummary; item?: VaultItem } | null)?.vault;
+  const vault = (state as { vault?: VaultSummary } | null)?.vault;
   const { token, status } = useAuth();
   const { vaults } = useVaultShellContext();
   const vaultSalt = vaults.find(v => v.vaultId === vaultId)?.encryptionSalt ?? null;
-  const { fetchAndDecrypt, updateItem, deleteItem, rawEncryptedContent } = useVault(vaultId ?? null, token);
+  const { fetchItem, fetchAllItems, updateItem, deleteItem, rawEncryptedItems } = useVault(vaultId ?? null, token);
 
-  const [vaultFile, setVaultFile] = useState<VaultFile | null>(null);
+  const [item, setItem] = useState<VaultItem | null>(null);
+  const [allItems, setAllItems] = useState<VaultItem[] | null>(null);
   const [editing, setEditing] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [deletePassword, setDeletePassword] = useState('');
@@ -281,23 +282,38 @@ export function VaultItemDetailPage() {
   const [deleteVerifying, setDeleteVerifying] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [itemLoading, setItemLoading] = useState(true);
 
   const isExpired = status === 'expired';
 
+  // Fetch the single item on mount (lazy load from items file)
   useEffect(() => {
-    if (!vaultId) return;
-    fetchAndDecrypt().then(setVaultFile).catch(() => { });
-  }, [vaultId]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!vaultId || !itemId) return;
+    setItemLoading(true);
+    fetchItem(itemId).then(fetched => {
+      setItem(fetched ?? null);
+      setItemLoading(false);
+    }).catch(() => {
+      setItemLoading(false);
+    });
+  }, [vaultId, itemId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const item = vaultFile?.items.find(i => i.id === itemId);
+  // Fetch all items only when needed (for save/delete which need the full list)
+  const ensureAllItems = async (): Promise<VaultItem[]> => {
+    if (allItems) return allItems;
+    const items = await fetchAllItems();
+    setAllItems(items);
+    return items;
+  };
 
   const handleSave = async (updated: VaultItem) => {
-    if (!vaultFile) return;
     setSaving(true);
     setError(null);
     try {
-      const newFile = await updateItem(vaultFile, updated);
-      setVaultFile(newFile);
+      const items = await ensureAllItems();
+      const newItems = await updateItem(items, updated);
+      setAllItems(newItems);
+      setItem(newItems.find(i => i.id === updated.id) ?? null);
       setEditing(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save');
@@ -307,15 +323,15 @@ export function VaultItemDetailPage() {
   };
 
   const handleDelete = async () => {
-    if (!vaultFile || !item) return;
-    if (!vaultSalt || !rawEncryptedContent) {
-      setDeleteError('Cannot verify password — vault not loaded.');
+    if (!item) return;
+    if (!vaultSalt || !rawEncryptedItems) {
+      setDeleteError('Cannot verify password -- vault not loaded.');
       return;
     }
     setDeleteVerifying(true);
     setDeleteError(null);
     try {
-      const ok = await verifyPassword(deletePassword, vaultSalt, rawEncryptedContent);
+      const ok = await verifyPassword(deletePassword, vaultSalt, rawEncryptedItems);
       if (!ok) {
         setDeleteError('Incorrect password.');
         return;
@@ -328,8 +344,9 @@ export function VaultItemDetailPage() {
     }
     setSaving(true);
     try {
-      const newFile = await deleteItem(vaultFile, item.id);
-      setVaultFile(newFile);
+      const items = await ensureAllItems();
+      const newItems = await deleteItem(items, item.id);
+      setAllItems(newItems);
       navigate(ROUTES.UI.ITEMS(vaultId!), { state: { vault } });
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : 'Failed to delete');
@@ -344,11 +361,11 @@ export function VaultItemDetailPage() {
     return (
       <div className="space-y-4">
         <Button variant="outline" size="sm" onClick={() => navigate(`/ui/${vaultId}/items`, { state: { vault } })}>
-          ← Back
+          &larr; Back
         </Button>
         {error && <p className="text-sm text-destructive">{error}</p>}
-        {!vaultFile && <p className="text-sm text-muted-foreground">Loading…</p>}
-        {vaultFile && <p className="text-sm text-muted-foreground">Item not found.</p>}
+        {itemLoading && <p className="text-sm text-muted-foreground">Loading...</p>}
+        {!itemLoading && <p className="text-sm text-muted-foreground">Item not found.</p>}
       </div>
     );
   }
@@ -357,7 +374,7 @@ export function VaultItemDetailPage() {
     <div className="max-w-lg space-y-4">
       <div className="flex items-center gap-2">
         <Button variant="outline" size="sm" onClick={() => navigate(`/ui/${vaultId}/items`, { state: { vault } })}>
-          ← Back
+          &larr; Back
         </Button>
         <h1 className="text-xl font-semibold truncate">{item.name}</h1>
       </div>
@@ -387,12 +404,12 @@ export function VaultItemDetailPage() {
         )}
       </div>
 
-      {saving && <p className="text-sm text-muted-foreground">Saving…</p>}
+      {saving && <p className="text-sm text-muted-foreground">Saving...</p>}
 
       <AlertDialog open={showDeleteDialog} onOpenChange={open => { setShowDeleteDialog(open); if (!open) { setDeletePassword(''); setDeleteError(null); } }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete "{item.name}"?</AlertDialogTitle>
+            <AlertDialogTitle>Delete &quot;{item.name}&quot;?</AlertDialogTitle>
             <AlertDialogDescription>
               This action cannot be undone. Enter your password to confirm.
             </AlertDialogDescription>
@@ -418,7 +435,7 @@ export function VaultItemDetailPage() {
               disabled={!deletePassword || deleteVerifying || saving}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {(deleteVerifying || saving) ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />Verifying…</> : 'Delete'}
+              {(deleteVerifying || saving) ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />Verifying...</> : 'Delete'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -9,7 +9,8 @@ export const RenameVaultSchema = z.object({
 });
 
 export const PutVaultSchema = z.object({
-  encryptedContent: z.string().min(1),
+  encryptedIndex: z.string(),
+  encryptedItems: z.string(),
 });
 
 export const UpdateNotificationsSchema = z.object({

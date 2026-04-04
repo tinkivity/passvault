@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 const randomUUID = () => crypto.randomUUID();
-import type { VaultFile, VaultItem, WarningCode } from '@passvault/shared';
+import type { VaultIndexFile, VaultIndexEntry, VaultItemsFile, VaultItem, VaultItemCategory, WarningCode } from '@passvault/shared';
 import { validatePassword } from '@passvault/shared';
 import { api } from '../services/api.js';
 import { useEncryptionContext } from '../context/EncryptionContext.js';
@@ -9,7 +9,7 @@ import { useEncryptionContext } from '../context/EncryptionContext.js';
 
 export function computeWarnings(items: VaultItem[]): VaultItem[] {
   // Collect all passwords from login / email / wifi items
-  const passwordMap = new Map<string, string[]>(); // password → [itemId, ...]
+  const passwordMap = new Map<string, string[]>(); // password -> [itemId, ...]
   for (const item of items) {
     let pw: string | undefined;
     if (item.category === 'login') pw = item.password;
@@ -47,13 +47,46 @@ export function computeWarnings(items: VaultItem[]): VaultItem[] {
   });
 }
 
+// ---- Helpers for building index entries from items ----------------------
+
+function buildIndexEntry(item: VaultItem): VaultIndexEntry {
+  return {
+    id: item.id,
+    name: item.name,
+    category: item.category,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+    warningCodes: item.warningCodes,
+    comment: 'comment' in item ? (item as Record<string, unknown>).comment as string | undefined : undefined,
+  };
+}
+
+function buildIndexFile(items: VaultItem[]): VaultIndexFile {
+  return {
+    version: 2,
+    entries: items.map(buildIndexEntry),
+  };
+}
+
+function buildItemsFile(items: VaultItem[]): VaultItemsFile {
+  const record: Record<string, VaultItem> = {};
+  for (const item of items) {
+    record[item.id] = item;
+  }
+  return { version: 2, items: record };
+}
+
 // ---- Migration ---------------------------------------------------------
 
-function migrateToVaultFile(raw: string): VaultFile {
+function migrateItemsFromLegacy(raw: string): VaultItem[] {
   try {
     const parsed = JSON.parse(raw);
     if (parsed && parsed.version === 1 && Array.isArray(parsed.items)) {
-      return parsed as VaultFile;
+      return parsed.items as VaultItem[];
+    }
+    // version 2 items file
+    if (parsed && parsed.version === 2 && parsed.items && typeof parsed.items === 'object' && !Array.isArray(parsed.items)) {
+      return Object.values(parsed.items) as VaultItem[];
     }
   } catch {
     // fall through to migration
@@ -61,21 +94,51 @@ function migrateToVaultFile(raw: string): VaultFile {
 
   // Legacy: treat entire content as a note
   const now = new Date().toISOString();
-  return {
-    version: 1,
-    items: [
-      {
-        id: randomUUID(),
-        name: 'My Notes',
-        category: 'note',
-        format: 'raw',
-        text: raw,
-        createdAt: now,
-        updatedAt: now,
-        warningCodes: [],
-      },
-    ],
-  };
+  return [
+    {
+      id: randomUUID(),
+      name: 'My Notes',
+      category: 'note' as VaultItemCategory,
+      format: 'raw',
+      text: raw,
+      createdAt: now,
+      updatedAt: now,
+      warningCodes: [],
+    } as VaultItem,
+  ];
+}
+
+function parseIndexFile(raw: string): VaultIndexEntry[] {
+  try {
+    const parsed = JSON.parse(raw) as VaultIndexFile;
+    if (parsed && parsed.version === 2 && Array.isArray(parsed.entries)) {
+      return parsed.entries;
+    }
+  } catch {
+    // empty or invalid
+  }
+  return [];
+}
+
+function parseItemsFile(raw: string): Record<string, VaultItem> {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    const obj = parsed as { version?: number; items?: unknown };
+    if (obj && obj.version === 2 && obj.items && typeof obj.items === 'object' && !Array.isArray(obj.items)) {
+      return obj.items as Record<string, VaultItem>;
+    }
+    // Legacy VaultFile (version 1)
+    if (obj && obj.version === 1 && Array.isArray(obj.items)) {
+      const record: Record<string, VaultItem> = {};
+      for (const item of obj.items as VaultItem[]) {
+        record[item.id] = item;
+      }
+      return record;
+    }
+  } catch {
+    // empty or invalid
+  }
+  return {};
 }
 
 // ---- Hook --------------------------------------------------------------
@@ -85,36 +148,88 @@ export function useVault(vaultId: string | null, token: string | null) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastModified, setLastModified] = useState<string | null>(null);
-  const [rawEncryptedContent, setRawEncryptedContent] = useState<string | null>(null);
+  const [rawEncryptedItems, setRawEncryptedItems] = useState<string | null>(null);
 
-  const fetchAndDecrypt = useCallback(async (): Promise<VaultFile> => {
+  // In-memory cache of decrypted items (keyed by item ID)
+  const itemsCacheRef = useRef<Record<string, VaultItem> | null>(null);
+
+  /** Fetch and decrypt the index file only — returns index entries. */
+  const fetchIndex = useCallback(async (): Promise<VaultIndexEntry[]> => {
+    if (!token || !vaultId) throw new Error('Not authenticated');
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.getVaultIndex(vaultId, token);
+      setLastModified(res.lastModified);
+      if (!res.encryptedIndex) {
+        return [];
+      }
+      const plaintext = await decrypt(vaultId, res.encryptedIndex);
+      return parseIndexFile(plaintext);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to load vault index';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [vaultId, token, decrypt]);
+
+  /** Fetch and decrypt items file, cache in memory. Returns the item by ID. */
+  const fetchItem = useCallback(async (itemId: string): Promise<VaultItem | undefined> => {
+    if (!token || !vaultId) throw new Error('Not authenticated');
+
+    // If items are already cached, return directly
+    if (itemsCacheRef.current) {
+      return itemsCacheRef.current[itemId];
+    }
+
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.getVaultItems(vaultId, token);
+      setRawEncryptedItems(res.encryptedItems ?? null);
+      if (!res.encryptedItems) {
+        itemsCacheRef.current = {};
+        return undefined;
+      }
+      const plaintext = await decrypt(vaultId, res.encryptedItems);
+      itemsCacheRef.current = parseItemsFile(plaintext);
+      return itemsCacheRef.current[itemId];
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to load vault items';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [vaultId, token, decrypt]);
+
+  /** Fetch both index and items, return all items (for legacy callers like new/edit pages). */
+  const fetchAllItems = useCallback(async (): Promise<VaultItem[]> => {
     if (!token || !vaultId) throw new Error('Not authenticated');
     setLoading(true);
     setError(null);
     try {
       const res = await api.getVault(vaultId, token);
       setLastModified(res.lastModified);
-      setRawEncryptedContent(res.encryptedContent ?? null);
-      if (!res.encryptedContent) {
-        return { version: 1, items: [] };
-      }
-      const plaintext = await decrypt(vaultId, res.encryptedContent);
-      const vaultFile = migrateToVaultFile(plaintext);
+      setRawEncryptedItems(res.encryptedItems ?? null);
 
-      // Recompute warnings on load in case any items are missing them
-      const withWarnings = { ...vaultFile, items: computeWarnings(vaultFile.items) };
-
-      // Re-save silently if warnings changed
-      const warningsChanged = withWarnings.items.some((item, i) =>
-        JSON.stringify(item.warningCodes) !== JSON.stringify(vaultFile.items[i]?.warningCodes),
-      );
-      if (warningsChanged) {
-        const encryptedContent = await encrypt(vaultId, JSON.stringify(withWarnings));
-        const putRes = await api.putVault(vaultId, { encryptedContent }, token);
-        setLastModified(putRes.lastModified);
+      let items: VaultItem[];
+      if (!res.encryptedItems) {
+        items = [];
+        itemsCacheRef.current = {};
+      } else {
+        const itemsPlaintext = await decrypt(vaultId, res.encryptedItems);
+        items = migrateItemsFromLegacy(itemsPlaintext);
+        // Recompute warnings
+        items = computeWarnings(items);
+        const record: Record<string, VaultItem> = {};
+        for (const item of items) record[item.id] = item;
+        itemsCacheRef.current = record;
       }
 
-      return withWarnings;
+      return items;
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to load vault';
       setError(msg);
@@ -122,17 +237,32 @@ export function useVault(vaultId: string | null, token: string | null) {
     } finally {
       setLoading(false);
     }
-  }, [vaultId, token, decrypt, encrypt]);
+  }, [vaultId, token, decrypt]);
 
-  const save = useCallback(async (vaultFile: VaultFile): Promise<VaultFile> => {
+  /** Save all items — builds both index and items files, encrypts, PUTs both. */
+  const save = useCallback(async (items: VaultItem[]): Promise<VaultItem[]> => {
     if (!token || !vaultId) throw new Error('Not authenticated');
     setLoading(true);
     setError(null);
     try {
-      const withWarnings: VaultFile = { ...vaultFile, items: computeWarnings(vaultFile.items) };
-      const encryptedContent = await encrypt(vaultId, JSON.stringify(withWarnings));
-      const res = await api.putVault(vaultId, { encryptedContent }, token);
+      const withWarnings = computeWarnings(items);
+      const indexFile = buildIndexFile(withWarnings);
+      const itemsFile = buildItemsFile(withWarnings);
+
+      const [encryptedIndex, encryptedItems] = await Promise.all([
+        encrypt(vaultId, JSON.stringify(indexFile)),
+        encrypt(vaultId, JSON.stringify(itemsFile)),
+      ]);
+
+      const res = await api.putVault(vaultId, { encryptedIndex, encryptedItems }, token);
       setLastModified(res.lastModified);
+      setRawEncryptedItems(encryptedItems);
+
+      // Update in-memory cache
+      const record: Record<string, VaultItem> = {};
+      for (const item of withWarnings) record[item.id] = item;
+      itemsCacheRef.current = record;
+
       return withWarnings;
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to save vault';
@@ -143,22 +273,22 @@ export function useVault(vaultId: string | null, token: string | null) {
     }
   }, [vaultId, token, encrypt]);
 
-  const addItem = useCallback(async (vaultFile: VaultFile, item: Omit<VaultItem, 'id' | 'createdAt' | 'updatedAt' | 'warningCodes'>): Promise<VaultFile> => {
+  const addItem = useCallback(async (currentItems: VaultItem[], item: Omit<VaultItem, 'id' | 'createdAt' | 'updatedAt' | 'warningCodes'>): Promise<VaultItem[]> => {
     const now = new Date().toISOString();
     const newItem = { ...item, id: randomUUID(), createdAt: now, updatedAt: now, warningCodes: [] } as unknown as VaultItem;
-    return save({ ...vaultFile, items: [...vaultFile.items, newItem] });
+    return save([...currentItems, newItem]);
   }, [save]);
 
-  const updateItem = useCallback(async (vaultFile: VaultFile, updated: VaultItem): Promise<VaultFile> => {
+  const updateItem = useCallback(async (currentItems: VaultItem[], updated: VaultItem): Promise<VaultItem[]> => {
     const now = new Date().toISOString();
-    const items = vaultFile.items.map(item =>
+    const items = currentItems.map(item =>
       item.id === updated.id ? { ...updated, updatedAt: now } : item,
     );
-    return save({ ...vaultFile, items });
+    return save(items);
   }, [save]);
 
-  const deleteItem = useCallback(async (vaultFile: VaultFile, itemId: string): Promise<VaultFile> => {
-    return save({ ...vaultFile, items: vaultFile.items.filter(item => item.id !== itemId) });
+  const deleteItem = useCallback(async (currentItems: VaultItem[], itemId: string): Promise<VaultItem[]> => {
+    return save(currentItems.filter(item => item.id !== itemId));
   }, [save]);
 
   const download = useCallback(async (displayName: string): Promise<void> => {
@@ -199,5 +329,26 @@ export function useVault(vaultId: string | null, token: string | null) {
     }
   }, [vaultId, token]);
 
-  return { loading, error, lastModified, rawEncryptedContent, fetchAndDecrypt, save, addItem, updateItem, deleteItem, download, sendEmail };
+  /** Clear the in-memory items cache (call when locking vault). */
+  const clearItemsCache = useCallback(() => {
+    itemsCacheRef.current = null;
+    setRawEncryptedItems(null);
+  }, []);
+
+  return {
+    loading,
+    error,
+    lastModified,
+    rawEncryptedItems,
+    fetchIndex,
+    fetchItem,
+    fetchAllItems,
+    save,
+    addItem,
+    updateItem,
+    deleteItem,
+    download,
+    sendEmail,
+    clearItemsCache,
+  };
 }
