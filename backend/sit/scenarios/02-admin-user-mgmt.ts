@@ -10,6 +10,15 @@ const ts = Date.now();
 
 export function adminUserMgmtScenarios(ctx: SitContext) {
   describe('02 — Admin User Management', () => {
+    it('enables all audit categories for full logging', async () => {
+      const res = await request<{ success: boolean }>('PUT', API_PATHS.ADMIN_AUDIT_CONFIG, {
+        body: { authentication: true, admin_actions: true, vault_operations: true, system: true },
+        token: ctx.adminToken,
+        powDifficulty: pow(HIGH),
+      });
+      expect(res.status).toBe(200);
+    });
+
     it('creates pro user -> OTP + userId', async () => {
       ctx.proUserEmail = `sit-pro-${ts}@passvault-test.local`;
 
