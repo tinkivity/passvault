@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { NavLink, useNavigate, useParams } from 'react-router-dom';
-import { Vault, Plus, MoreHorizontal, Download, Upload, Mail, Pencil, Lock, LayoutDashboard, Users, ScrollText, UserPlus } from 'lucide-react';
+import { Vault, Plus, MoreHorizontal, Download, Upload, Mail, Pencil, Lock, LayoutDashboard, Users, ScrollText, UserPlus, Trash2 } from 'lucide-react';
 import type { VaultDownloadResponse } from '@passvault/shared';
 import { ImportVaultDialog } from './ImportVaultDialog.js';
 import type { VaultSummary } from '@passvault/shared';
@@ -54,18 +54,28 @@ interface VaultTimeoutRingProps {
   vaultId: string;
   unlocked: boolean;
   onTimeout: (vaultId: string) => void;
+  resetCounter?: number;
 }
 
-function VaultTimeoutRing({ vaultId, unlocked, onTimeout }: VaultTimeoutRingProps) {
+function VaultTimeoutRing({ vaultId, unlocked, onTimeout, resetCounter = 0 }: VaultTimeoutRingProps) {
   const handleTimeout = useCallback(() => {
     onTimeout(vaultId);
   }, [onTimeout, vaultId]);
 
-  const { secondsLeft } = useVaultTimeout({
+  const { secondsLeft, reset } = useVaultTimeout({
     timeoutSeconds: VAULT_TIMEOUT,
     onTimeout: handleTimeout,
     active: unlocked,
   });
+
+  // Reset the timer when the external counter changes (item CRUD)
+  const prevCounterRef = useRef(resetCounter);
+  useEffect(() => {
+    if (resetCounter !== prevCounterRef.current) {
+      prevCounterRef.current = resetCounter;
+      reset();
+    }
+  }, [resetCounter, reset]);
 
   if (!unlocked) return null;
 
@@ -124,9 +134,11 @@ interface VaultSidebarProps {
   onDownloadVault: (vaultId: string, displayName: string) => Promise<void>;
   onEmailVault: (vaultId: string) => Promise<void>;
   onImportVault: (displayName: string, fileData: VaultDownloadResponse, password: string) => Promise<void>;
+  onDeleteVault?: (vaultId: string) => Promise<void>;
+  vaultResetCounters?: Map<string, number>;
 }
 
-export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRenameVault, onDownloadVault, onEmailVault, onImportVault }: VaultSidebarProps) {
+export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRenameVault, onDownloadVault, onEmailVault, onImportVault, onDeleteVault, vaultResetCounters }: VaultSidebarProps) {
   const navigate = useNavigate();
   const { vaultId } = useParams<{ vaultId: string }>();
   const { hasKey, clearKey } = useEncryptionContext();
@@ -138,7 +150,8 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
 
   const handleVaultTimeout = useCallback((vid: string) => {
     clearKey(vid);
-  }, [clearKey]);
+    navigate(ROUTES.UI.VAULT(vid));
+  }, [clearKey, navigate]);
 
   const handleEmail = async (id: string) => {
     await onEmailVault(id);
@@ -163,6 +176,31 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
       setRenameError(err instanceof Error ? err.message : 'Failed to rename vault');
     } finally {
       setRenaming(false);
+    }
+  };
+
+  const [deletingVault, setDeletingVault] = useState<VaultSummary | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const handleDeleteVault = async () => {
+    if (!deletingVault || !onDeleteVault) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      clearKey(deletingVault.vaultId);
+      await onDeleteVault(deletingVault.vaultId);
+      setDeletingVault(null);
+      navigate(ROUTES.UI.ROOT);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to delete vault';
+      if (msg.toLowerCase().includes('last vault') || msg.toLowerCase().includes('cannot delete')) {
+        setDeleteError('Cannot delete your last vault.');
+      } else {
+        setDeleteError(msg);
+      }
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -227,6 +265,7 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
                           vaultId={vault.vaultId}
                           unlocked={unlocked}
                           onTimeout={handleVaultTimeout}
+                          resetCounter={vaultResetCounters?.get(vault.vaultId) ?? 0}
                         />
                       </SidebarMenuButton>
                       <DropdownMenu>
@@ -261,6 +300,18 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
                                   {emailedVaultId === vault.vaultId ? 'Email sent!' : 'Email vault'}
                                 </DropdownMenuItem>
                               )}
+                              {onDeleteVault && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    className="text-destructive focus:text-destructive"
+                                    onClick={() => { setDeletingVault(vault); setDeleteError(null); }}
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Delete vault
+                                  </DropdownMenuItem>
+                                </>
+                              )}
                             </>
                           ) : (
                             <>
@@ -277,6 +328,18 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
                                 <Download className="mr-2 h-4 w-4" />
                                 Download vault
                               </DropdownMenuItem>
+                              {onDeleteVault && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    className="text-destructive focus:text-destructive"
+                                    onClick={() => { setDeletingVault(vault); setDeleteError(null); }}
+                                  >
+                                    <Trash2 className="mr-2 h-4 w-4" />
+                                    Delete vault
+                                  </DropdownMenuItem>
+                                </>
+                              )}
                             </>
                           )}
                         </DropdownMenuContent>
@@ -426,6 +489,26 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
             <Button variant="outline" onClick={() => setShowDialog(false)}>Cancel</Button>
             <Button onClick={handleCreate} disabled={creating || !newName.trim() || !newPassword}>
               {creating ? 'Creating...' : 'Create'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!deletingVault} onOpenChange={open => { if (!open) { setDeletingVault(null); setDeleteError(null); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Vault</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-muted-foreground">
+              Are you sure you want to delete <span className="font-medium text-foreground">{deletingVault?.displayName}</span>? This action cannot be undone and all items in the vault will be permanently lost.
+            </p>
+            {deleteError && <p className="text-sm text-destructive">{deleteError}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setDeletingVault(null); setDeleteError(null); }}>Cancel</Button>
+            <Button variant="destructive" onClick={handleDeleteVault} disabled={deleting}>
+              {deleting ? 'Deleting...' : 'Delete vault'}
             </Button>
           </DialogFooter>
         </DialogContent>

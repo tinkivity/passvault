@@ -109,7 +109,8 @@ export async function queryAuditEvents(
 
   // If a category is specified, use the GSI for efficient querying
   if (options.category) {
-    return queryByCategory(options.category, options.from, options.to, maxResults);
+    const events = await queryByCategory(options.category, options.from, options.to, maxResults);
+    return enrichWithUsernames(events);
   }
 
   // No category filter — query all 4 categories in parallel and merge

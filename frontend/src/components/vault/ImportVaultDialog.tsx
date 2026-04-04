@@ -165,26 +165,27 @@ export function ImportVaultDialog({ open, onOpenChange, onImport }: ImportVaultD
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent>
+      <DialogContent className="overflow-hidden">
         <DialogHeader>
           <DialogTitle>Import Vault</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
+        <div className="space-y-4 py-2 min-w-0">
           {/* File picker */}
           <div className="space-y-1">
             <Label htmlFor="import-file">Vault file</Label>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0">
               <Button
                 variant="outline"
                 size="sm"
+                className="shrink-0"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={step === 'importing'}
               >
                 <Upload className="mr-2 h-4 w-4" />
                 Choose file
               </Button>
-              <span className="text-sm text-muted-foreground truncate">
+              <span className="text-sm text-muted-foreground truncate min-w-0">
                 {fileName || 'No file selected'}
               </span>
             </div>

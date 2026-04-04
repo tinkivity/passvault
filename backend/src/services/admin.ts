@@ -347,6 +347,7 @@ export async function resetUser(
     category: 'admin_actions',
     action: 'user_reset',
     userId,
+    performedBy: adminUserId,
     details: { username: user.username },
   }).catch(err => console.error('Failed to record audit event:', err));
 
@@ -382,6 +383,7 @@ export async function resetUser(
 
 export async function deleteNewUser(
   userId: string,
+  adminUserId: string,
 ): Promise<{ response?: { success: true }; error?: string; statusCode?: number }> {
   const user = await getUserById(userId);
   if (!user) return { error: ERRORS.NOT_FOUND, statusCode: 404 };
@@ -403,6 +405,7 @@ export async function deleteNewUser(
     category: 'admin_actions',
     action: 'user_deleted',
     userId,
+    performedBy: adminUserId,
     details: { username: user.username },
   }).catch(err => console.error('Failed to record audit event:', err));
 
@@ -424,6 +427,7 @@ export async function lockUser(
     category: 'admin_actions',
     action: 'user_locked',
     userId,
+    performedBy: adminUserId,
     details: { username: user.username },
   }).catch(err => console.error('Failed to record audit event:', err));
   return { response: { success: true } };
@@ -449,6 +453,7 @@ export async function unlockUser(
     category: 'admin_actions',
     action: 'user_unlocked',
     userId,
+    performedBy: adminUserId,
     details: { username: user.username },
   }).catch(err => console.error('Failed to record audit event:', err));
   return { response: { success: true } };
@@ -470,6 +475,7 @@ export async function expireUser(
     category: 'admin_actions',
     action: 'user_expired',
     userId,
+    performedBy: adminUserId,
     details: { username: user.username },
   }).catch(err => console.error('Failed to record audit event:', err));
   return { response: { success: true } };
@@ -491,6 +497,7 @@ export async function retireUser(
     category: 'admin_actions',
     action: 'user_retired',
     userId,
+    performedBy: adminUserId,
     details: { username: user.username },
   }).catch(err => console.error('Failed to record audit event:', err));
   return { response: { success: true } };
@@ -572,6 +579,7 @@ export async function reactivateUser(
     category: 'admin_actions',
     action: 'user_reactivated',
     userId,
+    performedBy: adminUserId,
     details: { username: user.username },
   }).catch(err => console.error('Failed to record audit event:', err));
   return { response: { success: true } };
@@ -610,6 +618,7 @@ export async function updateUserProfile(
       category: 'admin_actions',
       action: 'user_updated',
       userId: request.userId,
+      performedBy: adminUserId,
       details: { fields: Object.keys(updates).join(',') },
     }).catch(err => console.error('Failed to record audit event:', err));
   }

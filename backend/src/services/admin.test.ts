@@ -667,19 +667,19 @@ describe('deleteNewUser', () => {
 
   it('returns 404 when user not found', async () => {
     mockGetUserById.mockResolvedValue(null);
-    const result = await deleteNewUser('user-1');
+    const result = await deleteNewUser('user-1', 'admin-1');
     expect(result.statusCode).toBe(404);
   });
 
   it('returns 403 when user is not pending_first_login', async () => {
     mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', status: 'active' }));
-    const result = await deleteNewUser('user-1');
+    const result = await deleteNewUser('user-1', 'admin-1');
     expect(result.statusCode).toBe(403);
   });
 
   it('deletes vault file and user record', async () => {
     mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', status: 'pending_first_login', userId: 'user-1' }));
-    const result = await deleteNewUser('user-1');
+    const result = await deleteNewUser('user-1', 'admin-1');
     expect(result.response?.success).toBe(true);
     expect(vi.mocked(deleteUser)).toHaveBeenCalledWith('user-1');
   });
