@@ -105,6 +105,12 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
     }
   }
 
+  // Admin accounts auto-lock when expiration date has passed
+  if (user.role === 'admin' && user.expiresAt && new Date(user.expiresAt) < now) {
+    await updateUser(user.userId, { status: 'locked' });
+    return { error: ERRORS.ACCOUNT_EXPIRED, statusCode: 403 };
+  }
+
   await updateUser(user.userId, {
     lastLoginAt: new Date().toISOString(),
     failedLoginAttempts: 0,
@@ -125,6 +131,7 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
 
   const response: LoginResponse = {
     token,
+    userId: user.userId,
     role: user.role,
     username: user.username,
     plan: user.plan,
@@ -132,10 +139,14 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
     firstName: user.firstName ?? null,
     lastName: user.lastName ?? null,
     displayName: user.displayName ?? null,
+    expiresAt: user.expiresAt ?? null,
   };
 
   if (user.status === 'pending_first_login') {
     response.requirePasswordChange = true;
+  }
+  if (user.status === 'expired') {
+    response.accountExpired = true;
   }
 
   return { response };

@@ -60,7 +60,7 @@ export function UserDetailPage() {
   const { userId } = useParams<{ userId: string }>();
   const location = useLocation();
   const navigate = useNavigate();
-  const { token } = useAuth();
+  const { token, userId: currentAdminId } = useAuth();
   const admin = useAdmin(token);
 
   const [user, setUser] = useState<UserSummary | null>(
@@ -81,6 +81,7 @@ export function UserDetailPage() {
   const [editIsPerpetual, setEditIsPerpetual] = useState(false);
   const [editExpiresAt, setEditExpiresAt] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
+  const [downgradeWarning, setDowngradeWarning] = useState(false);
 
   const handleBack = () => navigate(ROUTES.UI.ADMIN.USERS);
 
@@ -93,6 +94,7 @@ export function UserDetailPage() {
     setEditIsPerpetual(user.expiresAt === null || user.expiresAt === undefined);
     setEditExpiresAt(user.expiresAt ? user.expiresAt.slice(0, 10) : '');
     setEditError(null);
+    setDowngradeWarning(false);
     setEditing(true);
   }
 
@@ -105,8 +107,8 @@ export function UserDetailPage() {
         firstName: editFirstName.trim() || null,
         lastName: editLastName.trim() || null,
         displayName: editDisplayName.trim() || null,
-        plan: editPlan,
-        expiresAt: editIsPerpetual ? null : (editExpiresAt || null),
+        ...(!isSelf && { plan: editPlan }),
+        ...(!isSelf && { expiresAt: editIsPerpetual ? null : (editExpiresAt || null) }),
       };
       await admin.updateUser(req);
       setUser(u => u ? {
@@ -177,6 +179,9 @@ export function UserDetailPage() {
     navigate(ROUTES.UI.ADMIN.USERS, { replace: true });
   };
 
+  const isSelf = user.userId === currentAdminId;
+  const isTargetAdmin = user.role === 'admin';
+
   const displayedName = user.displayName
     || ([user.firstName, user.lastName].filter(Boolean).join(' '))
     || null;
@@ -195,9 +200,19 @@ export function UserDetailPage() {
               <p className="text-lg font-semibold">{displayedName}</p>
             )}
             <p className="font-mono text-sm text-muted-foreground">{user.username}</p>
-            <span className={`mt-1 inline-block ${statusClass[user.status]}`}>
-              {statusLabel[user.status]}
-            </span>
+            <div className="mt-1 flex items-center gap-2">
+              <span className={statusClass[user.status]}>
+                {statusLabel[user.status]}
+              </span>
+              {isTargetAdmin && (
+                <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-purple-500/15 text-purple-600 border-purple-500/20">
+                  Admin
+                </span>
+              )}
+              {isSelf && (
+                <span className="text-xs text-muted-foreground">(you)</span>
+              )}
+            </div>
           </div>
           {!editing && (
             <Button variant="outline" size="sm" onClick={startEdit}>
@@ -262,31 +277,43 @@ export function UserDetailPage() {
               />
             </div>
 
-            <div className="space-y-1">
-              <Label>Plan</Label>
-              <div className="flex gap-2">
-                {(['free', 'pro'] as const).map(p => (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => setEditPlan(p)}
-                    className={`flex-1 rounded-md border px-3 py-1.5 text-sm transition-colors ${editPlan === p ? 'border-primary bg-primary/10 text-primary font-medium' : 'border-border text-muted-foreground hover:border-primary/50'}`}
-                  >
-                    {p.charAt(0).toUpperCase() + p.slice(1)}
-                  </button>
-                ))}
+            {!isSelf && (
+              <div className="space-y-1">
+                <Label>Plan</Label>
+                <div className="flex gap-2">
+                  {(['free', 'pro', 'administrator'] as const).map(p => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => {
+                        const wasAdmin = user.plan === 'administrator';
+                        setEditPlan(p);
+                        setDowngradeWarning(wasAdmin && p !== 'administrator');
+                      }}
+                      className={`flex-1 rounded-md border px-3 py-1.5 text-sm transition-colors ${editPlan === p ? (p === 'administrator' ? 'border-purple-500 bg-purple-500/10 text-purple-600 font-medium' : 'border-primary bg-primary/10 text-primary font-medium') : 'border-border text-muted-foreground hover:border-primary/50'}`}
+                    >
+                      {p === 'administrator' ? 'Admin' : p.charAt(0).toUpperCase() + p.slice(1)}
+                    </button>
+                  ))}
+                </div>
+                {downgradeWarning && (
+                  <p className="text-xs text-destructive mt-1">
+                    Downgrading from Administrator will revoke all admin privileges. This user will no longer be able to access the admin panel or manage other users.
+                  </p>
+                )}
               </div>
-            </div>
+            )}
 
-            <div className="space-y-2">
-              <Label htmlFor="edit-expires">Expiration date</Label>
-              <Input
-                id="edit-expires"
-                type="date"
-                value={editExpiresAt}
-                onChange={e => setEditExpiresAt(e.target.value)}
-                disabled={editIsPerpetual}
-              />
+            {!isSelf && (
+              <div className="space-y-2">
+                <Label htmlFor="edit-expires">Expiration date</Label>
+                <Input
+                  id="edit-expires"
+                  type="date"
+                  value={editExpiresAt}
+                  onChange={e => setEditExpiresAt(e.target.value)}
+                  disabled={editIsPerpetual}
+                />
               <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none">
                 <input
                   type="checkbox"
@@ -296,7 +323,8 @@ export function UserDetailPage() {
                 />
                 ♾ Lifetime — never expires
               </label>
-            </div>
+              </div>
+            )}
 
             {editError && <p className="text-sm text-destructive">{editError}</p>}
 
@@ -321,7 +349,7 @@ export function UserDetailPage() {
             </Button>
           )}
 
-          {user.status !== 'pending_first_login' && user.status !== 'retired' && (
+          {user.status !== 'pending_first_login' && user.status !== 'retired' && !isSelf && (
             resetConfirm ? (
               <>
                 <div className="w-full text-xs text-destructive mb-1">
@@ -341,19 +369,19 @@ export function UserDetailPage() {
             )
           )}
 
-          {user.status === 'active' && (
+          {user.status === 'active' && !isSelf && (
             <Button variant="outline" size="sm" onClick={handleLock} disabled={admin.loading}>
               Lock
             </Button>
           )}
 
-          {user.status === 'locked' && (
+          {user.status === 'locked' && !isSelf && (
             <Button variant="outline" size="sm" onClick={handleUnlock} disabled={admin.loading}>
               Unlock
             </Button>
           )}
 
-          {(user.status === 'active' || user.status === 'locked') && (
+          {(user.status === 'active' || user.status === 'locked') && !isSelf && !isTargetAdmin && (
             <Button
               variant="outline"
               size="sm"
@@ -365,7 +393,7 @@ export function UserDetailPage() {
             </Button>
           )}
 
-          {user.status !== 'retired' && (
+          {user.status !== 'retired' && !isSelf && (
             retireConfirm ? (
               <>
                 <Button variant="destructive" size="sm" onClick={handleRetire} disabled={admin.loading}>

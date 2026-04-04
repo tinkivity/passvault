@@ -7,7 +7,7 @@ import { authenticateWithPasskey } from '../services/passkey.js';
 import { createHoneypot, getHoneypotFields } from '../services/honeypot.js';
 
 export function useAuth() {
-  const { token, role, username, firstName, lastName, displayName, status, plan, loginEventId, setAuth, clearAuth, patchAuth } = useAuthContext();
+  const { token, userId, role, username, firstName, lastName, displayName, status, plan, loginEventId, expiresAt, accountExpired, setAuth, clearAuth, patchAuth } = useAuthContext();
   const { clearKey } = useEncryptionContext();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,14 +46,17 @@ export function useAuth() {
 
       setAuth({
         token: res.token,
+        userId: res.userId,
         role: res.role,
         username: res.username,
         firstName: res.firstName ?? null,
         lastName: res.lastName ?? null,
         displayName: res.displayName ?? null,
-        status: res.requirePasswordChange ? 'pending_first_login' : 'active',
+        status: res.requirePasswordChange ? 'pending_first_login' : (res.accountExpired ? 'expired' : 'active'),
         plan: res.plan ?? null,
         loginEventId: res.loginEventId ?? null,
+        expiresAt: res.expiresAt ?? null,
+        accountExpired: res.accountExpired ?? false,
       });
 
       return res;
@@ -76,14 +79,17 @@ export function useAuth() {
 
       setAuth({
         token: res.token,
+        userId: res.userId,
         role: res.role,
         username: res.username,
         firstName: res.firstName ?? null,
         lastName: res.lastName ?? null,
         displayName: res.displayName ?? null,
-        status: res.requirePasswordChange ? 'pending_first_login' : 'active',
+        status: res.requirePasswordChange ? 'pending_first_login' : (res.accountExpired ? 'expired' : 'active'),
         plan: res.plan ?? null,
         loginEventId: res.loginEventId ?? null,
+        expiresAt: res.expiresAt ?? null,
+        accountExpired: res.accountExpired ?? false,
       });
 
       return res;
@@ -172,8 +178,11 @@ export function useAuth() {
 
   return {
     token,
+    userId,
     role,
     username,
+    expiresAt,
+    accountExpired,
     firstName,
     lastName,
     displayName,

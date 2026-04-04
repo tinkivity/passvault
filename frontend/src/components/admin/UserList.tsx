@@ -281,7 +281,8 @@ function getUserColumns(
       size: 40,
       cell: ({ row }) => {
         const user = row.original;
-        const canExpire = user.status === 'active' || user.status === 'locked';
+        const isAdmin = user.role === 'admin';
+        const canExpire = !isAdmin && (user.status === 'active' || user.status === 'locked');
         return (
           <div onClick={e => e.stopPropagation()}>
             <DropdownMenu>
@@ -313,7 +314,7 @@ function getUserColumns(
                   </DropdownMenuItem>
                 )}
 
-                {/* Expire — only for active or locked */}
+                {/* Expire — only for active or locked non-admin users (admins auto-lock on expiration) */}
                 {canExpire && (
                   <DropdownMenuItem
                     className="text-orange-600 focus:text-orange-600"
@@ -324,8 +325,8 @@ function getUserColumns(
                   </DropdownMenuItem>
                 )}
 
-                {/* Reactivate — only for expired users */}
-                {user.status === 'expired' && (
+                {/* Reactivate — only for expired non-admin users */}
+                {user.status === 'expired' && !isAdmin && (
                   <DropdownMenuItem
                     className="text-green-600 focus:text-green-600"
                     onClick={() => onSetReactivateTarget(user)}

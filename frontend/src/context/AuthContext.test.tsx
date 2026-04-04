@@ -5,6 +5,7 @@ import { AuthProvider, useAuthContext } from './AuthContext';
 
 const sampleAuth = {
   token: 'tok-1',
+  userId: 'user-1',
   role: 'user' as const,
   username: 'alice',
   firstName: null,
@@ -13,6 +14,8 @@ const sampleAuth = {
   status: 'active' as const,
   plan: 'free' as const,
   loginEventId: null,
+  expiresAt: null,
+  accountExpired: false,
 };
 
 function Consumer() {

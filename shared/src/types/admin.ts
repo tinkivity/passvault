@@ -1,4 +1,4 @@
-import type { UserStatus, UserPlan } from './user.js';
+import type { UserRole, UserStatus, UserPlan } from './user.js';
 
 export interface CreateUserRequest {
   username: string;  // must be valid email address
@@ -34,6 +34,7 @@ export interface UserVaultStub {
 export interface UserSummary {
   userId: string;
   username: string;
+  role: UserRole;
   status: UserStatus;
   plan: UserPlan;
   createdAt: string;

@@ -13,6 +13,14 @@ import { VaultBreadcrumbs } from './VaultBreadcrumbs.js';
 import { AdminBreadcrumbs } from '../admin/AdminBreadcrumbs.js';
 import { ShellHeader } from '../shared/ShellHeader.js';
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 import { config } from '../../config.js';
 import { ROUTES } from '../../routes.js';
 import { ShellContext } from '../../context/VaultShellContext.js';
@@ -27,7 +35,8 @@ export function VaultShell() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const { vaultId } = useParams<{ vaultId: string }>();
-  const { token, role, plan, logout } = useAuth();
+  const { token, role, plan, accountExpired, logout } = useAuth();
+  const [expiredDismissed, setExpiredDismissed] = useState(false);
   const { deriveKey } = useEncryptionContext();
   const { fetchVaults, createVault } = useVaults(token);
   const { catalog, fetchCatalog } = useWarningCatalog();
@@ -128,6 +137,21 @@ export function VaultShell() {
           </div>
         </div>
       </SidebarProvider>
+
+      <Dialog open={accountExpired && !expiredDismissed} onOpenChange={() => {}}>
+        <DialogContent showCloseButton={false}>
+          <DialogHeader>
+            <DialogTitle>Account Expired</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Your account has expired. You can still view your vaults but cannot make changes.
+            Please contact your administrator to reactivate your account.
+          </p>
+          <DialogFooter>
+            <Button onClick={() => setExpiredDismissed(true)}>OK</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </ShellContext.Provider>
   );
 }

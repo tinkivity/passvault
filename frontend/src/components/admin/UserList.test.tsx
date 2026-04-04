@@ -8,6 +8,7 @@ const mockUsers: UserSummary[] = [
   {
     userId: 'u1',
     username: 'charlie@example.com',
+    role: 'user',
     status: 'active',
     plan: 'free',
     createdAt: '2024-01-15T00:00:00Z',
@@ -20,6 +21,7 @@ const mockUsers: UserSummary[] = [
   {
     userId: 'u2',
     username: 'alice@example.com',
+    role: 'user',
     status: 'pending_first_login',
     plan: 'free',
     createdAt: '2024-02-01T00:00:00Z',
@@ -32,6 +34,7 @@ const mockUsers: UserSummary[] = [
   {
     userId: 'u3',
     username: 'bob@example.com',
+    role: 'user',
     status: 'pending_passkey_setup',
     plan: 'pro',
     createdAt: '2024-01-20T00:00:00Z',

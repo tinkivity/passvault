@@ -30,11 +30,13 @@ const ENV = process.env.ENVIRONMENT ?? 'dev';
 const config = getEnvironmentConfig(ENV);
 const TABLE = process.env.DYNAMODB_TABLE ?? `passvault-users-${ENV}`;
 const REGION = config.region;
+const FORCE = process.argv.includes('--force');
 
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
 if (!ADMIN_EMAIL) {
   console.error('Error: ADMIN_EMAIL environment variable is required.');
   console.error('  ENVIRONMENT=dev ADMIN_EMAIL=you@example.com npx tsx scripts/init-admin.ts');
+  console.error('  ENVIRONMENT=dev ADMIN_EMAIL=you@example.com npx tsx scripts/init-admin.ts --force');
   console.error('  (The email is also in the CloudFormation AdminEmail output)');
   process.exit(1);
 }
@@ -107,14 +109,17 @@ async function main() {
   console.log(`  Environment : ${ENV}`);
   console.log(`  Region      : ${REGION}`);
   console.log(`  Table       : ${TABLE}`);
-  console.log(`  Admin user  : ${adminUsername}\n`);
+  console.log(`  Admin user  : ${adminUsername}`);
+  console.log(`  Force mode  : ${FORCE ? 'YES' : 'no'}\n`);
 
-  // Check if admin already exists
-  const exists = await usernameExists(adminUsername);
-  if (exists) {
-    console.error(`✗ Admin user "${adminUsername}" already exists in ${TABLE}.`);
-    console.error(`  If you need to reset the admin, delete the item from DynamoDB first.`);
-    process.exit(1);
+  // Check if admin already exists (skip in force mode)
+  if (!FORCE) {
+    const exists = await usernameExists(adminUsername);
+    if (exists) {
+      console.error(`✗ Admin user "${adminUsername}" already exists in ${TABLE}.`);
+      console.error(`  Use --force to create a new admin entry regardless (emergency recovery).`);
+      process.exit(1);
+    }
   }
 
   // Generate OTP and hash it
@@ -146,7 +151,7 @@ async function main() {
     new PutCommand({
       TableName: TABLE,
       Item: adminUser,
-      ConditionExpression: 'attribute_not_exists(userId)',
+      ...(!FORCE && { ConditionExpression: 'attribute_not_exists(userId)' }),
     }),
   );
 

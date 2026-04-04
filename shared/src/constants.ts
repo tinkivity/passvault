@@ -101,6 +101,7 @@ export const ERRORS = {
   PASSKEY_DUPLICATE_PROVIDER: 'A passkey from this provider is already registered',
   PASSKEY_CANNOT_REVOKE_LAST: 'Cannot revoke the last passkey',
   PASSKEY_NOT_FOUND: 'Passkey not found',
+  CANNOT_MODIFY_SELF: 'Cannot modify your own admin account',
 } as const;
 
 // Limits
