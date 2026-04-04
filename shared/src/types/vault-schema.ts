@@ -20,6 +20,7 @@ interface VaultItemBase {
   id: string;            // UUID v4
   name: string;
   category: VaultItemCategory;
+  comment?: string;
   createdAt: string;     // ISO 8601
   updatedAt: string;     // ISO 8601
   warningCodes: WarningCode[];  // stored inside encrypted vault — backend never sees this
