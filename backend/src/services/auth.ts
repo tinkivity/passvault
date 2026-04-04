@@ -10,8 +10,17 @@ import {
   type UserRole,
 } from '@passvault/shared';
 import { config } from '../config.js';
-import { getUserById, getUserByUsername, updateUser, recordLoginEvent, listPasskeyCredentials } from '../utils/dynamodb.js';
+import {
+  getUserById,
+  getUserByUsername,
+  updateUser,
+  recordLoginEvent,
+  listPasskeyCredentials,
+  getUserByEmailChangeToken,
+  getUserByEmailChangeLockToken,
+} from '../utils/dynamodb.js';
 import { randomUUID } from 'crypto';
+import { sendEmail } from '../utils/ses.js';
 import { hashPassword, verifyPassword } from '../utils/crypto.js';
 import { validatePassword } from '../utils/password.js';
 import { signToken } from '../utils/jwt.js';
@@ -220,6 +229,10 @@ export async function updateProfile(
   if ('displayName' in request) updates.displayName = request.displayName ?? null;
 
   if (request.email !== undefined) {
+    // On beta/prod, email changes must go through the verified email-change flow
+    if (config.environment !== 'dev') {
+      return { error: ERRORS.EMAIL_CHANGE_REQUIRES_FLOW, statusCode: 400 };
+    }
     if (!LIMITS.EMAIL_PATTERN.test(request.email)) {
       return { error: ERRORS.INVALID_EMAIL, statusCode: 400 };
     }
@@ -233,6 +246,145 @@ export async function updateProfile(
   if (Object.keys(updates).length > 0) {
     await updateUser(userId, updates as Parameters<typeof updateUser>[1]);
   }
+
+  return {};
+}
+
+// ── Secure Email Change Flow ────────────────────────────────────────────────
+
+export async function requestEmailChange(
+  userId: string,
+  newEmail: string,
+): Promise<{ error?: string; statusCode?: number }> {
+  if (!LIMITS.EMAIL_PATTERN.test(newEmail)) {
+    return { error: ERRORS.INVALID_EMAIL, statusCode: 400 };
+  }
+  if (newEmail.length > LIMITS.EMAIL_MAX_LENGTH) {
+    return { error: ERRORS.INVALID_EMAIL, statusCode: 400 };
+  }
+
+  const existing = await getUserByUsername(newEmail);
+  if (existing && existing.userId !== userId) {
+    return { error: ERRORS.USER_EXISTS, statusCode: 409 };
+  }
+
+  const user = await getUserById(userId);
+  if (!user) {
+    return { error: ERRORS.NOT_FOUND, statusCode: 404 };
+  }
+
+  // On dev: skip emails, update immediately
+  if (config.environment === 'dev') {
+    await updateUser(userId, { username: newEmail });
+    return {};
+  }
+
+  // beta/prod: generate tokens and send emails
+  const emailChangeToken = randomUUID();
+  const emailChangeLockToken = randomUUID();
+  const now = new Date();
+  const emailChangeTokenExpiresAt = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
+  const emailChangeLockTokenExpiresAt = new Date(now.getTime() + 60 * 60 * 1000).toISOString();
+
+  await updateUser(userId, {
+    pendingEmail: newEmail,
+    emailChangeToken,
+    emailChangeTokenExpiresAt,
+    emailChangeLockToken,
+    emailChangeLockTokenExpiresAt,
+  });
+
+  const frontendUrl = process.env.FRONTEND_URL || '';
+
+  // Send verification email to the NEW address
+  const verifyUrl = `${frontendUrl}/verify-email-change?token=${emailChangeToken}`;
+  await sendEmail(
+    newEmail,
+    'PassVault — Verify your new email address',
+    [
+      'You requested to change your PassVault email address.',
+      '',
+      'Click the link below to verify this email address:',
+      verifyUrl,
+      '',
+      'This link expires in 24 hours.',
+      'If you did not request this change, you can safely ignore this email.',
+    ].join('\n'),
+  );
+
+  // Send notification to the OLD address
+  const lockUrl = `${frontendUrl}/lock-account?token=${emailChangeLockToken}`;
+  await sendEmail(
+    user.username,
+    'PassVault — Email change requested',
+    [
+      'An email change was requested for your PassVault account.',
+      `The new email address is: ${newEmail}`,
+      '',
+      'If this was not you, click the link below to lock your account immediately:',
+      lockUrl,
+      '',
+      'This link expires in 1 hour.',
+    ].join('\n'),
+  );
+
+  return {};
+}
+
+export async function verifyEmailChange(
+  token: string,
+): Promise<{ error?: string; statusCode?: number }> {
+  const user = await getUserByEmailChangeToken(token);
+  if (!user) {
+    return { error: ERRORS.EMAIL_CHANGE_TOKEN_INVALID, statusCode: 400 };
+  }
+
+  if (!user.emailChangeTokenExpiresAt || new Date(user.emailChangeTokenExpiresAt) < new Date()) {
+    return { error: ERRORS.EMAIL_CHANGE_TOKEN_INVALID, statusCode: 400 };
+  }
+
+  if (!user.pendingEmail) {
+    return { error: ERRORS.EMAIL_CHANGE_TOKEN_INVALID, statusCode: 400 };
+  }
+
+  // Check uniqueness one more time at verification
+  const existing = await getUserByUsername(user.pendingEmail);
+  if (existing && existing.userId !== user.userId) {
+    return { error: ERRORS.USER_EXISTS, statusCode: 409 };
+  }
+
+  await updateUser(user.userId, {
+    username: user.pendingEmail,
+    pendingEmail: undefined,
+    emailChangeToken: undefined,
+    emailChangeTokenExpiresAt: undefined,
+    emailChangeLockToken: undefined,
+    emailChangeLockTokenExpiresAt: undefined,
+  });
+
+  return {};
+}
+
+export async function lockSelf(
+  token: string,
+): Promise<{ error?: string; statusCode?: number }> {
+  const user = await getUserByEmailChangeLockToken(token);
+  if (!user) {
+    return { error: ERRORS.EMAIL_CHANGE_LOCK_TOKEN_INVALID, statusCode: 400 };
+  }
+
+  if (!user.emailChangeLockTokenExpiresAt || new Date(user.emailChangeLockTokenExpiresAt) < new Date()) {
+    return { error: ERRORS.EMAIL_CHANGE_LOCK_TOKEN_INVALID, statusCode: 400 };
+  }
+
+  await updateUser(user.userId, {
+    status: 'locked',
+    pendingEmail: undefined,
+    emailChangeToken: undefined,
+    emailChangeTokenExpiresAt: undefined,
+    emailChangeLockToken: undefined,
+    emailChangeLockTokenExpiresAt: undefined,
+  });
 
   return {};
 }

@@ -12,6 +12,9 @@ export const API_PATHS = {
   AUTH_VERIFY_EMAIL: '/api/auth/verify-email',
   AUTH_LOGOUT: '/api/auth/logout',
   AUTH_PROFILE: '/api/auth/profile',
+  AUTH_EMAIL_CHANGE: '/api/auth/email-change',
+  AUTH_VERIFY_EMAIL_CHANGE: '/api/auth/verify-email-change',
+  AUTH_LOCK_SELF: '/api/auth/lock-self',
   AUTH_PASSKEYS: '/api/auth/passkeys',
   AUTH_PASSKEY_REVOKE: '/api/auth/passkeys/{credentialId}',
   ADMIN_LOGIN: '/api/admin/login',
@@ -101,6 +104,10 @@ export const ERRORS = {
   PASSKEY_DUPLICATE_PROVIDER: 'A passkey from this provider is already registered',
   PASSKEY_CANNOT_REVOKE_LAST: 'Cannot revoke the last passkey',
   PASSKEY_NOT_FOUND: 'Passkey not found',
+  EMAIL_CHANGE_REQUIRES_FLOW: 'Email changes require verification on this environment',
+  EMAIL_CHANGE_TOKEN_INVALID: 'Invalid or expired email change token',
+  EMAIL_CHANGE_LOCK_TOKEN_INVALID: 'Invalid or expired lock token',
+  EMAIL_CHANGE_PENDING: 'An email change is already pending',
 } as const;
 
 // Limits

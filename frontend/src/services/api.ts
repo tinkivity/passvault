@@ -200,6 +200,31 @@ export class ApiClient {
     });
   }
 
+  async requestEmailChange(newEmail: string, token: string): Promise<void> {
+    return this.request(API_PATHS.AUTH_EMAIL_CHANGE, {
+      method: 'POST',
+      body: { newEmail },
+      token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.MEDIUM,
+    });
+  }
+
+  async verifyEmailChange(verificationToken: string): Promise<void> {
+    return this.request(API_PATHS.AUTH_VERIFY_EMAIL_CHANGE, {
+      method: 'POST',
+      body: { token: verificationToken },
+      powDifficulty: POW_CONFIG.DIFFICULTY.MEDIUM,
+    });
+  }
+
+  async lockSelf(lockToken: string): Promise<void> {
+    return this.request(API_PATHS.AUTH_LOCK_SELF, {
+      method: 'POST',
+      body: { token: lockToken },
+      powDifficulty: POW_CONFIG.DIFFICULTY.MEDIUM,
+    });
+  }
+
   async logout(eventId: string, token: string): Promise<void> {
     return this.request(API_PATHS.AUTH_LOGOUT, {
       method: 'POST',

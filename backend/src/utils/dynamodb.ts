@@ -77,6 +77,30 @@ export async function updateUser(
   );
 }
 
+export async function getUserByEmailChangeToken(token: string): Promise<User | null> {
+  const result = await docClient.send(
+    new ScanCommand({
+      TableName: DYNAMODB_TABLE,
+      FilterExpression: 'emailChangeToken = :token',
+      ExpressionAttributeValues: { ':token': token },
+      Limit: 1,
+    }),
+  );
+  return (result.Items?.[0] as User) ?? null;
+}
+
+export async function getUserByEmailChangeLockToken(token: string): Promise<User | null> {
+  const result = await docClient.send(
+    new ScanCommand({
+      TableName: DYNAMODB_TABLE,
+      FilterExpression: 'emailChangeLockToken = :token',
+      ExpressionAttributeValues: { ':token': token },
+      Limit: 1,
+    }),
+  );
+  return (result.Items?.[0] as User) ?? null;
+}
+
 export async function getUserByRegistrationToken(token: string): Promise<Pick<User, 'userId' | 'status' | 'registrationTokenExpiresAt' | 'username'> | null> {
   const result = await docClient.send(
     new QueryCommand({
