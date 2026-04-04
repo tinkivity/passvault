@@ -4,6 +4,7 @@ import { DashboardPage } from '../pages/admin/DashboardPage.js';
 import { UsersPage } from '../pages/admin/UsersPage.js';
 import { UserDetailPage } from '../pages/admin/UserDetailPage.js';
 import { LoginsPage } from '../pages/admin/LoginsPage.js';
+import { AuditPage } from '../pages/admin/AuditPage.js';
 import { RequireAdmin } from '../guards/RequireAdmin.js';
 import { ROUTES } from '../routes.js';
 
@@ -15,7 +16,9 @@ export const adminRoutes: RouteObject[] = [
       { path: 'dashboard', element: <DashboardPage /> },
       { path: 'users', element: <UsersPage /> },
       { path: 'users/:userId', element: <UserDetailPage /> },
+      /** @deprecated Use logs/audit instead */
       { path: 'logs/logins', element: <LoginsPage /> },
+      { path: 'logs/audit', element: <AuditPage /> },
     ],
   },
 ];

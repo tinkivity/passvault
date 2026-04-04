@@ -23,6 +23,7 @@ import { sendEmail } from '../utils/ses.js';
 import { verifyPasskeyToken } from './passkey.js';
 import { deleteVault, sendVaultEmail } from './vault.js';
 import { config } from '../config.js';
+import { recordAuditEvent } from '../utils/audit.js';
 
 export async function adminLogin(request: LoginRequest): Promise<{ response?: LoginResponse; error?: string; statusCode?: number }> {
   if (typeof request.password !== 'string' || request.password.length > LIMITS.MAX_PASSWORD_LENGTH) {
@@ -89,9 +90,17 @@ export async function adminLogin(request: LoginRequest): Promise<{ response?: Lo
   });
 
   const loginEventId = randomUUID();
+  // Deprecated: kept for backward compatibility
   recordLoginEvent(loginEventId, user.userId, true, passkeyCredentialId, passkeyName).catch(err => {
     console.error('Failed to record admin login event:', err);
   });
+  // Audit log
+  recordAuditEvent({
+    category: 'authentication',
+    action: 'login',
+    userId: user.userId,
+    details: passkeyName ? { method: 'passkey', passkeyName, role: 'admin' } : { method: 'password', role: 'admin' },
+  }).catch(err => console.error('Failed to record audit event:', err));
 
   const token = await signToken({
     userId: user.userId,
@@ -176,6 +185,15 @@ export async function createUserInvitation(
   };
 
   await createUser(user);
+
+  // Audit log
+  recordAuditEvent({
+    category: 'admin_actions',
+    action: 'user_created',
+    userId,
+    performedBy: adminUserId,
+    details: { username: request.username, plan: request.plan ?? 'free' },
+  }).catch(err => console.error('Failed to record audit event:', err));
 
   // Send invitation email if configured
   if (process.env.SENDER_EMAIL) {
@@ -325,6 +343,13 @@ export async function resetUser(
     lockedUntil: null,
   });
 
+  recordAuditEvent({
+    category: 'admin_actions',
+    action: 'user_reset',
+    userId,
+    details: { username: user.username },
+  }).catch(err => console.error('Failed to record audit event:', err));
+
   // Send email notification if configured
   if (process.env.SENDER_EMAIL && user.username.includes('@')) {
     try {
@@ -374,6 +399,13 @@ export async function deleteNewUser(
   await deleteLegacyVaultFile(userId);
   await deleteUser(userId);
 
+  recordAuditEvent({
+    category: 'admin_actions',
+    action: 'user_deleted',
+    userId,
+    details: { username: user.username },
+  }).catch(err => console.error('Failed to record audit event:', err));
+
   return { response: { success: true } };
 }
 
@@ -388,6 +420,12 @@ export async function lockUser(
   if (user.status === 'retired') return { error: ERRORS.NOT_FOUND, statusCode: 404 };
 
   await updateUser(userId, { status: 'locked' });
+  recordAuditEvent({
+    category: 'admin_actions',
+    action: 'user_locked',
+    userId,
+    details: { username: user.username },
+  }).catch(err => console.error('Failed to record audit event:', err));
   return { response: { success: true } };
 }
 
@@ -407,6 +445,12 @@ export async function unlockUser(
   }
 
   await updateUser(userId, { status: 'active' });
+  recordAuditEvent({
+    category: 'admin_actions',
+    action: 'user_unlocked',
+    userId,
+    details: { username: user.username },
+  }).catch(err => console.error('Failed to record audit event:', err));
   return { response: { success: true } };
 }
 
@@ -422,6 +466,12 @@ export async function expireUser(
   if (user.status === 'expired') return { error: 'User is already expired', statusCode: 400 };
 
   await updateUser(userId, { status: 'expired' });
+  recordAuditEvent({
+    category: 'admin_actions',
+    action: 'user_expired',
+    userId,
+    details: { username: user.username },
+  }).catch(err => console.error('Failed to record audit event:', err));
   return { response: { success: true } };
 }
 
@@ -437,6 +487,12 @@ export async function retireUser(
   // Rename username to free the email for reuse
   const retiredUsername = `_retired_${userId}_${user.username}`;
   await updateUser(userId, { status: 'retired', username: retiredUsername });
+  recordAuditEvent({
+    category: 'admin_actions',
+    action: 'user_retired',
+    userId,
+    details: { username: user.username },
+  }).catch(err => console.error('Failed to record audit event:', err));
   return { response: { success: true } };
 }
 
@@ -512,6 +568,12 @@ export async function reactivateUser(
   if (user.status !== 'expired') return { error: 'User is not expired', statusCode: 400 };
 
   await updateUser(userId, { status: 'active', expiresAt });
+  recordAuditEvent({
+    category: 'admin_actions',
+    action: 'user_reactivated',
+    userId,
+    details: { username: user.username },
+  }).catch(err => console.error('Failed to record audit event:', err));
   return { response: { success: true } };
 }
 
@@ -544,6 +606,12 @@ export async function updateUserProfile(
 
   if (Object.keys(updates).length > 0) {
     await updateUser(request.userId, updates);
+    recordAuditEvent({
+      category: 'admin_actions',
+      action: 'user_updated',
+      userId: request.userId,
+      details: { fields: Object.keys(updates).join(',') },
+    }).catch(err => console.error('Failed to record audit event:', err));
   }
   return { response: { success: true } };
 }
@@ -581,7 +649,15 @@ async function recordFailedAttempt(userId: string, username: string, currentAtte
       ? new Date(Date.now() + LIMITS.RATE_LIMIT_WINDOW_MINUTES * 60 * 1000).toISOString()
       : null;
   await updateUser(userId, { failedLoginAttempts: newCount, lockedUntil });
+  // Deprecated: kept for backward compatibility
   recordLoginEvent(randomUUID(), userId, false).catch(err => {
     console.error('Failed to record failed admin login event:', err);
   });
+  // Audit log
+  recordAuditEvent({
+    category: 'authentication',
+    action: 'login_failed',
+    userId,
+    details: { username, role: 'admin' },
+  }).catch(err => console.error('Failed to record audit event:', err));
 }

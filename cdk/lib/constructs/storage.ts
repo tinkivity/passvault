@@ -6,9 +6,12 @@ import type { EnvironmentConfig } from '@passvault/shared';
 
 export class StorageConstruct extends Construct {
   public readonly usersTable: dynamodb.Table;
+  /** @deprecated Use auditEventsTable instead. Will be removed in a future release. */
   public readonly loginEventsTable: dynamodb.Table;
   public readonly vaultsTable: dynamodb.Table;
   public readonly passkeyCredentialsTable: dynamodb.Table;
+  public readonly auditEventsTable: dynamodb.Table;
+  public readonly configTable: dynamodb.Table;
   public readonly filesBucket: s3.Bucket;
   public readonly frontendBucket: s3.Bucket;
 
@@ -38,13 +41,37 @@ export class StorageConstruct extends Construct {
       nonKeyAttributes: ['userId', 'status', 'registrationTokenExpiresAt', 'username'],
     });
 
-    // DynamoDB login events table (for admin dashboard metrics)
-    // TTL auto-expires records after 90 days to keep costs minimal.
+    // DEPRECATED: DynamoDB login events table — superseded by auditEventsTable.
+    // Kept temporarily for backward compatibility; will be removed in a future release.
     this.loginEventsTable = new dynamodb.Table(this, 'LoginEventsTable', {
       tableName: `passvault-login-events-${env}`,
       partitionKey: { name: 'eventId', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       timeToLiveAttribute: 'expiresAt',
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    // Audit events table — configurable audit log with category-based GSI
+    this.auditEventsTable = new dynamodb.Table(this, 'AuditEventsTable', {
+      tableName: `passvault-audit-${env}`,
+      partitionKey: { name: 'eventId', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      timeToLiveAttribute: 'expiresAt',
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: false },
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+    this.auditEventsTable.addGlobalSecondaryIndex({
+      indexName: 'byCategoryTimestamp',
+      partitionKey: { name: 'category', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'timestamp', type: dynamodb.AttributeType.STRING },
+    });
+
+    // Config table — stores per-environment configuration (e.g. audit config)
+    this.configTable = new dynamodb.Table(this, 'ConfigTable', {
+      tableName: `passvault-config-${env}`,
+      partitionKey: { name: 'configKey', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: false },
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 

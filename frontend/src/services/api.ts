@@ -30,6 +30,9 @@ import type {
   ListLoginEventsResponse,
   AdminStats,
   WarningCodeDefinition,
+  AuditConfig,
+  AuditEventSummary,
+  AuditCategory,
 } from '@passvault/shared';
 import { API_PATHS, POW_CONFIG } from '@passvault/shared';
 import { solveChallenge } from './pow-solver.js';
@@ -362,6 +365,39 @@ export class ApiClient {
   async getLoginEvents(token: string): Promise<ListLoginEventsResponse> {
     return this.request<ListLoginEventsResponse>(API_PATHS.ADMIN_LOGIN_EVENTS, {
       method: 'GET',
+      token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+    });
+  }
+
+  // ---- Audit -----------------------------------------------------------
+
+  async getAuditEvents(params: { category?: AuditCategory; from?: string; to?: string }, token: string): Promise<{ events: AuditEventSummary[] }> {
+    const qs = new URLSearchParams();
+    if (params.category) qs.set('category', params.category);
+    if (params.from) qs.set('from', params.from);
+    if (params.to) qs.set('to', params.to);
+    const query = qs.toString();
+    const url = query ? `${API_PATHS.ADMIN_AUDIT_EVENTS}?${query}` : API_PATHS.ADMIN_AUDIT_EVENTS;
+    return this.request<{ events: AuditEventSummary[] }>(url, {
+      method: 'GET',
+      token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+    });
+  }
+
+  async getAuditConfig(token: string): Promise<AuditConfig> {
+    return this.request<AuditConfig>(API_PATHS.ADMIN_AUDIT_CONFIG, {
+      method: 'GET',
+      token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+    });
+  }
+
+  async updateAuditConfig(config: AuditConfig, token: string): Promise<AuditConfig> {
+    return this.request<AuditConfig>(API_PATHS.ADMIN_AUDIT_CONFIG, {
+      method: 'PUT',
+      body: config,
       token,
       powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
     });

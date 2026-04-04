@@ -156,7 +156,7 @@ export function DashboardPage() {
         <MetricCard
           label="Logins (last 7 days)"
           value={statsLoading ? null : String(stats?.loginsLast7Days ?? 0)}
-          linkTo="/ui/admin/logs/logins"
+          linkTo="/ui/admin/logs/audit"
         />
       </div>
 
