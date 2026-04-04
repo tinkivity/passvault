@@ -1,6 +1,20 @@
 import { vi } from 'vitest';
 import '@testing-library/jest-dom';
-import '../i18n.js';
+import i18n from 'i18next';
+import { initReactI18next } from 'react-i18next';
+import enCommon from '../locales/en/common.json';
+import enAuth from '../locales/en/auth.json';
+import enVault from '../locales/en/vault.json';
+import enAdmin from '../locales/en/admin.json';
+
+// Initialize i18n for tests WITHOUT LanguageDetector (avoids --localstorage-file warnings in jsdom)
+void i18n.use(initReactI18next).init({
+  resources: { en: { common: enCommon, auth: enAuth, vault: enVault, admin: enAdmin } },
+  lng: 'en',
+  fallbackLng: 'en',
+  defaultNS: 'common',
+  interpolation: { escapeValue: false },
+});
 
 // Mock navigator.clipboard (not implemented in jsdom)
 Object.defineProperty(navigator, 'clipboard', {
