@@ -42,3 +42,19 @@ export interface AuditEventSummary {
   timestamp: string;
   details?: Record<string, string>;
 }
+
+export interface AuditQueryParams {
+  category?: AuditCategory;
+  from?: string;
+  to?: string;
+  action?: AuditAction;
+  userId?: string;
+  limit?: number;
+  nextToken?: string;
+  sort?: 'asc' | 'desc';
+}
+
+export interface AuditQueryResponse {
+  events: AuditEventSummary[];
+  nextToken?: string;
+}

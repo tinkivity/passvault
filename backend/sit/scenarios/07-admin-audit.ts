@@ -174,5 +174,78 @@ export function adminAuditScenarios(ctx: SitContext) {
       const actions = res.data.data.events.map(e => e.action);
       expect(actions).toContain('vault_downloaded');
     });
+
+    // ---- Server-side pagination, filtering, and sorting tests ----
+
+    it('query with limit=2 returns exactly 2 events and a nextToken', async () => {
+      const res = await request<{ success: boolean; data: { events: AuditEvent[]; nextToken?: string } }>(
+        'GET', `${API_PATHS.ADMIN_AUDIT_EVENTS}?category=vault_operations&limit=2`, {
+          token: ctx.adminToken,
+          powDifficulty: pow(HIGH),
+        },
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.data.data.events.length).toBe(2);
+      expect(res.data.data.nextToken).toBeDefined();
+    });
+
+    it('query with nextToken returns next page', async () => {
+      // First page
+      const page1 = await request<{ success: boolean; data: { events: AuditEvent[]; nextToken?: string } }>(
+        'GET', `${API_PATHS.ADMIN_AUDIT_EVENTS}?category=vault_operations&limit=2`, {
+          token: ctx.adminToken,
+          powDifficulty: pow(HIGH),
+        },
+      );
+
+      expect(page1.status).toBe(200);
+      expect(page1.data.data.nextToken).toBeDefined();
+
+      // Second page
+      const page2 = await request<{ success: boolean; data: { events: AuditEvent[]; nextToken?: string } }>(
+        'GET', `${API_PATHS.ADMIN_AUDIT_EVENTS}?category=vault_operations&limit=2&nextToken=${encodeURIComponent(page1.data.data.nextToken!)}`, {
+          token: ctx.adminToken,
+          powDifficulty: pow(HIGH),
+        },
+      );
+
+      expect(page2.status).toBe(200);
+      expect(page2.data.data.events.length).toBeGreaterThan(0);
+      // Ensure no overlap with page 1
+      const page1Ids = new Set(page1.data.data.events.map(e => e.eventId));
+      for (const ev of page2.data.data.events) {
+        expect(page1Ids.has(ev.eventId)).toBe(false);
+      }
+    });
+
+    it('query with action filter returns only matching events', async () => {
+      const res = await request<{ success: boolean; data: { events: AuditEvent[] } }>(
+        'GET', `${API_PATHS.ADMIN_AUDIT_EVENTS}?category=vault_operations&action=vault_opened`, {
+          token: ctx.adminToken,
+          powDifficulty: pow(HIGH),
+        },
+      );
+
+      expect(res.status).toBe(200);
+      for (const ev of res.data.data.events) {
+        expect(ev.action).toBe('vault_opened');
+      }
+    });
+
+    it('query with sort=asc returns events in ascending order', async () => {
+      const res = await request<{ success: boolean; data: { events: AuditEvent[] } }>(
+        'GET', `${API_PATHS.ADMIN_AUDIT_EVENTS}?category=vault_operations&sort=asc`, {
+          token: ctx.adminToken,
+          powDifficulty: pow(HIGH),
+        },
+      );
+
+      expect(res.status).toBe(200);
+      const timestamps = res.data.data.events.map(e => e.timestamp);
+      for (let i = 1; i < timestamps.length; i++) {
+        expect(timestamps[i] >= timestamps[i - 1]).toBe(true);
+      }
+    });
   });
 }

@@ -1,33 +1,26 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ColumnDef } from '@tanstack/react-table';
-import type { AuditCategory, AuditConfig, AuditEventSummary } from '@passvault/shared';
+import type { AuditCategory, AuditConfig, AuditEventSummary, AuditQueryParams } from '@passvault/shared';
 import {
   ArrowPathIcon,
   InboxIcon,
   Cog6ToothIcon,
   XMarkIcon,
-  PlusCircleIcon,
+  ChevronUpIcon,
+  ChevronDownIcon,
 } from '@heroicons/react/24/outline';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '../../../hooks/useAuth.js';
 import { api } from '../../../services/api.js';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-  CommandSeparator,
-} from '@/components/ui/command';
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { DateRangeFilter } from '../DateRangeFilter.js';
 import { DataTable } from '../DataTable.js';
 
@@ -73,104 +66,30 @@ const categoryDot: Record<AuditCategory, string> = {
   system: 'bg-purple-500',
 };
 
-// ---- Faceted filter ---------------------------------------------------------
-
-function FacetedFilter<T extends string>({
-  label,
-  ariaLabel,
-  options,
-  getLabel,
-  getDot,
-  selected,
-  onToggle,
-  onClear,
-  clearLabel = 'Clear filters',
-}: {
-  label: string;
-  ariaLabel: string;
-  options: T[];
-  getLabel: (v: T) => string;
-  getDot?: (v: T) => string;
-  selected: Set<T>;
-  onToggle: (v: T) => void;
-  onClear: () => void;
-  clearLabel?: string;
-}) {
-  return (
-    <Popover>
-      <PopoverTrigger render={
-        <Button variant="outline" size="sm" className="h-8 border-dashed" aria-label={ariaLabel} />
-      }>
-        <PlusCircleIcon className="mr-1 h-4 w-4" />
-        {label}
-        {selected.size > 0 && (
-          <>
-            <Separator orientation="vertical" className="mx-2 h-4" />
-            <Badge variant="secondary" className="rounded-sm px-1 font-normal lg:hidden">
-              {selected.size}
-            </Badge>
-            <div className="hidden space-x-1 lg:flex">
-              {selected.size > 2 ? (
-                <Badge variant="secondary" className="rounded-sm px-1 font-normal">
-                  {selected.size} selected
-                </Badge>
-              ) : (
-                Array.from(selected).map(v => (
-                  <Badge key={v} variant="secondary" className="rounded-sm px-1 font-normal">
-                    {getLabel(v)}
-                  </Badge>
-                ))
-              )}
-            </div>
-          </>
-        )}
-      </PopoverTrigger>
-      <PopoverContent className="w-[200px] p-0" align="start">
-        <Command>
-          <CommandInput placeholder={`${label}...`} />
-          <CommandList>
-            <CommandEmpty>No results.</CommandEmpty>
-            <CommandGroup>
-              {options.map(v => (
-                <CommandItem
-                  key={v}
-                  onSelect={() => onToggle(v)}
-                  data-checked={selected.has(v) ? 'true' : undefined}
-                >
-                  {getDot && (
-                    <span className={`mr-2 inline-block h-2 w-2 rounded-full shrink-0 ${getDot(v)}`} />
-                  )}
-                  {getLabel(v)}
-                </CommandItem>
-              ))}
-            </CommandGroup>
-            {selected.size > 0 && (
-              <>
-                <CommandSeparator />
-                <CommandGroup>
-                  <CommandItem
-                    onSelect={onClear}
-                    className="justify-center text-center"
-                  >
-                    {clearLabel}
-                  </CommandItem>
-                </CommandGroup>
-              </>
-            )}
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
 // ---- Column definitions -----------------------------------------------------
 
-function getAuditColumns(t: (key: string) => string): ColumnDef<AuditEventSummary>[] {
+function getAuditColumns(
+  t: (key: string) => string,
+  sortOrder: 'asc' | 'desc',
+  onToggleSort: () => void,
+): ColumnDef<AuditEventSummary>[] {
   return [
   {
     accessorKey: 'timestamp',
-    header: t('timestampUtc'),
+    header: () => (
+      <button
+        onClick={onToggleSort}
+        className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+        type="button"
+      >
+        {t('timestampUtc')}
+        {sortOrder === 'desc' ? (
+          <ChevronDownIcon className="h-3.5 w-3.5" />
+        ) : (
+          <ChevronUpIcon className="h-3.5 w-3.5" />
+        )}
+      </button>
+    ),
     cell: ({ row }) => (
       <span className="text-muted-foreground tabular-nums">
         {formatTimestamp(row.original.timestamp)}
@@ -291,22 +210,40 @@ export function AuditPage() {
   const [selectedTab, setSelectedTab] = useState<AuditCategory | 'all'>('all');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [selectedActions, setSelectedActions] = useState<Set<string>>(new Set());
-  const [selectedUsernames, setSelectedUsernames] = useState<Set<string>>(new Set());
+  const [actionFilter, setActionFilter] = useState('');
+  const [userIdFilter, setUserIdFilter] = useState('');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
+  // Pagination state
+  const [pageSize, setPageSize] = useState(50);
+  const [nextToken, setNextToken] = useState<string | undefined>();
+  const [prevTokens, setPrevTokens] = useState<Array<string | undefined>>([]);
+  const [currentToken, setCurrentToken] = useState<string | undefined>();
 
   const [showSettings, setShowSettings] = useState(false);
   const [auditConfig, setAuditConfig] = useState<AuditConfig | null>(null);
   const [configLoading, setConfigLoading] = useState(false);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const auditColumns = useMemo(() => getAuditColumns(t), [t]);
+  // Debounce timer ref
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  const loadEvents = useCallback(async () => {
+  const auditColumns = useMemo(
+    () => getAuditColumns(t, sortOrder, () => {
+      setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc');
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [t, sortOrder],
+  );
+
+  const loadEvents = useCallback(async (tokenOverride?: string | undefined) => {
     if (!token) return;
     setLoading(true);
     setError(null);
     try {
-      const params: { category?: AuditCategory; from?: string; to?: string } = {};
+      const params: AuditQueryParams = {
+        limit: pageSize,
+        sort: sortOrder,
+      };
       if (selectedTab !== 'all') params.category = selectedTab;
       if (dateFrom) params.from = new Date(dateFrom).toISOString();
       if (dateTo) {
@@ -314,15 +251,20 @@ export function AuditPage() {
         d.setDate(d.getDate() + 1);
         params.to = d.toISOString();
       }
+      if (actionFilter.trim()) params.action = actionFilter.trim() as AuditQueryParams['action'];
+      if (userIdFilter.trim()) params.userId = userIdFilter.trim();
+      if (tokenOverride) params.nextToken = tokenOverride;
+
       const result = await api.getAuditEvents(params, token);
       setEvents(result.events);
+      setNextToken(result.nextToken);
       setLoaded(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load audit events');
     } finally {
       setLoading(false);
     }
-  }, [token, selectedTab, dateFrom, dateTo]);
+  }, [token, selectedTab, dateFrom, dateTo, actionFilter, userIdFilter, pageSize, sortOrder]);
 
   const loadConfig = useCallback(async () => {
     if (!token) return;
@@ -337,18 +279,29 @@ export function AuditPage() {
     }
   }, [token]);
 
+  // Initial load
   useEffect(() => {
     if (!token || loaded) return;
     loadEvents();
     loadConfig();
   }, [token, loaded, loadEvents, loadConfig]);
 
-  // Re-fetch events when tab or date range changes
+  // Reset pagination and re-fetch when filters change
   useEffect(() => {
     if (!token || !loaded) return;
-    loadEvents();
+    // Debounce 300ms for text filter changes
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setPrevTokens([]);
+      setCurrentToken(undefined);
+      setNextToken(undefined);
+      loadEvents();
+    }, 300);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTab, dateFrom, dateTo]);
+  }, [selectedTab, dateFrom, dateTo, actionFilter, userIdFilter, pageSize, sortOrder]);
 
   const handleUpdateConfig = useCallback(async (config: AuditConfig) => {
     if (!token) return;
@@ -363,36 +316,26 @@ export function AuditPage() {
     }
   }, [token]);
 
-  function toggle<T>(set: Set<T>, setSet: (s: Set<T>) => void, value: T) {
-    const next = new Set(set);
-    if (next.has(value)) next.delete(value);
-    else next.add(value);
-    setSet(next);
+  function goNextPage() {
+    if (!nextToken) return;
+    setPrevTokens(prev => [...prev, currentToken]);
+    setCurrentToken(nextToken);
+    loadEvents(nextToken);
   }
 
-  const uniqueActions = useMemo(
-    () => [...new Set(events.map(e => e.action))].sort(),
-    [events],
-  );
+  function goPrevPage() {
+    const prev = [...prevTokens];
+    const tok = prev.pop();
+    setPrevTokens(prev);
+    setCurrentToken(tok);
+    loadEvents(tok);
+  }
 
-  const uniqueUsernames = useMemo(
-    () => [...new Set(events.map(e => e.username).filter((u): u is string => !!u))].sort(),
-    [events],
-  );
-
-  const hasFilters = selectedActions.size > 0 || selectedUsernames.size > 0;
-
-  const displayedEvents = useMemo(() => {
-    return events.filter(ev => {
-      if (selectedActions.size > 0 && !selectedActions.has(ev.action)) return false;
-      if (selectedUsernames.size > 0 && !selectedUsernames.has(ev.username ?? '')) return false;
-      return true;
-    });
-  }, [events, selectedActions, selectedUsernames]);
+  const hasFilters = actionFilter.trim() !== '' || userIdFilter.trim() !== '';
 
   function clearFilters() {
-    setSelectedActions(new Set());
-    setSelectedUsernames(new Set());
+    setActionFilter('');
+    setUserIdFilter('');
   }
 
   return (
@@ -412,7 +355,12 @@ export function AuditPage() {
           <Button
             variant="ghost"
             size="icon-sm"
-            onClick={() => { setLoaded(false); }}
+            onClick={() => {
+              setPrevTokens([]);
+              setCurrentToken(undefined);
+              setNextToken(undefined);
+              setLoaded(false);
+            }}
             disabled={loading}
             title={t('common:refresh')}
             aria-label={t('common:refresh')}
@@ -441,7 +389,7 @@ export function AuditPage() {
           {ALL_CATEGORIES.map(cat => (
             <button
               key={cat}
-              onClick={() => { setSelectedTab(cat); setLoaded(false); }}
+              onClick={() => { setSelectedTab(cat); }}
               className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
                 selectedTab === cat
                   ? 'border-primary text-primary'
@@ -455,26 +403,22 @@ export function AuditPage() {
 
         {/* Toolbar */}
         <div className="flex items-center gap-2 flex-wrap">
-          <FacetedFilter
-            label={t('action')}
-            ariaLabel={t('action')}
-            options={uniqueActions}
-            getLabel={formatAction}
-            selected={selectedActions}
-            onToggle={v => toggle(selectedActions, setSelectedActions, v)}
-            onClear={() => setSelectedActions(new Set())}
-            clearLabel={t('common:clearFilters')}
+          <input
+            type="text"
+            value={actionFilter}
+            onChange={e => setActionFilter(e.target.value)}
+            placeholder={t('filterByAction')}
+            className="input input-bordered input-sm h-8 w-40 text-sm"
+            aria-label={t('filterByAction')}
           />
 
-          <FacetedFilter
-            label={t('user')}
-            ariaLabel={t('filterByUsername')}
-            options={uniqueUsernames}
-            getLabel={v => v}
-            selected={selectedUsernames}
-            onToggle={v => toggle(selectedUsernames, setSelectedUsernames, v)}
-            onClear={() => setSelectedUsernames(new Set())}
-            clearLabel={t('common:clearFilters')}
+          <input
+            type="text"
+            value={userIdFilter}
+            onChange={e => setUserIdFilter(e.target.value)}
+            placeholder={t('filterByUserId')}
+            className="input input-bordered input-sm h-8 w-40 text-sm"
+            aria-label={t('filterByUserId')}
           />
 
           <DateRangeFilter
@@ -482,8 +426,8 @@ export function AuditPage() {
             ariaLabel={t('filterByDate')}
             from={dateFrom}
             to={dateTo}
-            onFrom={v => { setDateFrom(v); setLoaded(false); }}
-            onTo={v => { setDateTo(v); setLoaded(false); }}
+            onFrom={v => setDateFrom(v)}
+            onTo={v => setDateTo(v)}
           />
 
           {hasFilters && (
@@ -499,6 +443,14 @@ export function AuditPage() {
           )}
         </div>
 
+        {/* Loading indicator */}
+        {loading && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <ArrowPathIcon className="w-4 h-4 animate-spin" />
+            {t('loadingAuditEvents')}
+          </div>
+        )}
+
         {/* Table or empty state */}
         {!loaded && !loading ? null : loaded && events.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
@@ -509,20 +461,60 @@ export function AuditPage() {
         ) : (
           <DataTable
             columns={auditColumns}
-            data={displayedEvents}
+            data={events}
             loading={loading && !loaded}
             loadingLabel={t('loadingAuditEvents')}
             emptyMessage={hasFilters ? t('noEventsMatchCurrentFilters') : t('noAuditEventsYet')}
-            defaultSorting={[{ id: 'timestamp', desc: true }]}
+            defaultSorting={[]}
           />
         )}
 
-        {/* Footer count */}
+        {/* Pagination controls */}
         {loaded && events.length > 0 && (
-          <div className="text-sm text-muted-foreground">
-            {hasFilters
-              ? t('common:showing', { count: displayedEvents.length, total: events.length, label: events.length === 1 ? t('common:event') : t('common:events') })
-              : t('common:countLabel', { count: events.length, label: events.length === 1 ? t('common:event') : t('common:events') })}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <span>{t('pageSize')}</span>
+              <Select
+                value={String(pageSize)}
+                onValueChange={v => setPageSize(Number(v))}
+              >
+                <SelectTrigger className="h-8 w-[70px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="25">25</SelectItem>
+                  <SelectItem value="50">50</SelectItem>
+                  <SelectItem value="100">100</SelectItem>
+                  <SelectItem value="200">200</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">
+                {events.length} {events.length === 1 ? t('common:event') : t('common:events')}
+              </span>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                onClick={goPrevPage}
+                disabled={prevTokens.length === 0 || loading}
+                title={t('common:previousPage')}
+                aria-label={t('common:previousPage')}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon-sm"
+                onClick={goNextPage}
+                disabled={!nextToken || loading}
+                title={t('common:nextPage')}
+                aria-label={t('common:nextPage')}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         )}
       </div>
