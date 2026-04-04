@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Loader2, KeyRound } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth.js';
 import { Layout, ErrorMessage } from '../layout/Layout.js';
@@ -25,6 +26,7 @@ function postLoginPath(role: string, requirePasswordChange?: boolean): string {
 
 export function LoginPage() {
   const navigate = useNavigate();
+  const { t } = useTranslation('auth');
   const { login, startPasskeyLogin, completeLogin, loading, error } = useAuth();
 
   const [username, setUsername] = useState('');
@@ -57,31 +59,31 @@ export function LoginPage() {
         <Card>
           <img src={logo} alt="PassVault" className="w-full h-32 object-contain px-10 pt-6 bg-card" />
           <CardHeader className="text-center">
-            <CardTitle className="text-xl">Sign In</CardTitle>
-            <CardDescription>Enter your credentials to continue</CardDescription>
+            <CardTitle className="text-xl">{t('signIn')}</CardTitle>
+            <CardDescription>{t('enterCredentials')}</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <Button variant="outline" className="w-full" onClick={handlePasskeyClick} disabled={loading}>
               {loading ? (
-                <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Please wait…</>
+                <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('common:pleaseWait')}</>
               ) : (
-                <><KeyRound className="h-3.5 w-3.5" /> Sign in with passkey</>
+                <><KeyRound className="h-3.5 w-3.5" /> {t('signInWithPasskey')}</>
               )}
             </Button>
 
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
               <div className="flex-1 border-t border-border" />
-              or
+              {t('common:or')}
               <div className="flex-1 border-t border-border" />
             </div>
 
             <form onSubmit={handleDirectSubmit} className="flex flex-col gap-4">
               <div className="flex flex-col gap-1">
-                <Label htmlFor="username">Username</Label>
+                <Label htmlFor="username">{t('common:username')}</Label>
                 <Input id="username" type="text" autoComplete="username" value={username} onChange={e => setUsername(e.target.value)} required />
               </div>
               <div className="flex flex-col gap-1">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password">{t('common:password')}</Label>
                 <Input id="password" type="password" autoComplete="current-password" value={password} onChange={e => setPassword(e.target.value)} required />
               </div>
               {/* Honeypot — hidden from real users */}
@@ -90,7 +92,7 @@ export function LoginPage() {
               </div>
               <ErrorMessage message={error} />
               <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Please wait…</> : 'Sign in'}
+                {loading ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('common:pleaseWait')}</> : t('signInBtn')}
               </Button>
             </form>
           </CardContent>

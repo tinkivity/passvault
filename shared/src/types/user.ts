@@ -17,6 +17,8 @@ export type UserStatus =
 
 export type UserPlan = 'free' | 'pro' | 'administrator';
 
+export type PreferredLanguage = 'en' | 'de' | 'fr' | 'ru' | 'auto';
+
 export interface User {
   userId: string;
   username: string;              // valid email address
@@ -45,4 +47,5 @@ export interface User {
   emailChangeTokenExpiresAt?: string;              // ISO 8601; 24h from request
   emailChangeLockToken?: string;                   // UUID token sent to old email
   emailChangeLockTokenExpiresAt?: string;          // ISO 8601; 1h from request
+  preferredLanguage?: PreferredLanguage;
 }

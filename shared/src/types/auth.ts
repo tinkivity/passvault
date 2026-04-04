@@ -20,6 +20,7 @@ export interface LoginResponse {
   lastName?: string | null;
   displayName?: string | null;
   expiresAt?: string | null;
+  preferredLanguage?: string;
 }
 
 export interface UpdateProfileRequest {
@@ -27,6 +28,7 @@ export interface UpdateProfileRequest {
   lastName?: string | null;
   displayName?: string | null;
   email?: string;
+  preferredLanguage?: string;
 }
 
 export interface UpdateNotificationsRequest {

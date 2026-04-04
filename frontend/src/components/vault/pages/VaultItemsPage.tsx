@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Plus, TriangleAlert } from 'lucide-react';
 import type { VaultIndexEntry, VaultItemCategory } from '@passvault/shared';
 import { useAuth } from '../../../hooks/useAuth.js';
@@ -23,14 +24,14 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 
-const CATEGORY_LABELS: Record<VaultItemCategory, string> = {
-  note: 'Note',
-  login: 'Login',
-  email: 'Email',
-  credit_card: 'Credit Card',
-  identity: 'Identity',
-  wifi: 'Wi-Fi',
-  private_key: 'Private Key',
+const CATEGORY_LABEL_KEYS: Record<VaultItemCategory, string> = {
+  note: 'categoryNote',
+  login: 'categoryLogin',
+  email: 'categoryEmail',
+  credit_card: 'categoryCreditCard',
+  identity: 'categoryIdentity',
+  wifi: 'categoryWifi',
+  private_key: 'categoryPrivateKey',
 };
 
 const CATEGORY_COLORS: Record<VaultItemCategory, string> = {
@@ -46,6 +47,7 @@ const CATEGORY_COLORS: Record<VaultItemCategory, string> = {
 export function VaultItemsPage() {
   const { vaultId } = useParams<{ vaultId: string }>();
   const navigate = useNavigate();
+  const { t } = useTranslation('vault');
   const { token, status } = useAuth();
   const { catalog, vaults } = useVaultShellContext();
   const { loading, error, fetchIndex } = useVault(vaultId ?? null, token);
@@ -78,14 +80,14 @@ export function VaultItemsPage() {
         {!isExpired && (
           <Button size="sm" onClick={() => navigate(ROUTES.UI.ITEM_NEW(vaultId!), { state: { vault } })}>
             <Plus className="h-4 w-4 mr-1" />
-            New Item
+            {t('newItem')}
           </Button>
         )}
       </div>
 
       {isExpired && (
         <div className="rounded-md border border-yellow-300 bg-yellow-50 dark:bg-yellow-950 px-4 py-2 text-sm text-yellow-800 dark:text-yellow-200">
-          Your account has expired — vault is read-only.
+          {t('accountExpiredReadOnly')}
         </div>
       )}
 
@@ -97,7 +99,7 @@ export function VaultItemsPage() {
 
       <div className="flex gap-2">
         <Input
-          placeholder="Search by name..."
+          placeholder={t('searchByName')}
           value={search}
           onChange={e => setSearch(e.target.value)}
           className="max-w-xs"
@@ -106,17 +108,17 @@ export function VaultItemsPage() {
           className="rounded-md border border-input bg-background px-3 py-1 text-sm"
           value={categoryFilter}
           onChange={e => setCategoryFilter(e.target.value as VaultItemCategory | '')}
-          aria-label="Filter by category"
+          aria-label={t('filterByCategory')}
         >
-          <option value="">All categories</option>
-          {(Object.keys(CATEGORY_LABELS) as VaultItemCategory[]).map(cat => (
-            <option key={cat} value={cat}>{CATEGORY_LABELS[cat]}</option>
+          <option value="">{t('allCategories')}</option>
+          {(Object.keys(CATEGORY_LABEL_KEYS) as VaultItemCategory[]).map(cat => (
+            <option key={cat} value={cat}>{t(CATEGORY_LABEL_KEYS[cat])}</option>
           ))}
         </select>
       </div>
 
       {loading && !entries && (
-        <div className="text-sm text-muted-foreground">Loading...</div>
+        <div className="text-sm text-muted-foreground">{t('common:loading')}</div>
       )}
 
       {entries && (
@@ -125,15 +127,15 @@ export function VaultItemsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-8"></TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Category</TableHead>
+                <TableHead>{t('common:name')}</TableHead>
+                <TableHead>{t('category')}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredEntries.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
-                    {entries.length === 0 ? 'No items yet. Add your first item.' : 'No items match your filter.'}
+                    {entries.length === 0 ? t('noItemsYet') : t('noItemsMatch')}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -164,7 +166,7 @@ export function VaultItemsPage() {
                     <TableCell className="font-medium">{entry.name}</TableCell>
                     <TableCell>
                       <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${CATEGORY_COLORS[entry.category]}`}>
-                        {CATEGORY_LABELS[entry.category]}
+                        {t(CATEGORY_LABEL_KEYS[entry.category])}
                       </span>
                     </TableCell>
                   </TableRow>
