@@ -20,8 +20,7 @@ import { ShellContext } from '../../context/VaultShellContext.js';
 export type { VaultShellContext } from '../../context/VaultShellContext.js';
 export { useVaultShellContext } from '../../context/VaultShellContext.js';
 
-const VIEW_TIMEOUT = config.timeouts.view;
-const ADMIN_TIMEOUT = config.timeouts.admin;
+const SESSION_TIMEOUT = config.timeouts.session;
 
 export function VaultShell() {
   const navigate = useNavigate();
@@ -39,7 +38,7 @@ export function VaultShell() {
     navigate(ROUTES.LOGIN, { replace: true });
   }, [logout, navigate]);
 
-  const timeoutSeconds = role === 'admin' ? ADMIN_TIMEOUT : VIEW_TIMEOUT;
+  const timeoutSeconds = SESSION_TIMEOUT;
 
   const { secondsLeft } = useAutoLogout({
     timeoutSeconds,

@@ -13,8 +13,8 @@ export const devConfig: EnvironmentConfig = {
     killSwitchEnabled: false,
   },
   session: {
-    viewModeTimeoutSeconds: 300,
-    editModeTimeoutSeconds: 600,
+    sessionTimeoutSeconds: 300,
+    vaultTimeoutSeconds: 600,
     adminTokenExpiryHours: 24,
     userTokenExpiryMinutes: 30,
     otpExpiryMinutes: 60,
@@ -37,8 +37,8 @@ export const betaConfig: EnvironmentConfig = {
     killSwitchEnabled: true,
   },
   session: {
-    viewModeTimeoutSeconds: 300,
-    editModeTimeoutSeconds: 600,
+    sessionTimeoutSeconds: 300,
+    vaultTimeoutSeconds: 600,
     adminTokenExpiryHours: 24,
     userTokenExpiryMinutes: 30,
     otpExpiryMinutes: 10,
@@ -61,8 +61,8 @@ export const prodConfig: EnvironmentConfig = {
     killSwitchEnabled: true,
   },
   session: {
-    viewModeTimeoutSeconds: 60,
-    editModeTimeoutSeconds: 120,
+    sessionTimeoutSeconds: 60,
+    vaultTimeoutSeconds: 120,
     adminTokenExpiryHours: 8,
     userTokenExpiryMinutes: 5,
     otpExpiryMinutes: 120,

@@ -9,6 +9,9 @@
 # Resources cleaned up:
 #   • DynamoDB tables   passvault-users-{env}                  (removalPolicy: RETAIN)
 #                       passvault-vaults-{env}                 (removalPolicy: RETAIN)
+#                       passvault-audit-{env}                  (removalPolicy: DESTROY)
+#                       passvault-config-{env}                 (removalPolicy: DESTROY)
+#                       passvault-login-events-{env}           (removalPolicy: DESTROY)
 #   • S3 files bucket   auto-named, found via CFN stack tag    (removalPolicy: RETAIN)
 #   • CloudWatch logs   /aws/lambda/passvault-*-{env}          (DESTROY but sometimes missed)
 #   • (prod only)       /aws/lambda/passvault-kill-switch
@@ -158,6 +161,9 @@ _delete_table() {
 
 _delete_table "passvault-users-${ENV}"
 _delete_table "passvault-vaults-${ENV}"
+_delete_table "passvault-audit-${ENV}"
+_delete_table "passvault-config-${ENV}"
+_delete_table "passvault-login-events-${ENV}"
 
 # ── S3 files bucket ───────────────────────────────────────────────────────────
 section "S3 ──────────────────────────────────────────────────────────────────────"
