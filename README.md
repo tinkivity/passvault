@@ -59,6 +59,7 @@ PassVault is a privacy-focused, serverless password vault where:
 | Document | Description |
 |----------|-------------|
 | [SPECIFICATION.md](SPECIFICATION.md) | Requirements, API design, data model, security |
+| [USER-STATE-MODEL.md](USER-STATE-MODEL.md) | Account states, transitions, admin expiration rules |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | Quick start and deployment overview |
 | [TESTING.md](TESTING.md) | Test commands, pre-deployment checklist |
 | [RECOVERY.md](RECOVERY.md) | Offline vault recovery manual |
