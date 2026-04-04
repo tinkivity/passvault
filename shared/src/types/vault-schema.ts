@@ -7,7 +7,7 @@ export type VaultItemCategory =
   | 'wifi'
   | 'private_key';
 
-export type WarningCode = 'duplicate_password' | 'too_simple_password';
+export type WarningCode = 'duplicate_password' | 'too_simple_password' | 'breached_password';
 
 export interface WarningCodeDefinition {
   code: WarningCode;

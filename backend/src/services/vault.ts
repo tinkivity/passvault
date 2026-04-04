@@ -35,6 +35,12 @@ const WARNING_CODE_CATALOG: WarningCodeDefinition[] = [
     description: 'This password does not meet the minimum security requirements.',
     severity: 'warning',
   },
+  {
+    code: 'breached_password',
+    label: 'Breached Password',
+    description: 'This password has appeared in a known data breach',
+    severity: 'critical',
+  },
 ];
 
 async function ensureMigrated(userId: string, vault: { vaultId: string; userId: string; displayName: string; createdAt: string }): Promise<void> {
