@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { RefreshCw, Loader2, Eye, EyeOff } from 'lucide-react';
 import Markdown from 'react-markdown';
@@ -68,11 +69,12 @@ function DlRow({ label, children }: { label: string; children: React.ReactNode }
 }
 
 function ItemView({ item, onEdit, onDelete, isExpired }: { item: VaultItem; onEdit: () => void; onDelete: () => void; isExpired: boolean }) {
+  const { t } = useTranslation('vault');
   return (
     <div className="space-y-4">
       <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2">
         {item.category === 'note' && (
-          <DlRow label="Text">
+          <DlRow label={t('text')}>
             {item.format === 'markdown' ? (
               <div className="text-sm [&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_h1]:text-base [&_h1]:font-bold [&_h1]:mt-3 [&_h1]:mb-1 [&_h2]:text-sm [&_h2]:font-semibold [&_h2]:mt-3 [&_h2]:mb-1 [&_h3]:text-sm [&_h3]:font-medium [&_h3]:mt-2 [&_h3]:mb-1 [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-2 [&_li]:mb-0.5 [&_code]:font-mono [&_code]:text-xs [&_code]:bg-muted [&_code]:px-1 [&_code]:rounded [&_pre]:bg-muted [&_pre]:p-2 [&_pre]:rounded [&_pre]:overflow-x-auto [&_pre]:mb-2 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_blockquote]:mb-2 [&_a]:text-primary [&_a]:underline [&_hr]:border-border [&_hr]:my-2">
                 <Markdown>{item.text}</Markdown>
@@ -83,49 +85,49 @@ function ItemView({ item, onEdit, onDelete, isExpired }: { item: VaultItem; onEd
           </DlRow>
         )}
         {item.category === 'login' && (<>
-          <DlRow label="Username"><span className="font-mono">{item.username}</span></DlRow>
-          <DlRow label="Password"><SecretField value={item.password} label="Password" /></DlRow>
-          {item.url && <DlRow label="URL"><a href={item.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{item.url}</a></DlRow>}
+          <DlRow label={t('common:username')}><span className="font-mono">{item.username}</span></DlRow>
+          <DlRow label={t('common:password')}><SecretField value={item.password} label={t('common:password')} /></DlRow>
+          {item.url && <DlRow label={t('url')}><a href={item.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{item.url}</a></DlRow>}
         </>)}
         {item.category === 'email' && (<>
-          <DlRow label="Email"><span className="font-mono">{item.emailAddress}</span></DlRow>
-          <DlRow label="Password"><SecretField value={item.password} label="Password" /></DlRow>
+          <DlRow label={t('common:email')}><span className="font-mono">{item.emailAddress}</span></DlRow>
+          <DlRow label={t('common:password')}><SecretField value={item.password} label={t('common:password')} /></DlRow>
           {item.imapHost && <DlRow label="IMAP">{item.imapHost}{item.imapPort ? `:${item.imapPort}` : ''}</DlRow>}
           {item.smtpHost && <DlRow label="SMTP">{item.smtpHost}{item.smtpPort ? `:${item.smtpPort}` : ''}</DlRow>}
         </>)}
         {item.category === 'credit_card' && (<>
-          <DlRow label="Cardholder">{item.cardholderName}</DlRow>
-          <DlRow label="Card number"><SecretField value={item.cardNumber} label="Card number" /></DlRow>
-          <DlRow label="Expiry">{item.expiryMonth}/{item.expiryYear}</DlRow>
+          <DlRow label={t('cardholder')}>{item.cardholderName}</DlRow>
+          <DlRow label={t('cardNumber')}><SecretField value={item.cardNumber} label={t('cardNumber')} /></DlRow>
+          <DlRow label={t('expiry')}>{item.expiryMonth}/{item.expiryYear}</DlRow>
           <DlRow label="CVV"><SecretField value={item.cvv} label="CVV" /></DlRow>
           {item.pin && <DlRow label="PIN"><SecretField value={item.pin} label="PIN" /></DlRow>}
         </>)}
         {item.category === 'identity' && (<>
-          <DlRow label="Name">{item.firstName} {item.lastName}</DlRow>
-          {item.dateOfBirth && <DlRow label="Date of birth">{item.dateOfBirth}</DlRow>}
-          {item.nationality && <DlRow label="Nationality">{item.nationality}</DlRow>}
-          {item.passportNumber && <DlRow label="Passport"><SecretField value={item.passportNumber} label="Passport" /></DlRow>}
-          {item.idNumber && <DlRow label="ID number"><SecretField value={item.idNumber} label="ID number" /></DlRow>}
-          {item.address && <DlRow label="Address"><span className="whitespace-pre-wrap">{item.address}</span></DlRow>}
-          {item.phone && <DlRow label="Phone">{item.phone}</DlRow>}
+          <DlRow label={t('common:name')}>{item.firstName} {item.lastName}</DlRow>
+          {item.dateOfBirth && <DlRow label={t('dateOfBirth')}>{item.dateOfBirth}</DlRow>}
+          {item.nationality && <DlRow label={t('nationality')}>{item.nationality}</DlRow>}
+          {item.passportNumber && <DlRow label={t('passport')}><SecretField value={item.passportNumber} label={t('passport')} /></DlRow>}
+          {item.idNumber && <DlRow label={t('idNumber')}><SecretField value={item.idNumber} label={t('idNumber')} /></DlRow>}
+          {item.address && <DlRow label={t('address')}><span className="whitespace-pre-wrap">{item.address}</span></DlRow>}
+          {item.phone && <DlRow label={t('phone')}>{item.phone}</DlRow>}
         </>)}
         {item.category === 'wifi' && (<>
-          <DlRow label="SSID">{item.ssid}</DlRow>
-          <DlRow label="Password"><SecretField value={item.password} label="Password" /></DlRow>
-          {item.securityType && <DlRow label="Security">{item.securityType}</DlRow>}
+          <DlRow label={t('ssid')}>{item.ssid}</DlRow>
+          <DlRow label={t('common:password')}><SecretField value={item.password} label={t('common:password')} /></DlRow>
+          {item.securityType && <DlRow label={t('securityType')}>{item.securityType}</DlRow>}
         </>)}
         {item.category === 'private_key' && (<>
-          {item.keyType && <DlRow label="Key type">{item.keyType}</DlRow>}
-          <DlRow label="Private key"><SecretField value={item.privateKey} label="Private key" /></DlRow>
-          {item.publicKey && <DlRow label="Public key"><span className="font-mono text-xs break-all">{item.publicKey}</span></DlRow>}
-          {item.passphrase && <DlRow label="Passphrase"><SecretField value={item.passphrase} label="Passphrase" /></DlRow>}
+          {item.keyType && <DlRow label={t('keyType')}>{item.keyType}</DlRow>}
+          <DlRow label={t('privateKey')}><SecretField value={item.privateKey} label={t('privateKey')} /></DlRow>
+          {item.publicKey && <DlRow label={t('publicKey')}><span className="font-mono text-xs break-all">{item.publicKey}</span></DlRow>}
+          {item.passphrase && <DlRow label={t('passphrase')}><SecretField value={item.passphrase} label={t('passphrase')} /></DlRow>}
         </>)}
-        {item.comment && <DlRow label="Comment"><span className="whitespace-pre-wrap">{item.comment}</span></DlRow>}
+        {item.comment && <DlRow label={t('comment')}><span className="whitespace-pre-wrap">{item.comment}</span></DlRow>}
       </dl>
       {!isExpired && (
         <div className="flex gap-2 pt-2">
-          <Button size="sm" onClick={onEdit}>Edit</Button>
-          <Button size="sm" variant="destructive" onClick={onDelete}>Delete</Button>
+          <Button size="sm" onClick={onEdit}>{t('common:edit')}</Button>
+          <Button size="sm" variant="destructive" onClick={onDelete}>{t('common:delete')}</Button>
         </div>
       )}
     </div>
@@ -133,6 +135,7 @@ function ItemView({ item, onEdit, onDelete, isExpired }: { item: VaultItem; onEd
 }
 
 function ItemEditForm({ item, onSave, onCancel }: { item: VaultItem; onSave: (updated: VaultItem) => void; onCancel: () => void }) {
+  const { t } = useTranslation('vault');
   const [fields, setFields] = useState<Record<string, string>>(() => flattenItem(item));
   const set = (key: string) => (v: string) => setFields(f => ({ ...f, [key]: v }));
   const get = (key: string, fb = '') => fields[key] ?? fb;
@@ -145,11 +148,11 @@ function ItemEditForm({ item, onSave, onCancel }: { item: VaultItem; onSave: (up
 
   return (
     <form onSubmit={e => { e.preventDefault(); handleSave(); }} className="space-y-4">
-      <div className="space-y-1"><Label htmlFor="name">Name</Label><Input id="name" value={get('name')} onChange={e => set('name')(e.target.value)} required /></div>
+      <div className="space-y-1"><Label htmlFor="name">{t('common:name')}</Label><Input id="name" value={get('name')} onChange={e => set('name')(e.target.value)} required /></div>
       <CategoryEditFields category={item.category} get={get} set={set} />
       <div className="flex gap-2 pt-2">
-        <Button type="submit" size="sm">Save</Button>
-        <Button type="button" size="sm" variant="outline" onClick={onCancel}>Cancel</Button>
+        <Button type="submit" size="sm">{t('common:save')}</Button>
+        <Button type="button" size="sm" variant="outline" onClick={onCancel}>{t('common:cancel')}</Button>
       </div>
     </form>
   );
@@ -182,90 +185,92 @@ function buildPartial(category: VaultItemCategory, f: Record<string, string>): R
 }
 
 function CategoryEditFields({ category, get, set }: { category: VaultItemCategory; get: (k: string, d?: string) => string; set: (k: string) => (v: string) => void }) {
+  const { t } = useTranslation('vault');
   switch (category) {
     case 'note': return (
       <>
         <div className="space-y-1">
-          <Label>Format</Label>
+          <Label>{t('format')}</Label>
           <select className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={get('format', 'raw')} onChange={e => set('format')(e.target.value)}>
-            <option value="raw">Plain text</option>
-            <option value="markdown">Markdown</option>
+            <option value="raw">{t('plainText')}</option>
+            <option value="markdown">{t('markdown')}</option>
           </select>
         </div>
-        <div className="space-y-1"><Label htmlFor="text">Text</Label><Textarea id="text" value={get('text')} onChange={e => set('text')(e.target.value)} rows={8} /></div>
-        <div className="space-y-1"><Label htmlFor="comment">Comment</Label><Textarea id="comment" value={get('comment')} onChange={e => set('comment')(e.target.value)} rows={3} /></div>
+        <div className="space-y-1"><Label htmlFor="text">{t('text')}</Label><Textarea id="text" value={get('text')} onChange={e => set('text')(e.target.value)} rows={8} /></div>
+        <div className="space-y-1"><Label htmlFor="comment">{t('comment')}</Label><Textarea id="comment" value={get('comment')} onChange={e => set('comment')(e.target.value)} rows={3} /></div>
       </>
     );
     case 'login': return (
       <>
-        <div className="space-y-1"><Label htmlFor="username">Username</Label><Input id="username" value={get('username')} onChange={e => set('username')(e.target.value)} /></div>
-        <PasswordInput id="password" label="Password" value={get('password')} onChange={set('password')} />
-        <div className="space-y-1"><Label htmlFor="url">URL</Label><Input id="url" value={get('url')} onChange={e => set('url')(e.target.value)} /></div>
-        <div className="space-y-1"><Label htmlFor="comment">Comment</Label><Textarea id="comment" value={get('comment')} onChange={e => set('comment')(e.target.value)} rows={3} /></div>
+        <div className="space-y-1"><Label htmlFor="username">{t('common:username')}</Label><Input id="username" value={get('username')} onChange={e => set('username')(e.target.value)} /></div>
+        <PasswordInput id="password" label={t('common:password')} value={get('password')} onChange={set('password')} />
+        <div className="space-y-1"><Label htmlFor="url">{t('url')}</Label><Input id="url" value={get('url')} onChange={e => set('url')(e.target.value)} /></div>
+        <div className="space-y-1"><Label htmlFor="comment">{t('comment')}</Label><Textarea id="comment" value={get('comment')} onChange={e => set('comment')(e.target.value)} rows={3} /></div>
       </>
     );
     case 'email': return (
       <>
-        <div className="space-y-1"><Label htmlFor="emailAddress">Email address</Label><Input id="emailAddress" value={get('emailAddress')} onChange={e => set('emailAddress')(e.target.value)} /></div>
-        <PasswordInput id="password" label="Password" value={get('password')} onChange={set('password')} />
+        <div className="space-y-1"><Label htmlFor="emailAddress">{t('common:emailAddress')}</Label><Input id="emailAddress" value={get('emailAddress')} onChange={e => set('emailAddress')(e.target.value)} /></div>
+        <PasswordInput id="password" label={t('common:password')} value={get('password')} onChange={set('password')} />
         <div className="grid grid-cols-2 gap-2">
-          <div className="space-y-1"><Label htmlFor="imapHost">IMAP host</Label><Input id="imapHost" value={get('imapHost')} onChange={e => set('imapHost')(e.target.value)} /></div>
-          <div className="space-y-1"><Label htmlFor="imapPort">IMAP port</Label><Input id="imapPort" value={get('imapPort')} onChange={e => set('imapPort')(e.target.value)} /></div>
-          <div className="space-y-1"><Label htmlFor="smtpHost">SMTP host</Label><Input id="smtpHost" value={get('smtpHost')} onChange={e => set('smtpHost')(e.target.value)} /></div>
-          <div className="space-y-1"><Label htmlFor="smtpPort">SMTP port</Label><Input id="smtpPort" value={get('smtpPort')} onChange={e => set('smtpPort')(e.target.value)} /></div>
+          <div className="space-y-1"><Label htmlFor="imapHost">{t('imapHost')}</Label><Input id="imapHost" value={get('imapHost')} onChange={e => set('imapHost')(e.target.value)} /></div>
+          <div className="space-y-1"><Label htmlFor="imapPort">{t('imapPort')}</Label><Input id="imapPort" value={get('imapPort')} onChange={e => set('imapPort')(e.target.value)} /></div>
+          <div className="space-y-1"><Label htmlFor="smtpHost">{t('smtpHost')}</Label><Input id="smtpHost" value={get('smtpHost')} onChange={e => set('smtpHost')(e.target.value)} /></div>
+          <div className="space-y-1"><Label htmlFor="smtpPort">{t('smtpPort')}</Label><Input id="smtpPort" value={get('smtpPort')} onChange={e => set('smtpPort')(e.target.value)} /></div>
         </div>
-        <div className="space-y-1"><Label htmlFor="comment">Comment</Label><Textarea id="comment" value={get('comment')} onChange={e => set('comment')(e.target.value)} rows={3} /></div>
+        <div className="space-y-1"><Label htmlFor="comment">{t('comment')}</Label><Textarea id="comment" value={get('comment')} onChange={e => set('comment')(e.target.value)} rows={3} /></div>
       </>
     );
     case 'credit_card': return (
       <>
-        <div className="space-y-1"><Label htmlFor="cardholderName">Cardholder name</Label><Input id="cardholderName" value={get('cardholderName')} onChange={e => set('cardholderName')(e.target.value)} /></div>
-        <div className="space-y-1"><Label htmlFor="cardNumber">Card number</Label><Input id="cardNumber" value={get('cardNumber')} onChange={e => set('cardNumber')(e.target.value)} /></div>
+        <div className="space-y-1"><Label htmlFor="cardholderName">{t('cardholderName')}</Label><Input id="cardholderName" value={get('cardholderName')} onChange={e => set('cardholderName')(e.target.value)} /></div>
+        <div className="space-y-1"><Label htmlFor="cardNumber">{t('cardNumber')}</Label><Input id="cardNumber" value={get('cardNumber')} onChange={e => set('cardNumber')(e.target.value)} /></div>
         <div className="grid grid-cols-3 gap-2">
           <div className="space-y-1"><Label htmlFor="expiryMonth">MM</Label><Input id="expiryMonth" value={get('expiryMonth')} onChange={e => set('expiryMonth')(e.target.value)} maxLength={2} /></div>
           <div className="space-y-1"><Label htmlFor="expiryYear">YYYY</Label><Input id="expiryYear" value={get('expiryYear')} onChange={e => set('expiryYear')(e.target.value)} maxLength={4} /></div>
           <MaskedInput id="cvv" label="CVV" value={get('cvv')} onChange={set('cvv')} />
         </div>
         <MaskedInput id="pin" label="PIN" value={get('pin')} onChange={set('pin')} />
-        <div className="space-y-1"><Label htmlFor="comment">Comment</Label><Textarea id="comment" value={get('comment')} onChange={e => set('comment')(e.target.value)} rows={3} /></div>
+        <div className="space-y-1"><Label htmlFor="comment">{t('comment')}</Label><Textarea id="comment" value={get('comment')} onChange={e => set('comment')(e.target.value)} rows={3} /></div>
       </>
     );
     case 'identity': return (
       <>
         <div className="grid grid-cols-2 gap-2">
-          <div className="space-y-1"><Label htmlFor="firstName">First name</Label><Input id="firstName" value={get('firstName')} onChange={e => set('firstName')(e.target.value)} /></div>
-          <div className="space-y-1"><Label htmlFor="lastName">Last name</Label><Input id="lastName" value={get('lastName')} onChange={e => set('lastName')(e.target.value)} /></div>
+          <div className="space-y-1"><Label htmlFor="firstName">{t('common:firstName')}</Label><Input id="firstName" value={get('firstName')} onChange={e => set('firstName')(e.target.value)} /></div>
+          <div className="space-y-1"><Label htmlFor="lastName">{t('common:lastName')}</Label><Input id="lastName" value={get('lastName')} onChange={e => set('lastName')(e.target.value)} /></div>
         </div>
-        <div className="space-y-1"><Label htmlFor="dateOfBirth">Date of birth</Label><Input id="dateOfBirth" type="date" value={get('dateOfBirth')} onChange={e => set('dateOfBirth')(e.target.value)} /></div>
-        <div className="space-y-1"><Label htmlFor="nationality">Nationality</Label><Input id="nationality" value={get('nationality')} onChange={e => set('nationality')(e.target.value)} /></div>
-        <div className="space-y-1"><Label htmlFor="passportNumber">Passport number</Label><Input id="passportNumber" value={get('passportNumber')} onChange={e => set('passportNumber')(e.target.value)} /></div>
-        <div className="space-y-1"><Label htmlFor="idNumber">ID number</Label><Input id="idNumber" value={get('idNumber')} onChange={e => set('idNumber')(e.target.value)} /></div>
-        <div className="space-y-1"><Label htmlFor="address">Address</Label><Textarea id="address" value={get('address')} onChange={e => set('address')(e.target.value)} rows={2} /></div>
-        <div className="space-y-1"><Label htmlFor="phone">Phone</Label><Input id="phone" value={get('phone')} onChange={e => set('phone')(e.target.value)} /></div>
-        <div className="space-y-1"><Label htmlFor="comment">Comment</Label><Textarea id="comment" value={get('comment')} onChange={e => set('comment')(e.target.value)} rows={3} /></div>
+        <div className="space-y-1"><Label htmlFor="dateOfBirth">{t('dateOfBirth')}</Label><Input id="dateOfBirth" type="date" value={get('dateOfBirth')} onChange={e => set('dateOfBirth')(e.target.value)} /></div>
+        <div className="space-y-1"><Label htmlFor="nationality">{t('nationality')}</Label><Input id="nationality" value={get('nationality')} onChange={e => set('nationality')(e.target.value)} /></div>
+        <div className="space-y-1"><Label htmlFor="passportNumber">{t('passportNumber')}</Label><Input id="passportNumber" value={get('passportNumber')} onChange={e => set('passportNumber')(e.target.value)} /></div>
+        <div className="space-y-1"><Label htmlFor="idNumber">{t('idNumber')}</Label><Input id="idNumber" value={get('idNumber')} onChange={e => set('idNumber')(e.target.value)} /></div>
+        <div className="space-y-1"><Label htmlFor="address">{t('address')}</Label><Textarea id="address" value={get('address')} onChange={e => set('address')(e.target.value)} rows={2} /></div>
+        <div className="space-y-1"><Label htmlFor="phone">{t('phone')}</Label><Input id="phone" value={get('phone')} onChange={e => set('phone')(e.target.value)} /></div>
+        <div className="space-y-1"><Label htmlFor="comment">{t('comment')}</Label><Textarea id="comment" value={get('comment')} onChange={e => set('comment')(e.target.value)} rows={3} /></div>
       </>
     );
     case 'wifi': return (
       <>
-        <div className="space-y-1"><Label htmlFor="ssid">SSID</Label><Input id="ssid" value={get('ssid')} onChange={e => set('ssid')(e.target.value)} /></div>
-        <PasswordInput id="password" label="Password" value={get('password')} onChange={set('password')} />
-        <div className="space-y-1"><Label htmlFor="securityType">Security type</Label><Input id="securityType" value={get('securityType')} onChange={e => set('securityType')(e.target.value)} /></div>
-        <div className="space-y-1"><Label htmlFor="comment">Comment</Label><Textarea id="comment" value={get('comment')} onChange={e => set('comment')(e.target.value)} rows={3} /></div>
+        <div className="space-y-1"><Label htmlFor="ssid">{t('ssid')}</Label><Input id="ssid" value={get('ssid')} onChange={e => set('ssid')(e.target.value)} /></div>
+        <PasswordInput id="password" label={t('common:password')} value={get('password')} onChange={set('password')} />
+        <div className="space-y-1"><Label htmlFor="securityType">{t('securityType')}</Label><Input id="securityType" value={get('securityType')} onChange={e => set('securityType')(e.target.value)} /></div>
+        <div className="space-y-1"><Label htmlFor="comment">{t('comment')}</Label><Textarea id="comment" value={get('comment')} onChange={e => set('comment')(e.target.value)} rows={3} /></div>
       </>
     );
     case 'private_key': return (
       <>
-        <div className="space-y-1"><Label htmlFor="keyType">Key type</Label><Input id="keyType" value={get('keyType')} onChange={e => set('keyType')(e.target.value)} /></div>
-        <div className="space-y-1"><Label htmlFor="privateKey">Private key</Label><Textarea id="privateKey" value={get('privateKey')} onChange={e => set('privateKey')(e.target.value)} rows={5} className="font-mono text-xs" /></div>
-        <div className="space-y-1"><Label htmlFor="publicKey">Public key</Label><Textarea id="publicKey" value={get('publicKey')} onChange={e => set('publicKey')(e.target.value)} rows={3} className="font-mono text-xs" /></div>
-        <PasswordInput id="passphrase" label="Passphrase" value={get('passphrase')} onChange={set('passphrase')} />
-        <div className="space-y-1"><Label htmlFor="comment">Comment</Label><Textarea id="comment" value={get('comment')} onChange={e => set('comment')(e.target.value)} rows={3} /></div>
+        <div className="space-y-1"><Label htmlFor="keyType">{t('keyType')}</Label><Input id="keyType" value={get('keyType')} onChange={e => set('keyType')(e.target.value)} /></div>
+        <div className="space-y-1"><Label htmlFor="privateKey">{t('privateKey')}</Label><Textarea id="privateKey" value={get('privateKey')} onChange={e => set('privateKey')(e.target.value)} rows={5} className="font-mono text-xs" /></div>
+        <div className="space-y-1"><Label htmlFor="publicKey">{t('publicKey')}</Label><Textarea id="publicKey" value={get('publicKey')} onChange={e => set('publicKey')(e.target.value)} rows={3} className="font-mono text-xs" /></div>
+        <PasswordInput id="passphrase" label={t('passphrase')} value={get('passphrase')} onChange={set('passphrase')} />
+        <div className="space-y-1"><Label htmlFor="comment">{t('comment')}</Label><Textarea id="comment" value={get('comment')} onChange={e => set('comment')(e.target.value)} rows={3} /></div>
       </>
     );
   }
 }
 
 export function VaultItemDetailPage() {
+  const { t } = useTranslation('vault');
   const { vaultId, itemId } = useParams<{ vaultId: string; itemId: string }>();
   const navigate = useNavigate();
   const { state } = useLocation();
@@ -291,6 +296,7 @@ export function VaultItemDetailPage() {
   // Fetch the single item on mount (lazy load from items file)
   useEffect(() => {
     if (!vaultId || !itemId) return;
+    resetVaultTimeout(vaultId);
     setItemLoading(true);
     fetchItem(itemId).then(fetched => {
       setItem(fetched ?? null);
@@ -365,11 +371,11 @@ export function VaultItemDetailPage() {
     return (
       <div className="space-y-4">
         <Button variant="outline" size="sm" onClick={() => navigate(`/ui/${vaultId}/items`, { state: { vault } })}>
-          &larr; Back
+          {t('common:back')}
         </Button>
         {error && <p className="text-sm text-destructive">{error}</p>}
-        {itemLoading && <p className="text-sm text-muted-foreground">Loading...</p>}
-        {!itemLoading && <p className="text-sm text-muted-foreground">Item not found.</p>}
+        {itemLoading && <p className="text-sm text-muted-foreground">{t('common:loading')}</p>}
+        {!itemLoading && <p className="text-sm text-muted-foreground">{t('itemNotFound')}</p>}
       </div>
     );
   }
@@ -378,14 +384,14 @@ export function VaultItemDetailPage() {
     <div className="max-w-lg space-y-4">
       <div className="flex items-center gap-2">
         <Button variant="outline" size="sm" onClick={() => navigate(`/ui/${vaultId}/items`, { state: { vault } })}>
-          &larr; Back
+          {t('common:back')}
         </Button>
         <h1 className="text-xl font-semibold truncate">{item.name}</h1>
       </div>
 
       {isExpired && (
         <div className="rounded-md border border-yellow-300 bg-yellow-50 dark:bg-yellow-950 px-4 py-2 text-sm text-yellow-800 dark:text-yellow-200">
-          Your account has expired — vault is read-only.
+          {t('accountExpiredReadOnly')}
         </div>
       )}
 
@@ -408,38 +414,38 @@ export function VaultItemDetailPage() {
         )}
       </div>
 
-      {saving && <p className="text-sm text-muted-foreground">Saving...</p>}
+      {saving && <p className="text-sm text-muted-foreground">{t('common:saving')}</p>}
 
       <AlertDialog open={showDeleteDialog} onOpenChange={open => { setShowDeleteDialog(open); if (!open) { setDeletePassword(''); setDeleteError(null); } }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete &quot;{item.name}&quot;?</AlertDialogTitle>
+            <AlertDialogTitle>{t('deleteItemTitle', { name: item.name })}</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. Enter your password to confirm.
+              {t('deleteItemDescription')}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="space-y-1 px-1">
-            <Label htmlFor="delete-password">Password</Label>
+            <Label htmlFor="delete-password">{t('common:password')}</Label>
             <Input
               id="delete-password"
               type="password"
               autoComplete="current-password"
               value={deletePassword}
               onChange={e => setDeletePassword(e.target.value)}
-              placeholder="Your vault password"
+              placeholder={t('yourVaultPassword')}
             />
           </div>
           {deleteError && <p className="text-sm text-destructive px-1">{deleteError}</p>}
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => { setDeletePassword(''); setDeleteError(null); }}>
-              Cancel
+              {t('common:cancel')}
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               disabled={!deletePassword || deleteVerifying || saving}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {(deleteVerifying || saving) ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />Verifying...</> : 'Delete'}
+              {(deleteVerifying || saving) ? <><Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />{t('verifying')}</> : t('common:delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

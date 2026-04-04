@@ -9,6 +9,7 @@ import {
   useReactTable,
 } from '@tanstack/react-table';
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ArrowUpDown, ArrowUp, ArrowDown, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -52,6 +53,7 @@ export function DataTable<TData, TValue>({
   defaultSorting = [],
   onRowClick,
 }: DataTableProps<TData, TValue>) {
+  const { t } = useTranslation();
   const [sorting, setSorting] = useState<SortingState>(defaultSorting);
   const [pagination, setPagination] = useState<PaginationState>({
     pageIndex: 0,
@@ -156,7 +158,7 @@ export function DataTable<TData, TValue>({
           </span>
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <span className="text-xs">Rows per page</span>
+              <span className="text-xs">{t('rowsPerPage')}</span>
               <Select
                 value={String(pageSize)}
                 onValueChange={v => table.setPageSize(Number(v))}
@@ -174,7 +176,7 @@ export function DataTable<TData, TValue>({
               </Select>
             </div>
             <span className="text-xs">
-              Page {pageCount === 0 ? 0 : pageIndex + 1} of {pageCount}
+              {t('pageOf', { page: pageCount === 0 ? 0 : pageIndex + 1, total: pageCount })}
             </span>
             <div className="flex items-center gap-1">
               <Button

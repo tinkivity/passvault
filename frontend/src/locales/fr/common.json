@@ -97,5 +97,16 @@
   "newEmailAddress": "Nouvelle adresse e-mail",
   "sendVerification": "Envoyer la v\u00e9rification",
   "sending": "Envoi\u2026",
-  "done": "Termin\u00e9"
+  "done": "Termin\u00e9",
+  "rowsPerPage": "Lignes par page",
+  "pageOf": "Page {{page}} sur {{total}}",
+  "extend": "Prolonger",
+  "extendSession": "Prolonger la session",
+  "sessionExpiring": "Session expirante",
+  "sessionExpiringMessage": "Votre session expirera dans {{seconds}} secondes. Souhaitez-vous la prolonger ?",
+  "accountExpiredTitle": "Compte expir\u00e9",
+  "accountExpiredMessage": "Votre compte a expir\u00e9. Vous pouvez toujours consulter vos coffres mais ne pouvez pas effectuer de modifications. Veuillez contacter votre administrateur.",
+  "comment": "Commentaire",
+  "previousPage": "Page pr\u00e9c\u00e9dente",
+  "nextPage": "Page suivante"
 }

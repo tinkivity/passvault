@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { VaultDownloadResponse } from '@passvault/shared';
 import { deriveKey, decrypt, clearKey } from '../../services/crypto.js';
 import {
@@ -41,6 +42,7 @@ function isVaultDownloadResponse(data: unknown): data is VaultDownloadResponse {
 }
 
 export function ImportVaultDialog({ open, onOpenChange, onImport }: ImportVaultDialogProps) {
+  const { t } = useTranslation('vault');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState<ImportStep>('select');
   const [fileData, setFileData] = useState<VaultDownloadResponse | null>(null);
@@ -81,7 +83,7 @@ export function ImportVaultDialog({ open, onOpenChange, onImport }: ImportVaultD
       try {
         const parsed: unknown = JSON.parse(reader.result as string);
         if (!isVaultDownloadResponse(parsed)) {
-          setError('Invalid vault file format. Please select a valid PassVault export file.');
+          setError(t('invalidVaultFile'));
           return;
         }
         setFileData(parsed);
@@ -95,10 +97,10 @@ export function ImportVaultDialog({ open, onOpenChange, onImport }: ImportVaultD
           .trim();
         if (suggested) setDisplayName(suggested);
       } catch {
-        setError('Could not parse file. Please select a valid JSON file.');
+        setError(t('cannotParseFile'));
       }
     };
-    reader.onerror = () => setError('Failed to read file.');
+    reader.onerror = () => setError(t('failedToReadFile'));
     reader.readAsText(file);
   };
 
@@ -128,7 +130,7 @@ export function ImportVaultDialog({ open, onOpenChange, onImport }: ImportVaultD
         clearKey(tempVaultId);
       }
     } catch {
-      setError('Decryption failed. Check that the password is correct.');
+      setError(t('decryptionFailed'));
     } finally {
       setPreviewing(false);
     }
@@ -144,7 +146,7 @@ export function ImportVaultDialog({ open, onOpenChange, onImport }: ImportVaultD
       await onImport(displayName.trim(), fileData, password);
       handleOpenChange(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Import failed');
+      setError(err instanceof Error ? err.message : t('importFailed'));
       setStep('preview');
     } finally {
       setImporting(false);
@@ -152,29 +154,29 @@ export function ImportVaultDialog({ open, onOpenChange, onImport }: ImportVaultD
   };
 
   const categoryLabel = (cat: string) => {
-    const labels: Record<string, string> = {
-      login: 'Logins',
-      email: 'Email accounts',
-      note: 'Notes',
-      credit_card: 'Credit cards',
-      identity: 'Identities',
-      wifi: 'Wi-Fi networks',
-      private_key: 'Private keys',
+    const keys: Record<string, string> = {
+      login: 'categoryLogins',
+      email: 'categoryEmails',
+      note: 'categoryNotes',
+      credit_card: 'categoryCreditCards',
+      identity: 'categoryIdentities',
+      wifi: 'categoryWifiNetworks',
+      private_key: 'categoryPrivateKeys',
     };
-    return labels[cat] ?? cat;
+    return keys[cat] ? t(keys[cat]) : cat;
   };
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="overflow-hidden">
         <DialogHeader>
-          <DialogTitle>Import Vault</DialogTitle>
+          <DialogTitle>{t('importVaultTitle')}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-4 py-2 min-w-0">
           {/* File picker */}
           <div className="space-y-1">
-            <Label htmlFor="import-file">Vault file</Label>
+            <Label htmlFor="import-file">{t('vaultFile')}</Label>
             <div className="flex items-center gap-2 min-w-0">
               <Button
                 variant="outline"
@@ -184,10 +186,10 @@ export function ImportVaultDialog({ open, onOpenChange, onImport }: ImportVaultD
                 disabled={step === 'importing'}
               >
                 <Upload className="mr-2 h-4 w-4" />
-                Choose file
+                {t('chooseFile')}
               </Button>
               <span className="text-sm text-muted-foreground truncate min-w-0">
-                {fileName || 'No file selected'}
+                {fileName || t('noFileSelected')}
               </span>
             </div>
             <input
@@ -202,7 +204,7 @@ export function ImportVaultDialog({ open, onOpenChange, onImport }: ImportVaultD
 
           {/* Vault name */}
           <div className="space-y-1">
-            <Label htmlFor="import-name">Vault name</Label>
+            <Label htmlFor="import-name">{t('vaultName')}</Label>
             <Input
               id="import-name"
               value={displayName}
@@ -215,7 +217,7 @@ export function ImportVaultDialog({ open, onOpenChange, onImport }: ImportVaultD
 
           {/* Password */}
           <div className="space-y-1">
-            <Label htmlFor="import-password">Vault password</Label>
+            <Label htmlFor="import-password">{t('vaultPassword')}</Label>
             <Input
               id="import-password"
               type="password"
@@ -230,7 +232,7 @@ export function ImportVaultDialog({ open, onOpenChange, onImport }: ImportVaultD
               disabled={step === 'importing'}
             />
             <p className="text-xs text-muted-foreground">
-              Enter the password that was used when this vault was created.
+              {t('vaultPasswordHint')}
             </p>
           </div>
 
@@ -238,7 +240,7 @@ export function ImportVaultDialog({ open, onOpenChange, onImport }: ImportVaultD
           {preview && (
             <div className="rounded-md border border-border bg-muted/50 p-3 space-y-2">
               <p className="text-sm font-medium">
-                {preview.itemCount} {preview.itemCount === 1 ? 'item' : 'items'} found
+                {t('itemsFound', { count: preview.itemCount })}
               </p>
               <ul className="text-sm text-muted-foreground space-y-0.5">
                 {Object.entries(preview.categories)
@@ -258,21 +260,21 @@ export function ImportVaultDialog({ open, onOpenChange, onImport }: ImportVaultD
 
         <DialogFooter>
           <Button variant="outline" onClick={() => handleOpenChange(false)} disabled={importing}>
-            Cancel
+            {t('common:cancel')}
           </Button>
           {!preview ? (
             <Button
               onClick={handlePreview}
               disabled={!fileData || !password || previewing || step === 'importing'}
             >
-              {previewing ? 'Decrypting...' : 'Preview'}
+              {previewing ? t('decrypting') : t('preview')}
             </Button>
           ) : (
             <Button
               onClick={handleImport}
               disabled={importing || !displayName.trim()}
             >
-              {importing ? 'Importing...' : 'Import'}
+              {importing ? t('importing') : t('import')}
             </Button>
           )}
         </DialogFooter>

@@ -97,5 +97,16 @@
   "newEmailAddress": "Neue E-Mail-Adresse",
   "sendVerification": "Best\u00e4tigung senden",
   "sending": "Senden\u2026",
-  "done": "Fertig"
+  "done": "Fertig",
+  "rowsPerPage": "Zeilen pro Seite",
+  "pageOf": "Seite {{page}} von {{total}}",
+  "extend": "Verlängern",
+  "extendSession": "Sitzung verlängern",
+  "sessionExpiring": "Sitzung läuft ab",
+  "sessionExpiringMessage": "Ihre Sitzung läuft in {{seconds}} Sekunden ab. Möchten Sie sie verlängern?",
+  "accountExpiredTitle": "Konto abgelaufen",
+  "accountExpiredMessage": "Ihr Konto ist abgelaufen. Sie können Ihre Tresore weiterhin einsehen, aber keine Änderungen vornehmen. Bitte kontaktieren Sie Ihren Administrator zur Reaktivierung.",
+  "comment": "Kommentar",
+  "previousPage": "Vorherige Seite",
+  "nextPage": "Nächste Seite"
 }

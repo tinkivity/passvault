@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { api } from '../../services/api.js';
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import type { VaultSummary, VaultDownloadResponse } from '@passvault/shared';
@@ -32,6 +33,7 @@ export { useVaultShellContext } from '../../context/VaultShellContext.js';
 const SESSION_TIMEOUT = config.timeouts.session;
 
 export function VaultShell() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const { vaultId } = useParams<{ vaultId: string }>();
@@ -182,12 +184,12 @@ export function VaultShell() {
               <main className="flex-1 overflow-auto bg-muted p-6">
                 {!isAdminRoute && vaults.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-full text-center">
-                    <h2 className="text-lg font-semibold mb-2">No vaults yet</h2>
+                    <h2 className="text-lg font-semibold mb-2">{t('vault:noVaultsYet')}</h2>
                     <p className="text-sm text-muted-foreground mb-4">
-                      Create your first vault to start storing passwords securely.
+                      {t('vault:createFirstVault')}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Use the sidebar to create a new vault.
+                      {t('vault:useSidebarToCreate')}
                     </p>
                   </div>
                 ) : (
@@ -202,14 +204,13 @@ export function VaultShell() {
       <Dialog open={accountExpired && !expiredDismissed} onOpenChange={() => {}}>
         <DialogContent showCloseButton={false}>
           <DialogHeader>
-            <DialogTitle>Account Expired</DialogTitle>
+            <DialogTitle>{t('accountExpiredTitle')}</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground">
-            Your account has expired. You can still view your vaults but cannot make changes.
-            Please contact your administrator to reactivate your account.
+            {t('accountExpiredMessage')}
           </p>
           <DialogFooter>
-            <Button onClick={() => setExpiredDismissed(true)}>OK</Button>
+            <Button onClick={() => setExpiredDismissed(true)}>{t('ok')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -218,15 +219,14 @@ export function VaultShell() {
       <Dialog open={showExtendModal} onOpenChange={setShowExtendModal}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Session expiring</DialogTitle>
+            <DialogTitle>{t('sessionExpiring')}</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground py-2">
-            Your session will expire in {secondsLeft} second{secondsLeft !== 1 ? 's' : ''}.
-            Would you like to extend it?
+            {t('sessionExpiringMessage', { seconds: secondsLeft })}
           </p>
           <DialogFooter>
-            <Button variant="outline" onClick={handleLogout}>Log out</Button>
-            <Button onClick={handleExtendSession}>Extend session</Button>
+            <Button variant="outline" onClick={handleLogout}>{t('logOut')}</Button>
+            <Button onClick={handleExtendSession}>{t('extendSession')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

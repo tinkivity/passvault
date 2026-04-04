@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { NotificationPrefs } from '@passvault/shared';
 import { useAuth } from '../../hooks/useAuth.js';
 import { api } from '../../services/api.js';
@@ -28,6 +29,7 @@ const defaultPrefs: NotificationPrefs = {
 };
 
 export function NotificationsDialog({ open, onOpenChange }: NotificationsDialogProps) {
+  const { t } = useTranslation();
   const { token } = useAuth();
   const [prefs, setPrefs] = useState<NotificationPrefs>(defaultPrefs);
   const [loadingFetch, setLoadingFetch] = useState(false);
@@ -40,7 +42,7 @@ export function NotificationsDialog({ open, onOpenChange }: NotificationsDialogP
     setError(null);
     api.getNotificationPrefs(token)
       .then(p => setPrefs(p))
-      .catch(() => setError('Failed to load notification preferences'))
+      .catch(() => setError(t('admin:failedToLoadPrefs')))
       .finally(() => setLoadingFetch(false));
   }, [open, token]);
 
@@ -53,7 +55,7 @@ export function NotificationsDialog({ open, onOpenChange }: NotificationsDialogP
       await api.updateNotificationPrefs(prefs, token);
       onOpenChange(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save preferences');
+      setError(err instanceof Error ? err.message : t('admin:failedToSavePrefs'));
     } finally {
       setSaving(false);
     }
@@ -63,14 +65,14 @@ export function NotificationsDialog({ open, onOpenChange }: NotificationsDialogP
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Notifications</DialogTitle>
+          <DialogTitle>{t('notifications')}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSave} className="grid gap-6 pt-2">
           {/* Vault backup */}
           <div className="space-y-2">
-            <p className="text-sm font-medium">Vault backup emails</p>
+            <p className="text-sm font-medium">{t('admin:vaultBackupEmails')}</p>
             <p className="text-xs text-muted-foreground">
-              Receive your encrypted vault file by email for safekeeping.
+              {t('admin:vaultBackupEmailsDesc')}
             </p>
             <Select
               value={prefs.vaultBackup}
@@ -81,9 +83,9 @@ export function NotificationsDialog({ open, onOpenChange }: NotificationsDialogP
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">Off</SelectItem>
-                <SelectItem value="weekly">Weekly backup</SelectItem>
-                <SelectItem value="monthly">Monthly backup</SelectItem>
+                <SelectItem value="none">{t('off')}</SelectItem>
+                <SelectItem value="weekly">{t('admin:weeklyBackup')}</SelectItem>
+                <SelectItem value="monthly">{t('admin:monthlyBackup')}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -92,10 +94,10 @@ export function NotificationsDialog({ open, onOpenChange }: NotificationsDialogP
 
           <DialogFooter>
             <Button variant="outline" type="button" onClick={() => onOpenChange(false)}>
-              Cancel
+              {t('cancel')}
             </Button>
             <Button type="submit" disabled={saving || loadingFetch}>
-              {saving ? 'Saving…' : 'Save'}
+              {saving ? t('saving') : t('save')}
             </Button>
           </DialogFooter>
         </form>

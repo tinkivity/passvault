@@ -185,7 +185,9 @@ export function useAuth() {
     }
     clearKey();
     clearAuth();
-  }, [clearAuth, clearKey, token, loginEventId]);
+    localStorage.removeItem('pv_language');
+    void i18n.changeLanguage();
+  }, [clearAuth, clearKey, token, loginEventId, i18n]);
 
   return {
     token,

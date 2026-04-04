@@ -1,10 +1,16 @@
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { SunIcon, MoonIcon } from '@heroicons/react/24/outline';
+import { SunIcon, MoonIcon, GlobeAltIcon } from '@heroicons/react/24/outline';
 import { useTheme } from '../../hooks/useTheme.js';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { SidebarTrigger } from '@/components/ui/sidebar';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 interface ShellHeaderProps {
   breadcrumbs: ReactNode;
@@ -14,7 +20,19 @@ interface ShellHeaderProps {
 
 export function ShellHeader({ breadcrumbs, secondsLeft, onExtend }: ShellHeaderProps) {
   const { isDark, toggleTheme } = useTheme();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+
+  const LANGUAGES = [
+    { code: 'en', label: 'EN' },
+    { code: 'de', label: 'DE' },
+    { code: 'fr', label: 'FR' },
+    { code: 'ru', label: 'RU' },
+  ] as const;
+
+  const handleLanguageChange = (lang: string) => {
+    void i18n.changeLanguage(lang);
+    localStorage.setItem('pv_language', lang);
+  };
 
   const hours = Math.floor(secondsLeft / 3600);
   const minutes = Math.floor((secondsLeft % 3600) / 60);
@@ -44,9 +62,29 @@ export function ShellHeader({ breadcrumbs, secondsLeft, onExtend }: ShellHeaderP
             onClick={onExtend}
             className="text-xs h-7 px-2 text-destructive hover:text-destructive"
           >
-            Extend
+            {t('extend')}
           </Button>
         )}
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 hover:bg-accent hover:text-accent-foreground h-7 w-7"
+            title={t('language')}
+            aria-label={t('language')}
+          >
+            <GlobeAltIcon className="w-4 h-4" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {LANGUAGES.map(({ code, label }) => (
+              <DropdownMenuItem
+                key={code}
+                onClick={() => handleLanguageChange(code)}
+                className={i18n.language?.startsWith(code) ? 'font-semibold' : undefined}
+              >
+                {label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Button
           variant="ghost"
           size="icon-sm"

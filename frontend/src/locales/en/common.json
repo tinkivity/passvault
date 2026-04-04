@@ -97,5 +97,16 @@
   "newEmailAddress": "New email address",
   "sendVerification": "Send verification",
   "sending": "Sending\u2026",
-  "done": "Done"
+  "done": "Done",
+  "rowsPerPage": "Rows per page",
+  "pageOf": "Page {{page}} of {{total}}",
+  "extend": "Extend",
+  "extendSession": "Extend session",
+  "sessionExpiring": "Session expiring",
+  "sessionExpiringMessage": "Your session will expire in {{seconds}} seconds. Would you like to extend it?",
+  "accountExpiredTitle": "Account Expired",
+  "accountExpiredMessage": "Your account has expired. You can still view your vaults but cannot make changes. Please contact your administrator to reactivate your account.",
+  "comment": "Comment",
+  "previousPage": "Previous page",
+  "nextPage": "Next page"
 }
