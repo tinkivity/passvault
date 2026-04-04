@@ -14,12 +14,24 @@ export interface RenameVaultRequest {
 }
 
 export interface VaultGetResponse {
-  encryptedContent: string;
+  encryptedIndex: string;
+  encryptedItems: string;
+  lastModified: string;
+}
+
+export interface VaultGetIndexResponse {
+  encryptedIndex: string;
+  lastModified: string;
+}
+
+export interface VaultGetItemsResponse {
+  encryptedItems: string;
   lastModified: string;
 }
 
 export interface VaultPutRequest {
-  encryptedContent: string;
+  encryptedIndex: string;
+  encryptedItems: string;
 }
 
 export interface VaultPutResponse {
@@ -28,7 +40,8 @@ export interface VaultPutResponse {
 }
 
 export interface VaultDownloadResponse {
-  encryptedContent: string;
+  encryptedIndex: string;
+  encryptedItems: string;
   encryptionSalt: string;
   algorithm: string;
   parameters: {

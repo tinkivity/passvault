@@ -3,16 +3,13 @@ import { FILES_BUCKET } from '../config.js';
 
 const s3 = new S3Client({});
 
-// New key format: vault-{vaultId}.enc
+// Split key format: vault-{vaultId}-index.enc + vault-{vaultId}-items.enc
 // Legacy format (pre-migration): user-{userId}.enc
 
-export async function getVaultFile(vaultId: string): Promise<{ content: string; lastModified: string } | null> {
+async function getS3File(key: string): Promise<{ content: string; lastModified: string } | null> {
   try {
     const result = await s3.send(
-      new GetObjectCommand({
-        Bucket: FILES_BUCKET,
-        Key: `vault-${vaultId}.enc`,
-      }),
+      new GetObjectCommand({ Bucket: FILES_BUCKET, Key: key }),
     );
     const content = (await result.Body?.transformToString()) || '';
     const lastModified = result.LastModified?.toISOString() || new Date().toISOString();
@@ -23,41 +20,68 @@ export async function getVaultFile(vaultId: string): Promise<{ content: string; 
   }
 }
 
-export async function putVaultFile(vaultId: string, encryptedContent: string): Promise<string> {
-  const now = new Date().toISOString();
+async function putS3File(key: string, body: string): Promise<void> {
   await s3.send(
     new PutObjectCommand({
       Bucket: FILES_BUCKET,
-      Key: `vault-${vaultId}.enc`,
-      Body: encryptedContent,
+      Key: key,
+      Body: body,
       ContentType: 'application/octet-stream',
     }),
   );
-  return now;
 }
 
-export async function deleteVaultFile(vaultId: string): Promise<void> {
+async function deleteS3File(key: string): Promise<void> {
   await s3.send(
-    new DeleteObjectCommand({
-      Bucket: FILES_BUCKET,
-      Key: `vault-${vaultId}.enc`,
-    }),
+    new DeleteObjectCommand({ Bucket: FILES_BUCKET, Key: key }),
   );
 }
 
-export async function getVaultFileSize(vaultId: string): Promise<number | null> {
+async function headS3File(key: string): Promise<number | null> {
   try {
     const result = await s3.send(
-      new HeadObjectCommand({
-        Bucket: FILES_BUCKET,
-        Key: `vault-${vaultId}.enc`,
-      }),
+      new HeadObjectCommand({ Bucket: FILES_BUCKET, Key: key }),
     );
     return result.ContentLength ?? null;
   } catch (err: unknown) {
     if ((err as { name?: string }).name === 'NotFound') return null;
     throw err;
   }
+}
+
+// ── Split vault files ─────────────────────────────────────────────────────────
+
+export async function getVaultIndexFile(vaultId: string): Promise<{ content: string; lastModified: string } | null> {
+  return getS3File(`vault-${vaultId}-index.enc`);
+}
+
+export async function getVaultItemsFile(vaultId: string): Promise<{ content: string; lastModified: string } | null> {
+  return getS3File(`vault-${vaultId}-items.enc`);
+}
+
+export async function putVaultSplitFiles(vaultId: string, encryptedIndex: string, encryptedItems: string): Promise<string> {
+  const now = new Date().toISOString();
+  await Promise.all([
+    putS3File(`vault-${vaultId}-index.enc`, encryptedIndex),
+    putS3File(`vault-${vaultId}-items.enc`, encryptedItems),
+  ]);
+  return now;
+}
+
+export async function deleteVaultSplitFiles(vaultId: string): Promise<void> {
+  await Promise.all([
+    deleteS3File(`vault-${vaultId}-index.enc`),
+    deleteS3File(`vault-${vaultId}-items.enc`),
+  ]);
+}
+
+export async function getVaultFileSize(vaultId: string): Promise<number | null> {
+  const [indexSize, itemsSize] = await Promise.all([
+    headS3File(`vault-${vaultId}-index.enc`),
+    headS3File(`vault-${vaultId}-items.enc`),
+  ]);
+  if (indexSize === null && itemsSize === null) return null;
+  return (indexSize ?? 0) + (itemsSize ?? 0);
 }
 
 /** Check if the old user-{userId}.enc key exists (for migration). */

@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Plus, TriangleAlert } from 'lucide-react';
-import type { VaultFile, VaultItem, VaultItemCategory } from '@passvault/shared';
+import type { VaultIndexEntry, VaultItemCategory } from '@passvault/shared';
 import { useAuth } from '../../../hooks/useAuth.js';
 import { useVault } from '../../../hooks/useVault.js';
 import { useVaultShellContext } from '../VaultShell.js';
@@ -43,26 +43,14 @@ const CATEGORY_COLORS: Record<VaultItemCategory, string> = {
   private_key: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
 };
 
-function getDisplayField(item: VaultItem): string {
-  switch (item.category) {
-    case 'note': return '';
-    case 'login': return item.username;
-    case 'email': return item.emailAddress;
-    case 'credit_card': return '·· ' + item.cardNumber.slice(-4);
-    case 'identity': return `${item.firstName} ${item.lastName}`;
-    case 'wifi': return item.ssid;
-    case 'private_key': return item.keyType ?? '';
-  }
-}
-
 export function VaultItemsPage() {
   const { vaultId } = useParams<{ vaultId: string }>();
   const navigate = useNavigate();
   const { token, status } = useAuth();
   const { catalog, vaults } = useVaultShellContext();
-  const { loading, error, fetchAndDecrypt } = useVault(vaultId ?? null, token);
+  const { loading, error, fetchIndex } = useVault(vaultId ?? null, token);
 
-  const [vaultFile, setVaultFile] = useState<VaultFile | null>(null);
+  const [entries, setEntries] = useState<VaultIndexEntry[] | null>(null);
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<VaultItemCategory | ''>('');
 
@@ -71,17 +59,17 @@ export function VaultItemsPage() {
 
   useEffect(() => {
     if (!vaultId) return;
-    fetchAndDecrypt().then(setVaultFile).catch(() => { });
+    fetchIndex().then(setEntries).catch(() => { });
   }, [vaultId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const filteredItems = useMemo(() => {
-    if (!vaultFile) return [];
-    return vaultFile.items.filter(item => {
-      const matchesSearch = !search || item.name.toLowerCase().includes(search.toLowerCase());
-      const matchesCategory = !categoryFilter || item.category === categoryFilter;
+  const filteredEntries = useMemo(() => {
+    if (!entries) return [];
+    return entries.filter(entry => {
+      const matchesSearch = !search || entry.name.toLowerCase().includes(search.toLowerCase());
+      const matchesCategory = !categoryFilter || entry.category === categoryFilter;
       return matchesSearch && matchesCategory;
     });
-  }, [vaultFile, search, categoryFilter]);
+  }, [entries, search, categoryFilter]);
 
   return (
     <div className="space-y-4">
@@ -109,7 +97,7 @@ export function VaultItemsPage() {
 
       <div className="flex gap-2">
         <Input
-          placeholder="Search by name…"
+          placeholder="Search by name..."
           value={search}
           onChange={e => setSearch(e.target.value)}
           className="max-w-xs"
@@ -127,11 +115,11 @@ export function VaultItemsPage() {
         </select>
       </div>
 
-      {loading && !vaultFile && (
-        <div className="text-sm text-muted-foreground">Loading…</div>
+      {loading && !entries && (
+        <div className="text-sm text-muted-foreground">Loading...</div>
       )}
 
-      {vaultFile && (
+      {entries && (
         <div className="rounded-md border border-border bg-background">
           <Table>
             <TableHeader>
@@ -139,25 +127,24 @@ export function VaultItemsPage() {
                 <TableHead className="w-8"></TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Category</TableHead>
-                <TableHead>Details</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredItems.length === 0 ? (
+              {filteredEntries.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
-                    {vaultFile.items.length === 0 ? 'No items yet. Add your first item.' : 'No items match your filter.'}
+                  <TableCell colSpan={3} className="text-center text-muted-foreground py-8">
+                    {entries.length === 0 ? 'No items yet. Add your first item.' : 'No items match your filter.'}
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredItems.map(item => (
+                filteredEntries.map(entry => (
                   <TableRow
-                    key={item.id}
+                    key={entry.id}
                     className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => navigate(ROUTES.UI.ITEM(vaultId!, item.id), { state: { vault, item } })}
+                    onClick={() => navigate(ROUTES.UI.ITEM(vaultId!, entry.id), { state: { vault } })}
                   >
                     <TableCell className="w-8">
-                      {item.warningCodes.length > 0 && (
+                      {entry.warningCodes.length > 0 && (
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger>
@@ -165,7 +152,7 @@ export function VaultItemsPage() {
                             </TooltipTrigger>
                             <TooltipContent>
                               <ul className="text-xs space-y-0.5">
-                                {item.warningCodes.map(code => (
+                                {entry.warningCodes.map(code => (
                                   <li key={code}>{catalog.find(d => d.code === code)?.label ?? code}</li>
                                 ))}
                               </ul>
@@ -174,13 +161,12 @@ export function VaultItemsPage() {
                         </TooltipProvider>
                       )}
                     </TableCell>
-                    <TableCell className="font-medium">{item.name}</TableCell>
+                    <TableCell className="font-medium">{entry.name}</TableCell>
                     <TableCell>
-                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${CATEGORY_COLORS[item.category]}`}>
-                        {CATEGORY_LABELS[item.category]}
+                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${CATEGORY_COLORS[entry.category]}`}>
+                        {CATEGORY_LABELS[entry.category]}
                       </span>
                     </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">{getDisplayField(item)}</TableCell>
                   </TableRow>
                 ))
               )}

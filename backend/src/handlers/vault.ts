@@ -11,6 +11,8 @@ import {
   deleteVault,
   renameVault,
   getVault,
+  getVaultIndex,
+  getVaultItems,
   putVault,
   downloadVault,
   sendVaultEmail,
@@ -30,6 +32,8 @@ router.delete('/api/vaults/{vaultId}',        [pow(HIGH), auth()],              
 // VAULT_NOTIFICATIONS is a static path — registered before /api/vaults/{vaultId} so it takes precedence
 router.get  (API_PATHS.VAULT_NOTIFICATIONS,  [auth()],                                         handleGetNotifications);
 router.post (API_PATHS.VAULT_NOTIFICATIONS,  [auth(), validate(UpdateNotificationsSchema)],     handleUpdateNotifications);
+router.get  (API_PATHS.VAULT_INDEX,          [pow(HIGH), auth()],                               handleGetVaultIndex);
+router.get  (API_PATHS.VAULT_ITEMS,         [pow(HIGH), auth()],                               handleGetVaultItems);
 router.get  (API_PATHS.VAULT,               [pow(HIGH), auth()],                               handleGetVault);
 router.put  (API_PATHS.VAULT,               [pow(HIGH), auth(), validate(PutVaultSchema)],     handlePutVault);
 router.get  (API_PATHS.VAULT_DOWNLOAD,      [pow(HIGH), auth()],                               handleDownloadVault);
@@ -109,6 +113,32 @@ async function handleGetVault(event: APIGatewayProxyEvent, params: Record<string
   return success(result.response);
 }
 
+async function handleGetVaultIndex(event: APIGatewayProxyEvent, params: Record<string, string>): Promise<APIGatewayProxyResult> {
+  const { user, errorResponse } = await requireAuth(event);
+  if (errorResponse) return errorResponse;
+
+  if (user!.status !== 'active' && user!.status !== 'expired') {
+    return error(ERRORS.FORBIDDEN, 403);
+  }
+
+  const result = await getVaultIndex(user!.userId, params.vaultId);
+  if (result.error) return error(result.error, result.statusCode || 500);
+  return success(result.response);
+}
+
+async function handleGetVaultItems(event: APIGatewayProxyEvent, params: Record<string, string>): Promise<APIGatewayProxyResult> {
+  const { user, errorResponse } = await requireAuth(event);
+  if (errorResponse) return errorResponse;
+
+  if (user!.status !== 'active' && user!.status !== 'expired') {
+    return error(ERRORS.FORBIDDEN, 403);
+  }
+
+  const result = await getVaultItems(user!.userId, params.vaultId);
+  if (result.error) return error(result.error, result.statusCode || 500);
+  return success(result.response);
+}
+
 async function handlePutVault(event: APIGatewayProxyEvent, params: Record<string, string>): Promise<APIGatewayProxyResult> {
   const { user, errorResponse } = await requireAuth(event);
   if (errorResponse) return errorResponse;
@@ -124,7 +154,7 @@ async function handlePutVault(event: APIGatewayProxyEvent, params: Record<string
   const parsed = parseBody(event);
   if ('parseError' in parsed) return parsed.parseError;
 
-  const result = await putVault(user!.userId, params.vaultId, parsed.body as { encryptedContent: string });
+  const result = await putVault(user!.userId, params.vaultId, parsed.body as { encryptedIndex: string; encryptedItems: string });
   if (result.error) return error(result.error, result.statusCode || 500);
   return success(result.response);
 }

@@ -37,6 +37,8 @@ export const API_PATHS = {
   ADMIN_LOGIN_EVENTS: '/api/admin/login-events',
   VAULTS: '/api/vaults',
   VAULT: '/api/vaults/{vaultId}',
+  VAULT_INDEX: '/api/vaults/{vaultId}/index',
+  VAULT_ITEMS: '/api/vaults/{vaultId}/items',
   VAULT_DOWNLOAD: '/api/vaults/{vaultId}/download',
   VAULT_EMAIL: '/api/vaults/{vaultId}/email',
   VAULT_NOTIFICATIONS: '/api/vaults/notifications',

@@ -47,10 +47,11 @@ vi.mock('../utils/jwt.js', () => ({
 }));
 
 vi.mock('../utils/s3.js', () => ({
-  putVaultFile: vi.fn().mockResolvedValue('2024-01-01T00:00:00.000Z'),
-  getVaultFile: vi.fn(),
+  putVaultSplitFiles: vi.fn().mockResolvedValue('2024-01-01T00:00:00.000Z'),
+  getVaultIndexFile: vi.fn(),
+  getVaultItemsFile: vi.fn(),
   getVaultFileSize: vi.fn().mockResolvedValue(1024),
-  deleteVaultFile: vi.fn().mockResolvedValue(undefined),
+  deleteVaultSplitFiles: vi.fn().mockResolvedValue(undefined),
   deleteLegacyVaultFile: vi.fn().mockResolvedValue(undefined),
 }));
 

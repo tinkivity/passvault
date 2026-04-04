@@ -34,10 +34,10 @@ export function VaultUnlockPage() {
       await deriveKey(vaultId, password, vault.encryptionSalt);
 
       // Verify the password is correct by attempting to decrypt vault content
-      const res = await api.getVault(vaultId, token!);
-      if (res.encryptedContent) {
+      const res = await api.getVaultIndex(vaultId, token!);
+      if (res.encryptedIndex) {
         try {
-          await decrypt(vaultId, res.encryptedContent);
+          await decrypt(vaultId, res.encryptedIndex);
         } catch {
           clearKey(vaultId);
           setUnlockError('Incorrect password. Please try again.');
