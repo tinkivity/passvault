@@ -9,6 +9,5 @@ export default defineConfig({
     testTimeout: 60_000,
     hookTimeout: 30_000,
     sequence: { sequential: true },
-    reporters: [resolve(sitDir, 'lib/progress-reporter.ts')],
   },
 });
