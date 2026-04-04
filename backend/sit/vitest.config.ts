@@ -1,15 +1,24 @@
 import { defineConfig } from 'vitest/config';
-import { resolve } from 'path';
+import { resolve, basename } from 'path';
 import { BaseSequencer } from 'vitest/node';
+import { SCENARIO_ORDER } from './scenario-order.js';
 
 const sitDir = resolve(__dirname);
 
-// Ensure scenario files run in alphabetical order (01 → 02 → 03 → ...)
-class AlphabeticalSequencer extends BaseSequencer {
+/**
+ * Orders test files according to SCENARIO_ORDER config.
+ * Files not listed in the config run last (alphabetically among themselves).
+ */
+class ConfigDrivenSequencer extends BaseSequencer {
   async sort(files: Parameters<BaseSequencer['sort']>[0]) {
+    const order = new Map(SCENARIO_ORDER.map((name, i) => [name, i]));
+
     return [...files].sort((a, b) => {
-      const nameA = typeof a === 'string' ? a : a[1];
-      const nameB = typeof b === 'string' ? b : b[1];
+      const nameA = basename(typeof a === 'string' ? a : a[1]);
+      const nameB = basename(typeof b === 'string' ? b : b[1]);
+      const idxA = order.get(nameA) ?? 999;
+      const idxB = order.get(nameB) ?? 999;
+      if (idxA !== idxB) return idxA - idxB;
       return nameA.localeCompare(nameB);
     });
   }
@@ -23,7 +32,7 @@ export default defineConfig({
     fileParallelism: false,
     sequence: {
       sequential: true,
-      sequencer: AlphabeticalSequencer,
+      sequencer: ConfigDrivenSequencer,
     },
   },
 });

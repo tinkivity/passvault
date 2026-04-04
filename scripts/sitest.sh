@@ -155,9 +155,16 @@ echo "  SIT admin   : $SIT_EMAIL"
 
 # ── Create SIT admin ──────────────────────────────────────────────────────────
 SIT_OTP=$(ENVIRONMENT="$ENV" ADMIN_EMAIL="$SIT_EMAIL" DYNAMODB_TABLE="$TABLE" \
-  npx tsx "$REPO_ROOT/scripts/sit-create-admin.ts")
+  npx tsx "$REPO_ROOT/scripts/sit-create-admin.ts" 2>/dev/null)
+# Trim any whitespace/newlines that might contaminate the OTP
+SIT_OTP=$(echo -n "$SIT_OTP" | tr -d '[:space:]')
 
-echo "  SIT admin created (OTP captured)."
+if [[ -z "$SIT_OTP" ]]; then
+  echo "  ERROR: Failed to capture OTP from sit-create-admin.ts"
+  exit 1
+fi
+
+echo "  SIT admin created (OTP: ${#SIT_OTP} chars)."
 
 # ── Cleanup state ─────────────────────────────────────────────────────────────
 TEST_EXIT_CODE=0
