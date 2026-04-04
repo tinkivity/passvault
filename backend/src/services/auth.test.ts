@@ -17,6 +17,15 @@ vi.mock('../config.js', () => ({
   getJwtSecret: vi.fn().mockResolvedValue('test-secret'),
   DYNAMODB_TABLE: 'test-table',
   FILES_BUCKET: 'test-bucket',
+  LOGIN_EVENTS_TABLE: 'test-login-events',
+  VAULTS_TABLE: 'test-vaults',
+  PASSKEY_CREDENTIALS_TABLE: 'test-passkeys',
+  AUDIT_EVENTS_TABLE: 'test-audit',
+  CONFIG_TABLE: 'test-config',
+}));
+
+vi.mock('../utils/audit.js', () => ({
+  recordAuditEvent: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('../utils/dynamodb.js', () => ({
