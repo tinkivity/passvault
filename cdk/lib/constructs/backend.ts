@@ -431,6 +431,12 @@ export class BackendConstruct extends Construct {
     authLogout.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
     const authProfile = auth.addResource('profile');
     authProfile.addMethod('PATCH', new apigateway.LambdaIntegration(this.authFn));
+    const authEmailChange = auth.addResource('email-change');
+    authEmailChange.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
+    const authVerifyEmailChange = auth.addResource('verify-email-change');
+    authVerifyEmailChange.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
+    const authLockSelf = auth.addResource('lock-self');
+    authLockSelf.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
 
     // Vaults — all operations unified under /api/vaults
     const vaults = apiRoot.addResource('vaults');

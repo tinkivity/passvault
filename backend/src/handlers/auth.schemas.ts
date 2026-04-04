@@ -45,3 +45,15 @@ export const UpdateProfileSchema = z.object({
 export const LogoutSchema = z.object({
   eventId: z.string().min(1),
 });
+
+export const EmailChangeSchema = z.object({
+  newEmail: z.string().email(),
+});
+
+export const VerifyEmailChangeSchema = z.object({
+  token: z.string().uuid(),
+});
+
+export const LockSelfSchema = z.object({
+  token: z.string().uuid(),
+});

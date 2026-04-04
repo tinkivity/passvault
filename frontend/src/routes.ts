@@ -3,6 +3,8 @@ export const ROUTES = {
   ONBOARDING:      '/onboarding',
   CHANGE_PASSWORD: '/change-password',
   PASSKEY_SETUP:   '/passkey-setup',
+  VERIFY_EMAIL_CHANGE: '/verify-email-change',
+  LOCK_ACCOUNT: '/lock-account',
 
   UI: {
     ROOT:      '/ui',

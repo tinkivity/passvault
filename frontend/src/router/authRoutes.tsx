@@ -3,6 +3,8 @@ import { LoginPage } from '../pages/auth/LoginPage.js';
 import { OnboardingPage } from '../pages/auth/OnboardingPage.js';
 import { PasswordChangePage } from '../pages/auth/PasswordChangePage.js';
 import { PasskeySetupPage } from '../pages/auth/PasskeySetupPage.js';
+import { VerifyEmailChangePage } from '../pages/auth/VerifyEmailChangePage.js';
+import { LockAccountPage } from '../pages/auth/LockAccountPage.js';
 import { RequireOnboarding } from '../guards/RequireOnboarding.js';
 import { ROUTES } from '../routes.js';
 
@@ -23,4 +25,6 @@ export const authRoutes: RouteObject[] = [
     element: <RequireOnboarding step="passkey" />,
     children: [{ index: true, element: <PasskeySetupPage /> }],
   },
+  { path: ROUTES.VERIFY_EMAIL_CHANGE, element: <VerifyEmailChangePage /> },
+  { path: ROUTES.LOCK_ACCOUNT, element: <LockAccountPage /> },
 ];

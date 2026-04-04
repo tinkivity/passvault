@@ -108,21 +108,25 @@ export function VaultShell() {
     const { deriveKey: deriveCryptoKey, decrypt: decryptContent, encrypt: encryptContent, clearKey: clearCryptoKey } = await import('../../services/crypto.js');
     const tempId = `__import_${Date.now()}`;
     try {
-      // Decrypt with original salt
+      // Decrypt both files with original salt
       await deriveCryptoKey(tempId, password, fileData.encryptionSalt);
-      const plaintext = await decryptContent(tempId, fileData.encryptedContent);
+      const indexPlaintext = await decryptContent(tempId, fileData.encryptedIndex);
+      const itemsPlaintext = await decryptContent(tempId, fileData.encryptedItems);
       clearCryptoKey(tempId);
 
       // Create new vault
       const newVault = await createVault(displayName);
       setVaults(prev => [...prev, newVault]);
 
-      // Re-encrypt with the new vault's salt using the same password
+      // Re-encrypt both files with the new vault's salt
       await deriveCryptoKey(newVault.vaultId, password, newVault.encryptionSalt);
-      const encryptedContent = await encryptContent(newVault.vaultId, plaintext);
+      const [encryptedIndex, encryptedItems] = await Promise.all([
+        encryptContent(newVault.vaultId, indexPlaintext),
+        encryptContent(newVault.vaultId, itemsPlaintext),
+      ]);
 
       // Save the data
-      await api.putVault(newVault.vaultId, { encryptedContent }, token!);
+      await api.putVault(newVault.vaultId, { encryptedIndex, encryptedItems }, token!);
 
       // Key is already derived for the new vault — navigate directly to items
       navigate(ROUTES.UI.ITEMS(newVault.vaultId));

@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import type { VaultDownloadResponse, VaultFile } from '@passvault/shared';
+import type { VaultDownloadResponse } from '@passvault/shared';
 import {
   Dialog,
   DialogContent,
@@ -29,7 +29,8 @@ function isVaultDownloadResponse(data: unknown): data is VaultDownloadResponse {
   if (typeof data !== 'object' || data === null) return false;
   const obj = data as Record<string, unknown>;
   return (
-    typeof obj.encryptedContent === 'string' &&
+    typeof obj.encryptedIndex === 'string' &&
+    typeof obj.encryptedItems === 'string' &&
     typeof obj.encryptionSalt === 'string' &&
     typeof obj.algorithm === 'string' &&
     typeof obj.lastModified === 'string' &&
@@ -111,15 +112,16 @@ export function ImportVaultDialog({ open, onOpenChange, onImport }: ImportVaultD
       const tempVaultId = `__import_preview_${Date.now()}`;
       try {
         await deriveKey(tempVaultId, password, fileData.encryptionSalt);
-        const plaintext = await decrypt(tempVaultId, fileData.encryptedContent);
-        const vaultFile: VaultFile = JSON.parse(plaintext);
+        const indexPlaintext = await decrypt(tempVaultId, fileData.encryptedIndex);
+        const indexFile = JSON.parse(indexPlaintext);
 
+        const entries = indexFile.entries ?? indexFile.items ?? [];
         const categories: Record<string, number> = {};
-        for (const item of vaultFile.items) {
-          categories[item.category] = (categories[item.category] ?? 0) + 1;
+        for (const entry of entries) {
+          categories[entry.category] = (categories[entry.category] ?? 0) + 1;
         }
 
-        setPreview({ itemCount: vaultFile.items.length, categories });
+        setPreview({ itemCount: entries.length, categories });
         setStep('preview');
       } finally {
         clearKey(tempVaultId);

@@ -40,4 +40,9 @@ export interface User {
   expiresAt?: string | null;            // ISO 8601 date; null = lifetime/perpetual
   notificationPrefs?: NotificationPrefs | null;
   lastBackupSentAt?: string | null;     // ISO 8601; updated after each vault backup send
+  pendingEmail?: string;                           // new email awaiting verification
+  emailChangeToken?: string;                       // UUID token sent to new email
+  emailChangeTokenExpiresAt?: string;              // ISO 8601; 24h from request
+  emailChangeLockToken?: string;                   // UUID token sent to old email
+  emailChangeLockTokenExpiresAt?: string;          // ISO 8601; 1h from request
 }
