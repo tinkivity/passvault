@@ -21,6 +21,7 @@ import {
 import { getVaultIndexFile, getVaultItemsFile, putVaultSplitFiles, deleteVaultSplitFiles, getLegacyVaultFile, migrateLegacyVaultFile } from '../utils/s3.js';
 import { getUserById, createVaultRecord, getVaultRecord, listVaultsByUser, deleteVaultRecord, updateVaultDisplayName } from '../utils/dynamodb.js';
 import { sendEmailWithAttachment } from '../utils/ses.js';
+import { recordAuditEvent } from '../utils/audit.js';
 
 // Hardcoded warning code catalog — returned by GET /api/config/warning-codes.
 // Stored in DynamoDB only if extended; for now served statically.
@@ -89,6 +90,14 @@ export async function createVault(
     createdAt: new Date().toISOString(),
     encryptionSalt,
   };
+
+  recordAuditEvent({
+    category: 'vault_operations',
+    action: 'vault_created',
+    userId,
+    details: { vaultId, displayName: request.displayName },
+  }).catch(err => console.error('Failed to record audit event:', err));
+
   return { response: vault };
 }
 
@@ -108,6 +117,14 @@ export async function deleteVault(
 
   await deleteVaultSplitFiles(vaultId);
   await deleteVaultRecord(vaultId);
+
+  recordAuditEvent({
+    category: 'vault_operations',
+    action: 'vault_deleted',
+    userId,
+    details: { vaultId },
+  }).catch(err => console.error('Failed to record audit event:', err));
+
   return { response: { success: true } };
 }
 
@@ -293,6 +310,14 @@ export async function renameVault(
     return { error: ERRORS.VAULT_NOT_FOUND, statusCode: 404 };
   }
   await updateVaultDisplayName(vaultId, displayName.trim());
+
+  recordAuditEvent({
+    category: 'vault_operations',
+    action: 'vault_renamed',
+    userId,
+    details: { vaultId, displayName: displayName.trim() },
+  }).catch(err => console.error('Failed to record audit event:', err));
+
   return { response: { ...vault, displayName: displayName.trim() } };
 }
 

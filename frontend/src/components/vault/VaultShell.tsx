@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../services/api.js';
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import type { VaultSummary, VaultDownloadResponse } from '@passvault/shared';
@@ -37,7 +37,7 @@ export function VaultShell() {
   const { token, role, plan, accountExpired, logout } = useAuth();
   const [expiredDismissed, setExpiredDismissed] = useState(false);
   const { deriveKey } = useEncryptionContext();
-  const { fetchVaults, createVault } = useVaults(token);
+  const { fetchVaults, createVault, deleteVault } = useVaults(token);
   const { catalog, fetchCatalog } = useWarningCatalog();
 
   const [vaults, setVaults] = useState<VaultSummary[]>([]);
@@ -136,8 +136,22 @@ export function VaultShell() {
     }
   }, [createVault, token, navigate]);
 
+  // Vault timeout reset mechanism: bump a counter per vault to signal VaultTimeoutRing
+  const vaultResetCountersRef = useRef(new Map<string, number>());
+  const [vaultResetCounters, setVaultResetCounters] = useState(new Map<string, number>());
+
+  const resetVaultTimeout = useCallback((vid: string) => {
+    vaultResetCountersRef.current.set(vid, (vaultResetCountersRef.current.get(vid) ?? 0) + 1);
+    setVaultResetCounters(new Map(vaultResetCountersRef.current));
+  }, []);
+
+  const handleDeleteVault = useCallback(async (vaultId: string) => {
+    await deleteVault(vaultId);
+    setVaults(prev => prev.filter(v => v.vaultId !== vaultId));
+  }, [deleteVault]);
+
   const isAdminRoute = pathname.startsWith(ROUTES.UI.ADMIN.ROOT);
-  const shellContext = { vaults, catalog, refreshVaults };
+  const shellContext = { vaults, catalog, refreshVaults, resetVaultTimeout };
 
   return (
     <ShellContext.Provider value={shellContext}>
@@ -155,6 +169,8 @@ export function VaultShell() {
               onDownloadVault={handleDownloadVault}
               onEmailVault={handleEmailVault}
               onImportVault={handleImportVault}
+              onDeleteVault={handleDeleteVault}
+              vaultResetCounters={vaultResetCounters}
             />
             <SidebarInset className="flex flex-col overflow-hidden">
               <ShellHeader

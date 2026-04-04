@@ -5,6 +5,7 @@ export interface VaultShellContext {
   vaults: VaultSummary[];
   catalog: WarningCodeDefinition[];
   refreshVaults: () => Promise<void>;
+  resetVaultTimeout: (vaultId: string) => void;
 }
 
 export const ShellContext = createContext<VaultShellContext | null>(null);

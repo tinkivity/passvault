@@ -58,8 +58,9 @@ async function handleListUsers(): Promise<APIGatewayProxyResult> {
   return success(result);
 }
 
-async function handleDeleteUser(_event: APIGatewayProxyEvent, params: Record<string, string>): Promise<APIGatewayProxyResult> {
-  const result = await deleteNewUser(params.userId);
+async function handleDeleteUser(event: APIGatewayProxyEvent, params: Record<string, string>): Promise<APIGatewayProxyResult> {
+  const { user: admin } = await requireAdminActive(event);
+  const result = await deleteNewUser(params.userId, admin!.userId);
   if (result.error) {
     return error(result.error, result.statusCode || 400);
   }

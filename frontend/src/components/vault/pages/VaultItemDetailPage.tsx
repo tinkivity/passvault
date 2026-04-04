@@ -271,7 +271,7 @@ export function VaultItemDetailPage() {
   const { state } = useLocation();
   const vault = (state as { vault?: VaultSummary } | null)?.vault;
   const { token, status } = useAuth();
-  const { vaults } = useVaultShellContext();
+  const { vaults, resetVaultTimeout } = useVaultShellContext();
   const vaultSalt = vaults.find(v => v.vaultId === vaultId)?.encryptionSalt ?? null;
   const { fetchItem, fetchAllItems, updateItem, deleteItem, rawEncryptedItems } = useVault(vaultId ?? null, token);
 
@@ -317,6 +317,7 @@ export function VaultItemDetailPage() {
       setAllItems(newItems);
       setItem(newItems.find(i => i.id === updated.id) ?? null);
       setEditing(false);
+      if (vaultId) resetVaultTimeout(vaultId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save');
     } finally {
@@ -349,6 +350,7 @@ export function VaultItemDetailPage() {
       const items = await ensureAllItems();
       const newItems = await deleteItem(items, item.id);
       setAllItems(newItems);
+      if (vaultId) resetVaultTimeout(vaultId);
       navigate(ROUTES.UI.ITEMS(vaultId!), { state: { vault } });
     } catch (err) {
       setDeleteError(err instanceof Error ? err.message : 'Failed to delete');

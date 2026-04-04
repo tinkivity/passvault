@@ -3,6 +3,7 @@ import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import { RefreshCw, Eye, EyeOff } from 'lucide-react';
 import type { VaultItem, VaultItemCategory, VaultSummary } from '@passvault/shared';
 import { useAuth } from '../../../hooks/useAuth.js';
+import { useVaultShellContext } from '../VaultShell.js';
 import { useVault } from '../../../hooks/useVault.js';
 import { generateSecurePassword } from '../../../lib/password-gen.js';
 import { Button } from '@/components/ui/button';
@@ -64,6 +65,7 @@ export function VaultItemNewPage() {
   const { state } = useLocation();
   const vault = (state as { vault?: VaultSummary } | null)?.vault;
   const { token } = useAuth();
+  const { resetVaultTimeout } = useVaultShellContext();
   const { fetchAllItems, addItem } = useVault(vaultId ?? null, token);
 
   const [category, setCategory] = useState<VaultItemCategory>('login');
@@ -84,6 +86,7 @@ export function VaultItemNewPage() {
       const items = await fetchAllItems();
       const partial = buildPartial(category, fields);
       await addItem(items, { name: get('name'), category, ...partial } as Omit<VaultItem, 'id' | 'createdAt' | 'updatedAt' | 'warningCodes'>);
+      if (vaultId) resetVaultTimeout(vaultId);
       navigate(ROUTES.UI.ITEMS(vaultId!), { state: { vault } });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save');
