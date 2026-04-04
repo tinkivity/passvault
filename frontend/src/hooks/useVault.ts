@@ -4,17 +4,30 @@ import type { VaultFile, VaultItem, WarningCode } from '@passvault/shared';
 import { validatePassword } from '@passvault/shared';
 import { api } from '../services/api.js';
 import { useEncryptionContext } from '../context/EncryptionContext.js';
+import { checkBreachedPasswords } from '../services/hibp.js';
 
 // ---- Warning computation -----------------------------------------------
 
-export function computeWarnings(items: VaultItem[]): VaultItem[] {
-  // Collect all passwords from login / email / wifi items
+/** Extract the checkable password from a vault item (if any). */
+function getCheckablePassword(item: VaultItem): string | undefined {
+  switch (item.category) {
+    case 'login':
+    case 'email':
+    case 'wifi':
+      return item.password;
+    case 'private_key':
+      // Check passphrase only — privateKey must NOT be sent to HIBP
+      return item.passphrase || undefined;
+    default:
+      return undefined;
+  }
+}
+
+export async function computeWarnings(items: VaultItem[]): Promise<VaultItem[]> {
+  // Collect all passwords from login / email / wifi / private_key(passphrase) items
   const passwordMap = new Map<string, string[]>(); // password → [itemId, ...]
   for (const item of items) {
-    let pw: string | undefined;
-    if (item.category === 'login') pw = item.password;
-    else if (item.category === 'email') pw = item.password;
-    else if (item.category === 'wifi') pw = item.password;
+    const pw = getCheckablePassword(item);
     if (pw) {
       const ids = passwordMap.get(pw) ?? [];
       ids.push(item.id);
@@ -26,6 +39,10 @@ export function computeWarnings(items: VaultItem[]): VaultItem[] {
   for (const ids of passwordMap.values()) {
     if (ids.length > 1) ids.forEach(id => duplicates.add(id));
   }
+
+  // HIBP breach check (k-Anonymity — only 5-char SHA-1 prefix leaves the client)
+  const allPasswords = [...passwordMap.keys()];
+  const breachedMap = await checkBreachedPasswords(allPasswords);
 
   return items.map(item => {
     const codes: WarningCode[] = [];
@@ -41,6 +58,12 @@ export function computeWarnings(items: VaultItem[]): VaultItem[] {
       if (pw && !validatePassword(pw).valid) {
         codes.push('too_simple_password');
       }
+    }
+
+    // breached_password
+    const pw = getCheckablePassword(item);
+    if (pw && breachedMap.get(pw)) {
+      codes.push('breached_password');
     }
 
     return { ...item, warningCodes: codes };
@@ -102,7 +125,7 @@ export function useVault(vaultId: string | null, token: string | null) {
       const vaultFile = migrateToVaultFile(plaintext);
 
       // Recompute warnings on load in case any items are missing them
-      const withWarnings = { ...vaultFile, items: computeWarnings(vaultFile.items) };
+      const withWarnings = { ...vaultFile, items: await computeWarnings(vaultFile.items) };
 
       // Re-save silently if warnings changed
       const warningsChanged = withWarnings.items.some((item, i) =>
@@ -129,7 +152,7 @@ export function useVault(vaultId: string | null, token: string | null) {
     setLoading(true);
     setError(null);
     try {
-      const withWarnings: VaultFile = { ...vaultFile, items: computeWarnings(vaultFile.items) };
+      const withWarnings: VaultFile = { ...vaultFile, items: await computeWarnings(vaultFile.items) };
       const encryptedContent = await encrypt(vaultId, JSON.stringify(withWarnings));
       const res = await api.putVault(vaultId, { encryptedContent }, token);
       setLastModified(res.lastModified);
