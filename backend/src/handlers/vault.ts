@@ -166,7 +166,7 @@ async function handleGetNotifications(event: APIGatewayProxyEvent): Promise<APIG
   const fullUser = await getUserById(user!.userId);
   if (!fullUser) return error(ERRORS.NOT_FOUND, 404);
 
-  const notificationPrefs = fullUser.notificationPrefs ?? { failedLoginDigest: 'none', vaultBackup: 'none' };
+  const notificationPrefs = fullUser.notificationPrefs ?? { vaultBackup: 'none' };
   return success({ notificationPrefs });
 }
 

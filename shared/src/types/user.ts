@@ -1,10 +1,8 @@
 export type UserRole = 'admin' | 'user';
 
-export type DigestFrequency = 'daily' | 'weekly' | 'monthly';
-export type VaultBackupFrequency = 'on_save' | 'daily' | 'weekly' | 'monthly';
+export type VaultBackupFrequency = 'weekly' | 'monthly';
 
 export interface NotificationPrefs {
-  failedLoginDigest: DigestFrequency | 'none';
   vaultBackup: VaultBackupFrequency | 'none';
 }
 
@@ -41,6 +39,5 @@ export interface User {
   displayName?: string | null;
   expiresAt?: string | null;            // ISO 8601 date; null = lifetime/perpetual
   notificationPrefs?: NotificationPrefs | null;
-  lastDigestSentAt?: string | null;     // ISO 8601; updated after each digest send
   lastBackupSentAt?: string | null;     // ISO 8601; updated after each vault backup send
 }

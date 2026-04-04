@@ -135,14 +135,6 @@ export async function putVault(
 
   const lastModified = await putVaultFile(vaultId, request.encryptedContent);
 
-  // Fire-and-forget vault backup email if user has on_save preference
-  const user = await getUserById(userId);
-  if (user?.notificationPrefs?.vaultBackup === 'on_save') {
-    sendVaultEmail(userId, vaultId).catch(err => {
-      console.error('Failed to send on_save vault backup email:', err);
-    });
-  }
-
   return {
     response: {
       success: true,
