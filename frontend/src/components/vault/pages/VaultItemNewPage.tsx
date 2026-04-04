@@ -131,13 +131,13 @@ export function VaultItemNewPage() {
 
 function buildPartial(category: VaultItemCategory, f: Record<string, string>): Record<string, unknown> {
   switch (category) {
-    case 'note': return { format: f.format || 'raw', text: f.text || '' };
-    case 'login': return { username: f.username || '', password: f.password || '', url: f.url || undefined, totp: f.totp || undefined, notes: f.notes || undefined };
-    case 'email': return { emailAddress: f.emailAddress || '', password: f.password || '', imapHost: f.imapHost || undefined, imapPort: f.imapPort || undefined, smtpHost: f.smtpHost || undefined, smtpPort: f.smtpPort || undefined, notes: f.notes || undefined };
-    case 'credit_card': return { cardholderName: f.cardholderName || '', cardNumber: f.cardNumber || '', expiryMonth: f.expiryMonth || '', expiryYear: f.expiryYear || '', cvv: f.cvv || '', pin: f.pin || undefined, notes: f.notes || undefined };
-    case 'identity': return { firstName: f.firstName || '', lastName: f.lastName || '', dateOfBirth: f.dateOfBirth || undefined, nationality: f.nationality || undefined, passportNumber: f.passportNumber || undefined, idNumber: f.idNumber || undefined, address: f.address || undefined, phone: f.phone || undefined, notes: f.notes || undefined };
-    case 'wifi': return { ssid: f.ssid || '', password: f.password || '', securityType: f.securityType || undefined, notes: f.notes || undefined };
-    case 'private_key': return { privateKey: f.privateKey || '', publicKey: f.publicKey || undefined, passphrase: f.passphrase || undefined, keyType: f.keyType || undefined, notes: f.notes || undefined };
+    case 'note': return { format: f.format || 'raw', text: f.text || '', comment: f.comment || undefined };
+    case 'login': return { username: f.username || '', password: f.password || '', url: f.url || undefined, totp: f.totp || undefined, comment: f.comment || undefined };
+    case 'email': return { emailAddress: f.emailAddress || '', password: f.password || '', imapHost: f.imapHost || undefined, imapPort: f.imapPort || undefined, smtpHost: f.smtpHost || undefined, smtpPort: f.smtpPort || undefined, comment: f.comment || undefined };
+    case 'credit_card': return { cardholderName: f.cardholderName || '', cardNumber: f.cardNumber || '', expiryMonth: f.expiryMonth || '', expiryYear: f.expiryYear || '', cvv: f.cvv || '', pin: f.pin || undefined, comment: f.comment || undefined };
+    case 'identity': return { firstName: f.firstName || '', lastName: f.lastName || '', dateOfBirth: f.dateOfBirth || undefined, nationality: f.nationality || undefined, passportNumber: f.passportNumber || undefined, idNumber: f.idNumber || undefined, address: f.address || undefined, phone: f.phone || undefined, comment: f.comment || undefined };
+    case 'wifi': return { ssid: f.ssid || '', password: f.password || '', securityType: f.securityType || undefined, comment: f.comment || undefined };
+    case 'private_key': return { privateKey: f.privateKey || '', publicKey: f.publicKey || undefined, passphrase: f.passphrase || undefined, keyType: f.keyType || undefined, comment: f.comment || undefined };
   }
 }
 
@@ -161,6 +161,7 @@ function CategoryFields({ category, get, set }: {
             <Label htmlFor="text">Text</Label>
             <Textarea id="text" value={get('text')} onChange={e => set('text')(e.target.value)} rows={6} />
           </div>
+          <div className="space-y-1"><Label htmlFor="comment">Comment</Label><Textarea id="comment" value={get('comment')} onChange={e => set('comment')(e.target.value)} rows={3} /></div>
         </>
       );
     case 'login':
@@ -169,7 +170,7 @@ function CategoryFields({ category, get, set }: {
           <div className="space-y-1"><Label htmlFor="username">Username</Label><Input id="username" value={get('username')} onChange={e => set('username')(e.target.value)} /></div>
           <PasswordInput id="password" label="Password" value={get('password')} onChange={set('password')} />
           <div className="space-y-1"><Label htmlFor="url">URL</Label><Input id="url" type="url" value={get('url')} onChange={e => set('url')(e.target.value)} placeholder="https://…" /></div>
-          <div className="space-y-1"><Label htmlFor="notes">Notes</Label><Textarea id="notes" value={get('notes')} onChange={e => set('notes')(e.target.value)} rows={3} /></div>
+          <div className="space-y-1"><Label htmlFor="comment">Comment</Label><Textarea id="comment" value={get('comment')} onChange={e => set('comment')(e.target.value)} rows={3} /></div>
         </>
       );
     case 'email':
@@ -183,7 +184,7 @@ function CategoryFields({ category, get, set }: {
             <div className="space-y-1"><Label htmlFor="smtpHost">SMTP host</Label><Input id="smtpHost" value={get('smtpHost')} onChange={e => set('smtpHost')(e.target.value)} /></div>
             <div className="space-y-1"><Label htmlFor="smtpPort">SMTP port</Label><Input id="smtpPort" value={get('smtpPort')} onChange={e => set('smtpPort')(e.target.value)} /></div>
           </div>
-          <div className="space-y-1"><Label htmlFor="notes">Notes</Label><Textarea id="notes" value={get('notes')} onChange={e => set('notes')(e.target.value)} rows={3} /></div>
+          <div className="space-y-1"><Label htmlFor="comment">Comment</Label><Textarea id="comment" value={get('comment')} onChange={e => set('comment')(e.target.value)} rows={3} /></div>
         </>
       );
     case 'credit_card':
@@ -197,6 +198,7 @@ function CategoryFields({ category, get, set }: {
             <MaskedInput id="cvv" label="CVV" value={get('cvv')} onChange={set('cvv')} />
           </div>
           <MaskedInput id="pin" label="PIN" value={get('pin')} onChange={set('pin')} />
+          <div className="space-y-1"><Label htmlFor="comment">Comment</Label><Textarea id="comment" value={get('comment')} onChange={e => set('comment')(e.target.value)} rows={3} /></div>
         </>
       );
     case 'identity':
@@ -212,6 +214,7 @@ function CategoryFields({ category, get, set }: {
           <div className="space-y-1"><Label htmlFor="idNumber">ID number</Label><Input id="idNumber" value={get('idNumber')} onChange={e => set('idNumber')(e.target.value)} /></div>
           <div className="space-y-1"><Label htmlFor="address">Address</Label><Textarea id="address" value={get('address')} onChange={e => set('address')(e.target.value)} rows={2} /></div>
           <div className="space-y-1"><Label htmlFor="phone">Phone</Label><Input id="phone" type="tel" value={get('phone')} onChange={e => set('phone')(e.target.value)} /></div>
+          <div className="space-y-1"><Label htmlFor="comment">Comment</Label><Textarea id="comment" value={get('comment')} onChange={e => set('comment')(e.target.value)} rows={3} /></div>
         </>
       );
     case 'wifi':
@@ -220,6 +223,7 @@ function CategoryFields({ category, get, set }: {
           <div className="space-y-1"><Label htmlFor="ssid">SSID</Label><Input id="ssid" value={get('ssid')} onChange={e => set('ssid')(e.target.value)} /></div>
           <PasswordInput id="password" label="Password" value={get('password')} onChange={set('password')} />
           <div className="space-y-1"><Label htmlFor="securityType">Security type</Label><Input id="securityType" value={get('securityType')} onChange={e => set('securityType')(e.target.value)} placeholder="WPA2, WPA3…" /></div>
+          <div className="space-y-1"><Label htmlFor="comment">Comment</Label><Textarea id="comment" value={get('comment')} onChange={e => set('comment')(e.target.value)} rows={3} /></div>
         </>
       );
     case 'private_key':
@@ -229,6 +233,7 @@ function CategoryFields({ category, get, set }: {
           <div className="space-y-1"><Label htmlFor="privateKey">Private key</Label><Textarea id="privateKey" value={get('privateKey')} onChange={e => set('privateKey')(e.target.value)} rows={5} className="font-mono text-xs" /></div>
           <div className="space-y-1"><Label htmlFor="publicKey">Public key</Label><Textarea id="publicKey" value={get('publicKey')} onChange={e => set('publicKey')(e.target.value)} rows={3} className="font-mono text-xs" /></div>
           <PasswordInput id="passphrase" label="Passphrase" value={get('passphrase')} onChange={set('passphrase')} />
+          <div className="space-y-1"><Label htmlFor="comment">Comment</Label><Textarea id="comment" value={get('comment')} onChange={e => set('comment')(e.target.value)} rows={3} /></div>
         </>
       );
   }

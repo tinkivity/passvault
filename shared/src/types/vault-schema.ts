@@ -23,6 +23,7 @@ interface VaultItemBase {
   createdAt: string;     // ISO 8601
   updatedAt: string;     // ISO 8601
   warningCodes: WarningCode[];  // stored inside encrypted vault — backend never sees this
+  comment?: string;
 }
 
 export interface NoteItem extends VaultItemBase {
@@ -37,7 +38,6 @@ export interface LoginItem extends VaultItemBase {
   password: string;
   url?: string;
   totp?: string;
-  notes?: string;
 }
 
 export interface EmailItem extends VaultItemBase {
@@ -48,7 +48,6 @@ export interface EmailItem extends VaultItemBase {
   imapPort?: string;
   smtpHost?: string;
   smtpPort?: string;
-  notes?: string;
 }
 
 export interface CreditCardItem extends VaultItemBase {
@@ -59,7 +58,6 @@ export interface CreditCardItem extends VaultItemBase {
   expiryYear: string;   // YYYY
   cvv: string;
   pin?: string;
-  notes?: string;
 }
 
 export interface IdentityItem extends VaultItemBase {
@@ -72,7 +70,6 @@ export interface IdentityItem extends VaultItemBase {
   idNumber?: string;
   address?: string;
   phone?: string;
-  notes?: string;
 }
 
 export interface WifiItem extends VaultItemBase {
@@ -80,7 +77,6 @@ export interface WifiItem extends VaultItemBase {
   ssid: string;
   password: string;
   securityType?: string;
-  notes?: string;
 }
 
 export interface PrivateKeyItem extends VaultItemBase {
@@ -89,7 +85,6 @@ export interface PrivateKeyItem extends VaultItemBase {
   publicKey?: string;
   passphrase?: string;
   keyType?: string;
-  notes?: string;
 }
 
 export type VaultItem =

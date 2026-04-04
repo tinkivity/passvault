@@ -86,14 +86,12 @@ function ItemView({ item, onEdit, onDelete, isExpired }: { item: VaultItem; onEd
           <DlRow label="Username"><span className="font-mono">{item.username}</span></DlRow>
           <DlRow label="Password"><SecretField value={item.password} label="Password" /></DlRow>
           {item.url && <DlRow label="URL"><a href={item.url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">{item.url}</a></DlRow>}
-          {item.notes && <DlRow label="Notes"><span className="whitespace-pre-wrap">{item.notes}</span></DlRow>}
         </>)}
         {item.category === 'email' && (<>
           <DlRow label="Email"><span className="font-mono">{item.emailAddress}</span></DlRow>
           <DlRow label="Password"><SecretField value={item.password} label="Password" /></DlRow>
           {item.imapHost && <DlRow label="IMAP">{item.imapHost}{item.imapPort ? `:${item.imapPort}` : ''}</DlRow>}
           {item.smtpHost && <DlRow label="SMTP">{item.smtpHost}{item.smtpPort ? `:${item.smtpPort}` : ''}</DlRow>}
-          {item.notes && <DlRow label="Notes"><span className="whitespace-pre-wrap">{item.notes}</span></DlRow>}
         </>)}
         {item.category === 'credit_card' && (<>
           <DlRow label="Cardholder">{item.cardholderName}</DlRow>
@@ -101,7 +99,6 @@ function ItemView({ item, onEdit, onDelete, isExpired }: { item: VaultItem; onEd
           <DlRow label="Expiry">{item.expiryMonth}/{item.expiryYear}</DlRow>
           <DlRow label="CVV"><SecretField value={item.cvv} label="CVV" /></DlRow>
           {item.pin && <DlRow label="PIN"><SecretField value={item.pin} label="PIN" /></DlRow>}
-          {item.notes && <DlRow label="Notes"><span className="whitespace-pre-wrap">{item.notes}</span></DlRow>}
         </>)}
         {item.category === 'identity' && (<>
           <DlRow label="Name">{item.firstName} {item.lastName}</DlRow>
@@ -116,7 +113,6 @@ function ItemView({ item, onEdit, onDelete, isExpired }: { item: VaultItem; onEd
           <DlRow label="SSID">{item.ssid}</DlRow>
           <DlRow label="Password"><SecretField value={item.password} label="Password" /></DlRow>
           {item.securityType && <DlRow label="Security">{item.securityType}</DlRow>}
-          {item.notes && <DlRow label="Notes"><span className="whitespace-pre-wrap">{item.notes}</span></DlRow>}
         </>)}
         {item.category === 'private_key' && (<>
           {item.keyType && <DlRow label="Key type">{item.keyType}</DlRow>}
@@ -124,6 +120,7 @@ function ItemView({ item, onEdit, onDelete, isExpired }: { item: VaultItem; onEd
           {item.publicKey && <DlRow label="Public key"><span className="font-mono text-xs break-all">{item.publicKey}</span></DlRow>}
           {item.passphrase && <DlRow label="Passphrase"><SecretField value={item.passphrase} label="Passphrase" /></DlRow>}
         </>)}
+        {item.comment && <DlRow label="Comment"><span className="whitespace-pre-wrap">{item.comment}</span></DlRow>}
       </dl>
       {!isExpired && (
         <div className="flex gap-2 pt-2">
@@ -161,26 +158,26 @@ function ItemEditForm({ item, onSave, onCancel }: { item: VaultItem; onSave: (up
 function flattenItem(item: VaultItem): Record<string, string> {
   const base: Record<string, string> = { name: item.name };
   switch (item.category) {
-    case 'note': return { ...base, format: item.format, text: item.text };
-    case 'login': return { ...base, username: item.username, password: item.password, url: item.url ?? '', totp: item.totp ?? '', notes: item.notes ?? '' };
-    case 'email': return { ...base, emailAddress: item.emailAddress, password: item.password, imapHost: item.imapHost ?? '', imapPort: item.imapPort ?? '', smtpHost: item.smtpHost ?? '', smtpPort: item.smtpPort ?? '', notes: item.notes ?? '' };
-    case 'credit_card': return { ...base, cardholderName: item.cardholderName, cardNumber: item.cardNumber, expiryMonth: item.expiryMonth, expiryYear: item.expiryYear, cvv: item.cvv, pin: item.pin ?? '', notes: item.notes ?? '' };
-    case 'identity': return { ...base, firstName: item.firstName, lastName: item.lastName, dateOfBirth: item.dateOfBirth ?? '', nationality: item.nationality ?? '', passportNumber: item.passportNumber ?? '', idNumber: item.idNumber ?? '', address: item.address ?? '', phone: item.phone ?? '', notes: item.notes ?? '' };
-    case 'wifi': return { ...base, ssid: item.ssid, password: item.password, securityType: item.securityType ?? '', notes: item.notes ?? '' };
-    case 'private_key': return { ...base, privateKey: item.privateKey, publicKey: item.publicKey ?? '', passphrase: item.passphrase ?? '', keyType: item.keyType ?? '', notes: item.notes ?? '' };
+    case 'note': return { ...base, format: item.format, text: item.text, comment: item.comment ?? '' };
+    case 'login': return { ...base, username: item.username, password: item.password, url: item.url ?? '', totp: item.totp ?? '', comment: item.comment ?? '' };
+    case 'email': return { ...base, emailAddress: item.emailAddress, password: item.password, imapHost: item.imapHost ?? '', imapPort: item.imapPort ?? '', smtpHost: item.smtpHost ?? '', smtpPort: item.smtpPort ?? '', comment: item.comment ?? '' };
+    case 'credit_card': return { ...base, cardholderName: item.cardholderName, cardNumber: item.cardNumber, expiryMonth: item.expiryMonth, expiryYear: item.expiryYear, cvv: item.cvv, pin: item.pin ?? '', comment: item.comment ?? '' };
+    case 'identity': return { ...base, firstName: item.firstName, lastName: item.lastName, dateOfBirth: item.dateOfBirth ?? '', nationality: item.nationality ?? '', passportNumber: item.passportNumber ?? '', idNumber: item.idNumber ?? '', address: item.address ?? '', phone: item.phone ?? '', comment: item.comment ?? '' };
+    case 'wifi': return { ...base, ssid: item.ssid, password: item.password, securityType: item.securityType ?? '', comment: item.comment ?? '' };
+    case 'private_key': return { ...base, privateKey: item.privateKey, publicKey: item.publicKey ?? '', passphrase: item.passphrase ?? '', keyType: item.keyType ?? '', comment: item.comment ?? '' };
   }
 }
 
 function buildPartial(category: VaultItemCategory, f: Record<string, string>): Record<string, unknown> {
   const opt = (v: string) => v.trim() || undefined;
   switch (category) {
-    case 'note': return { format: f.format || 'raw', text: f.text || '' };
-    case 'login': return { username: f.username, password: f.password, url: opt(f.url), totp: opt(f.totp), notes: opt(f.notes) };
-    case 'email': return { emailAddress: f.emailAddress, password: f.password, imapHost: opt(f.imapHost), imapPort: opt(f.imapPort), smtpHost: opt(f.smtpHost), smtpPort: opt(f.smtpPort), notes: opt(f.notes) };
-    case 'credit_card': return { cardholderName: f.cardholderName, cardNumber: f.cardNumber, expiryMonth: f.expiryMonth, expiryYear: f.expiryYear, cvv: f.cvv, pin: opt(f.pin), notes: opt(f.notes) };
-    case 'identity': return { firstName: f.firstName, lastName: f.lastName, dateOfBirth: opt(f.dateOfBirth), nationality: opt(f.nationality), passportNumber: opt(f.passportNumber), idNumber: opt(f.idNumber), address: opt(f.address), phone: opt(f.phone), notes: opt(f.notes) };
-    case 'wifi': return { ssid: f.ssid, password: f.password, securityType: opt(f.securityType), notes: opt(f.notes) };
-    case 'private_key': return { privateKey: f.privateKey, publicKey: opt(f.publicKey), passphrase: opt(f.passphrase), keyType: opt(f.keyType), notes: opt(f.notes) };
+    case 'note': return { format: f.format || 'raw', text: f.text || '', comment: opt(f.comment) };
+    case 'login': return { username: f.username, password: f.password, url: opt(f.url), totp: opt(f.totp), comment: opt(f.comment) };
+    case 'email': return { emailAddress: f.emailAddress, password: f.password, imapHost: opt(f.imapHost), imapPort: opt(f.imapPort), smtpHost: opt(f.smtpHost), smtpPort: opt(f.smtpPort), comment: opt(f.comment) };
+    case 'credit_card': return { cardholderName: f.cardholderName, cardNumber: f.cardNumber, expiryMonth: f.expiryMonth, expiryYear: f.expiryYear, cvv: f.cvv, pin: opt(f.pin), comment: opt(f.comment) };
+    case 'identity': return { firstName: f.firstName, lastName: f.lastName, dateOfBirth: opt(f.dateOfBirth), nationality: opt(f.nationality), passportNumber: opt(f.passportNumber), idNumber: opt(f.idNumber), address: opt(f.address), phone: opt(f.phone), comment: opt(f.comment) };
+    case 'wifi': return { ssid: f.ssid, password: f.password, securityType: opt(f.securityType), comment: opt(f.comment) };
+    case 'private_key': return { privateKey: f.privateKey, publicKey: opt(f.publicKey), passphrase: opt(f.passphrase), keyType: opt(f.keyType), comment: opt(f.comment) };
   }
 }
 
@@ -196,6 +193,7 @@ function CategoryEditFields({ category, get, set }: { category: VaultItemCategor
           </select>
         </div>
         <div className="space-y-1"><Label htmlFor="text">Text</Label><Textarea id="text" value={get('text')} onChange={e => set('text')(e.target.value)} rows={8} /></div>
+        <div className="space-y-1"><Label htmlFor="comment">Comment</Label><Textarea id="comment" value={get('comment')} onChange={e => set('comment')(e.target.value)} rows={3} /></div>
       </>
     );
     case 'login': return (
@@ -203,7 +201,7 @@ function CategoryEditFields({ category, get, set }: { category: VaultItemCategor
         <div className="space-y-1"><Label htmlFor="username">Username</Label><Input id="username" value={get('username')} onChange={e => set('username')(e.target.value)} /></div>
         <PasswordInput id="password" label="Password" value={get('password')} onChange={set('password')} />
         <div className="space-y-1"><Label htmlFor="url">URL</Label><Input id="url" value={get('url')} onChange={e => set('url')(e.target.value)} /></div>
-        <div className="space-y-1"><Label htmlFor="notes">Notes</Label><Textarea id="notes" value={get('notes')} onChange={e => set('notes')(e.target.value)} rows={3} /></div>
+        <div className="space-y-1"><Label htmlFor="comment">Comment</Label><Textarea id="comment" value={get('comment')} onChange={e => set('comment')(e.target.value)} rows={3} /></div>
       </>
     );
     case 'email': return (
@@ -216,7 +214,7 @@ function CategoryEditFields({ category, get, set }: { category: VaultItemCategor
           <div className="space-y-1"><Label htmlFor="smtpHost">SMTP host</Label><Input id="smtpHost" value={get('smtpHost')} onChange={e => set('smtpHost')(e.target.value)} /></div>
           <div className="space-y-1"><Label htmlFor="smtpPort">SMTP port</Label><Input id="smtpPort" value={get('smtpPort')} onChange={e => set('smtpPort')(e.target.value)} /></div>
         </div>
-        <div className="space-y-1"><Label htmlFor="notes">Notes</Label><Textarea id="notes" value={get('notes')} onChange={e => set('notes')(e.target.value)} rows={3} /></div>
+        <div className="space-y-1"><Label htmlFor="comment">Comment</Label><Textarea id="comment" value={get('comment')} onChange={e => set('comment')(e.target.value)} rows={3} /></div>
       </>
     );
     case 'credit_card': return (
@@ -229,6 +227,7 @@ function CategoryEditFields({ category, get, set }: { category: VaultItemCategor
           <MaskedInput id="cvv" label="CVV" value={get('cvv')} onChange={set('cvv')} />
         </div>
         <MaskedInput id="pin" label="PIN" value={get('pin')} onChange={set('pin')} />
+        <div className="space-y-1"><Label htmlFor="comment">Comment</Label><Textarea id="comment" value={get('comment')} onChange={e => set('comment')(e.target.value)} rows={3} /></div>
       </>
     );
     case 'identity': return (
@@ -243,6 +242,7 @@ function CategoryEditFields({ category, get, set }: { category: VaultItemCategor
         <div className="space-y-1"><Label htmlFor="idNumber">ID number</Label><Input id="idNumber" value={get('idNumber')} onChange={e => set('idNumber')(e.target.value)} /></div>
         <div className="space-y-1"><Label htmlFor="address">Address</Label><Textarea id="address" value={get('address')} onChange={e => set('address')(e.target.value)} rows={2} /></div>
         <div className="space-y-1"><Label htmlFor="phone">Phone</Label><Input id="phone" value={get('phone')} onChange={e => set('phone')(e.target.value)} /></div>
+        <div className="space-y-1"><Label htmlFor="comment">Comment</Label><Textarea id="comment" value={get('comment')} onChange={e => set('comment')(e.target.value)} rows={3} /></div>
       </>
     );
     case 'wifi': return (
@@ -250,6 +250,7 @@ function CategoryEditFields({ category, get, set }: { category: VaultItemCategor
         <div className="space-y-1"><Label htmlFor="ssid">SSID</Label><Input id="ssid" value={get('ssid')} onChange={e => set('ssid')(e.target.value)} /></div>
         <PasswordInput id="password" label="Password" value={get('password')} onChange={set('password')} />
         <div className="space-y-1"><Label htmlFor="securityType">Security type</Label><Input id="securityType" value={get('securityType')} onChange={e => set('securityType')(e.target.value)} /></div>
+        <div className="space-y-1"><Label htmlFor="comment">Comment</Label><Textarea id="comment" value={get('comment')} onChange={e => set('comment')(e.target.value)} rows={3} /></div>
       </>
     );
     case 'private_key': return (
@@ -258,6 +259,7 @@ function CategoryEditFields({ category, get, set }: { category: VaultItemCategor
         <div className="space-y-1"><Label htmlFor="privateKey">Private key</Label><Textarea id="privateKey" value={get('privateKey')} onChange={e => set('privateKey')(e.target.value)} rows={5} className="font-mono text-xs" /></div>
         <div className="space-y-1"><Label htmlFor="publicKey">Public key</Label><Textarea id="publicKey" value={get('publicKey')} onChange={e => set('publicKey')(e.target.value)} rows={3} className="font-mono text-xs" /></div>
         <PasswordInput id="passphrase" label="Passphrase" value={get('passphrase')} onChange={set('passphrase')} />
+        <div className="space-y-1"><Label htmlFor="comment">Comment</Label><Textarea id="comment" value={get('comment')} onChange={e => set('comment')(e.target.value)} rows={3} /></div>
       </>
     );
   }
