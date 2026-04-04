@@ -15,7 +15,6 @@ export const PutVaultSchema = z.object({
 
 export const UpdateNotificationsSchema = z.object({
   notificationPrefs: z.object({
-    failedLoginDigest: z.enum(['none', 'daily', 'weekly', 'monthly']),
-    vaultBackup: z.enum(['none', 'on_save', 'daily', 'weekly', 'monthly']),
+    vaultBackup: z.enum(['none', 'weekly', 'monthly']),
   }),
 });

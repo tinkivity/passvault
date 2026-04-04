@@ -24,7 +24,6 @@ interface NotificationsDialogProps {
 }
 
 const defaultPrefs: NotificationPrefs = {
-  failedLoginDigest: 'none',
   vaultBackup: 'none',
 };
 
@@ -67,29 +66,6 @@ export function NotificationsDialog({ open, onOpenChange }: NotificationsDialogP
           <DialogTitle>Notifications</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSave} className="grid gap-6 pt-2">
-          {/* Failed login alerts */}
-          <div className="space-y-2">
-            <p className="text-sm font-medium">Failed login alerts</p>
-            <p className="text-xs text-muted-foreground">
-              Receive an email digest when failed login attempts are detected on your account.
-            </p>
-            <Select
-              value={prefs.failedLoginDigest}
-              onValueChange={v => setPrefs(p => ({ ...p, failedLoginDigest: v as NotificationPrefs['failedLoginDigest'] }))}
-              disabled={loadingFetch}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Off</SelectItem>
-                <SelectItem value="daily">Daily digest</SelectItem>
-                <SelectItem value="weekly">Weekly digest</SelectItem>
-                <SelectItem value="monthly">Monthly digest</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
           {/* Vault backup */}
           <div className="space-y-2">
             <p className="text-sm font-medium">Vault backup emails</p>
@@ -106,8 +82,6 @@ export function NotificationsDialog({ open, onOpenChange }: NotificationsDialogP
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">Off</SelectItem>
-                <SelectItem value="on_save">After each save</SelectItem>
-                <SelectItem value="daily">Daily backup</SelectItem>
                 <SelectItem value="weekly">Weekly backup</SelectItem>
                 <SelectItem value="monthly">Monthly backup</SelectItem>
               </SelectContent>
