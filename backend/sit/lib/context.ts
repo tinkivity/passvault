@@ -1,7 +1,9 @@
-import { readFileSync, writeFileSync } from 'fs';
-
-// Use a fixed path (not os.tmpdir() which varies across platforms)
-const CTX_FILE = '/tmp/passvault-sit-context.json';
+/**
+ * Shared in-memory context for SIT scenarios.
+ *
+ * All scenarios run in a single test file, so this object is shared
+ * by reference — no file I/O or IPC needed.
+ */
 
 export interface SitContext {
   baseUrl: string;
@@ -30,52 +32,31 @@ export interface SitContext {
   createdVaultIds: string[];
 }
 
-const defaults: SitContext = {
-  baseUrl: process.env.SIT_BASE_URL ?? '',
-  env: process.env.SIT_ENV ?? 'dev',
-  adminEmail: process.env.SIT_ADMIN_EMAIL ?? '',
-  adminOtp: process.env.SIT_ADMIN_OTP ?? '',
-  adminPassword: '',
-  adminToken: '',
-  adminUserId: '',
+export function createContext(): SitContext {
+  return {
+    baseUrl: process.env.SIT_BASE_URL ?? '',
+    env: process.env.SIT_ENV ?? 'dev',
+    adminEmail: process.env.SIT_ADMIN_EMAIL ?? '',
+    adminOtp: process.env.SIT_ADMIN_OTP ?? '',
+    adminPassword: '',
+    adminToken: '',
+    adminUserId: '',
 
-  proUserEmail: '',
-  proUserOtp: '',
-  proUserId: '',
-  proUserPassword: '',
-  proUserToken: '',
+    proUserEmail: '',
+    proUserOtp: '',
+    proUserId: '',
+    proUserPassword: '',
+    proUserToken: '',
 
-  freeUserEmail: '',
-  freeUserOtp: '',
-  freeUserId: '',
+    freeUserEmail: '',
+    freeUserOtp: '',
+    freeUserId: '',
 
-  vaultId: '',
-  vaultSalt: '',
-  secondVaultId: '',
+    vaultId: '',
+    vaultSalt: '',
+    secondVaultId: '',
 
-  createdUserIds: [],
-  createdVaultIds: [],
-};
-
-/** Load context from temp file, falling back to env-based defaults. */
-export function load(): SitContext {
-  try {
-    const raw = readFileSync(CTX_FILE, 'utf-8');
-    return { ...defaults, ...JSON.parse(raw) };
-  } catch {
-    return { ...defaults };
-  }
+    createdUserIds: [],
+    createdVaultIds: [],
+  };
 }
-
-/** Save context to temp file so subsequent test files can read it. */
-export function save(ctx: SitContext): void {
-  writeFileSync(CTX_FILE, JSON.stringify(ctx, null, 2));
-}
-
-/** Reset context file (call from sitest.sh before test run). */
-export function reset(): void {
-  save(defaults);
-}
-
-// For backward compat: export a mutable ctx that starts from file or defaults
-export const ctx = load();

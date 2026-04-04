@@ -21,9 +21,17 @@ The shell script:
 
 All requests go through `sit/lib/client.ts` which enforces a minimum interval between requests derived from the environment's `throttle.rateLimit` config (default: 100ms + 50ms buffer per request). On HTTP 429, the client retries once after a 2s backoff.
 
+## Architecture
+
+All scenarios run in a **single test file** (`scenarios/sit.test.ts`). Each scenario is a plain function that receives a shared `SitContext` object by reference — no file I/O or IPC. The call order in `sit.test.ts` defines the execution order.
+
+To add a new scenario:
+1. Create `scenarios/XX-name.ts` exporting a function `nameScenarios(ctx: SitContext)`.
+2. Import it in `sit.test.ts` and call it after the scenario it depends on.
+
 ## Data flow between scenarios
 
-Scenarios run **sequentially** and share state via `sit/lib/context.ts`:
+Scenarios run **sequentially** and share state via the in-memory `SitContext` object:
 
 ```
 01 Admin Auth  -->  adminToken, adminPassword
@@ -39,7 +47,7 @@ Scenarios run **sequentially** and share state via `sit/lib/context.ts`:
 
 ### Administrator
 
-#### 01 — Authentication (`01-admin-auth.test.ts`)
+#### 01 — Authentication (`01-admin-auth.ts`)
 
 | # | Name | Endpoint | Method | Expected |
 |---|------|----------|--------|----------|
@@ -49,7 +57,7 @@ Scenarios run **sequentially** and share state via `sit/lib/context.ts`:
 | 4 | Wrong password rejected | `/api/admin/login` | POST | 401 |
 | 5 | Health check | `/api/health` | GET | 200, status=ok |
 
-#### 02 — User Management (`02-admin-user-mgmt.test.ts`)
+#### 02 — User Management (`02-admin-user-mgmt.ts`)
 
 | # | Name | Endpoint | Method | Expected |
 |---|------|----------|--------|----------|
@@ -63,7 +71,7 @@ Scenarios run **sequentially** and share state via `sit/lib/context.ts`:
 | 8 | Create admin user | `/api/admin/users` | POST | 201, plan=administrator |
 | 9 | Self-expire blocked | `/api/admin/users/{id}/expire` | POST | 403 |
 
-#### 07 — Audit (`07-admin-audit.test.ts`)
+#### 07 — Audit (`07-admin-audit.ts`)
 
 | # | Name | Endpoint | Method | Expected |
 |---|------|----------|--------|----------|
@@ -74,7 +82,7 @@ Scenarios run **sequentially** and share state via `sit/lib/context.ts`:
 
 ### Regular User
 
-#### 03 — Onboarding (`03-user-onboarding.test.ts`)
+#### 03 — Onboarding (`03-user-onboarding.ts`)
 
 | # | Name | Endpoint | Method | Expected |
 |---|------|----------|--------|----------|
@@ -83,7 +91,7 @@ Scenarios run **sequentially** and share state via `sit/lib/context.ts`:
 | 3 | Login with new password | `/api/auth/login` | POST | 200, active |
 | 4 | Update profile | `/api/auth/profile` | PATCH | 200 |
 
-#### 04 — Vault Lifecycle (`04-vault-lifecycle.test.ts`)
+#### 04 — Vault Lifecycle (`04-vault-lifecycle.ts`)
 
 | # | Name | Endpoint | Method | Expected |
 |---|------|----------|--------|----------|
@@ -96,7 +104,7 @@ Scenarios run **sequentially** and share state via `sit/lib/context.ts`:
 | 7 | Cannot delete last | `/api/vaults/{id}` | DELETE | 400 |
 | 8 | Download vault | `/api/vaults/{id}/download` | GET | 200, encryption params |
 
-#### 05 — Vault Items (`05-vault-items.test.ts`)
+#### 05 — Vault Items (`05-vault-items.ts`)
 
 | # | Name | Endpoint | Method | Expected |
 |---|------|----------|--------|----------|
@@ -106,7 +114,7 @@ Scenarios run **sequentially** and share state via `sit/lib/context.ts`:
 | 4 | Verify 4 items | `/api/vaults/{id}` | GET | 200, 4 items |
 | 5 | Warning codes catalog | `/api/config/warning-codes` | GET | 200, 2 codes |
 
-#### 06 — Profile & Security (`06-user-profile.test.ts`)
+#### 06 — Profile & Security (`06-user-profile.ts`)
 
 | # | Name | Endpoint | Method | Expected |
 |---|------|----------|--------|----------|
