@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { NavLink, useNavigate, useParams } from 'react-router-dom';
-import { Vault, Plus, MoreHorizontal, Download, Mail, Pencil, Lock, LayoutDashboard, Users, ScrollText, UserPlus } from 'lucide-react';
+import { Vault, Plus, MoreHorizontal, Download, Upload, Mail, Pencil, Lock, LayoutDashboard, Users, ScrollText, UserPlus } from 'lucide-react';
+import type { VaultDownloadResponse } from '@passvault/shared';
+import { ImportVaultDialog } from './ImportVaultDialog.js';
 import type { VaultSummary } from '@passvault/shared';
 import { LIMITS } from '@passvault/shared';
 import logo from '../../assets/logo.png';
@@ -51,9 +53,10 @@ interface VaultSidebarProps {
   onRenameVault: (vaultId: string, displayName: string) => Promise<void>;
   onDownloadVault: (vaultId: string, displayName: string) => Promise<void>;
   onEmailVault: (vaultId: string) => Promise<void>;
+  onImportVault: (displayName: string, fileData: VaultDownloadResponse, password: string) => Promise<void>;
 }
 
-export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRenameVault, onDownloadVault, onEmailVault }: VaultSidebarProps) {
+export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRenameVault, onDownloadVault, onEmailVault, onImportVault }: VaultSidebarProps) {
   const navigate = useNavigate();
   const { vaultId } = useParams<{ vaultId: string }>();
   const { hasKey, clearKey } = useEncryptionContext();
@@ -89,6 +92,7 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
     }
   };
 
+  const [showImportDialog, setShowImportDialog] = useState(false);
   const [showDialog, setShowDialog] = useState(false);
   const [newName, setNewName] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -206,6 +210,14 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
                     <SidebarMenuButton onClick={() => setShowDialog(true)} tooltip="New Vault">
                       <Plus className="h-4 w-4 shrink-0" />
                       <span>New Vault</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )}
+                {canCreate && plan !== 'free' && (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton onClick={() => setShowImportDialog(true)} tooltip="Import Vault">
+                      <Upload className="h-4 w-4 shrink-0" />
+                      <span>Import Vault</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 )}
@@ -339,6 +351,12 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ImportVaultDialog
+        open={showImportDialog}
+        onOpenChange={setShowImportDialog}
+        onImport={onImportVault}
+      />
     </>
   );
 }

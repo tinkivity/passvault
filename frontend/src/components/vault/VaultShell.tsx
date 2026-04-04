@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../../services/api.js';
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
-import type { VaultSummary } from '@passvault/shared';
+import type { VaultSummary, VaultDownloadResponse } from '@passvault/shared';
 import { useAuth } from '../../hooks/useAuth.js';
 import { useEncryptionContext } from '../../context/EncryptionContext.js';
 import { useAutoLogout } from '../../hooks/useAutoLogout.js';
@@ -85,6 +85,34 @@ export function VaultShell() {
     navigate(ROUTES.UI.ITEMS(newVault.vaultId));
   }, [createVault, deriveKey, navigate]);
 
+  const handleImportVault = useCallback(async (displayName: string, fileData: VaultDownloadResponse, password: string) => {
+    const { deriveKey: deriveCryptoKey, decrypt: decryptContent, encrypt: encryptContent, clearKey: clearCryptoKey } = await import('../../services/crypto.js');
+    const tempId = `__import_${Date.now()}`;
+    try {
+      // Decrypt with original salt
+      await deriveCryptoKey(tempId, password, fileData.encryptionSalt);
+      const plaintext = await decryptContent(tempId, fileData.encryptedContent);
+      clearCryptoKey(tempId);
+
+      // Create new vault
+      const newVault = await createVault(displayName);
+      setVaults(prev => [...prev, newVault]);
+
+      // Re-encrypt with the new vault's salt using the same password
+      await deriveCryptoKey(newVault.vaultId, password, newVault.encryptionSalt);
+      const encryptedContent = await encryptContent(newVault.vaultId, plaintext);
+
+      // Save the data
+      await api.putVault(newVault.vaultId, { encryptedContent }, token!);
+
+      // Key is already derived for the new vault — navigate directly to items
+      navigate(ROUTES.UI.ITEMS(newVault.vaultId));
+    } catch (err) {
+      clearCryptoKey(tempId);
+      throw err;
+    }
+  }, [createVault, token, navigate]);
+
   const isAdminRoute = pathname.startsWith(ROUTES.UI.ADMIN.ROOT);
   const shellContext = { vaults, catalog, refreshVaults };
 
@@ -103,6 +131,7 @@ export function VaultShell() {
               onRenameVault={handleRenameVault}
               onDownloadVault={handleDownloadVault}
               onEmailVault={handleEmailVault}
+              onImportVault={handleImportVault}
             />
             <SidebarInset className="flex flex-col overflow-hidden">
               <ShellHeader
