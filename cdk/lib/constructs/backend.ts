@@ -445,6 +445,10 @@ export class BackendConstruct extends Construct {
     vaultById.addMethod('PUT', new apigateway.LambdaIntegration(this.vaultFn));
     vaultById.addMethod('PATCH', new apigateway.LambdaIntegration(this.vaultFn));
     vaultById.addMethod('DELETE', new apigateway.LambdaIntegration(this.vaultFn));
+    const vaultIndex = vaultById.addResource('index');
+    vaultIndex.addMethod('GET', new apigateway.LambdaIntegration(this.vaultFn));
+    const vaultItems = vaultById.addResource('items');
+    vaultItems.addMethod('GET', new apigateway.LambdaIntegration(this.vaultFn));
     const vaultDownload = vaultById.addResource('download');
     vaultDownload.addMethod('GET', new apigateway.LambdaIntegration(this.vaultFn));
     const vaultEmail = vaultById.addResource('email');
