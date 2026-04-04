@@ -81,6 +81,13 @@ export class StorageConstruct extends Construct {
       removalPolicy: cdk.RemovalPolicy.RETAIN,
       enforceSSL: true,
     });
+    // Prod: keep only the last 3 noncurrent versions of vault files
+    if (env === 'prod') {
+      this.filesBucket.addLifecycleRule({
+        noncurrentVersionExpiration: cdk.Duration.days(1),
+        noncurrentVersionsToRetain: 3,
+      });
+    }
     // Explicit tag so cleanup.sh can find this bucket after `cdk destroy`.
     // CloudFormation's automatic aws:cloudformation:* tags are removed from
     // retained resources on stack deletion; this custom tag is not.
