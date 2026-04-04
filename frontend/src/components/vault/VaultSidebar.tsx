@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { NavLink, useNavigate, useParams } from 'react-router-dom';
 import { Vault, Plus, MoreHorizontal, Download, Mail, Pencil, Lock, LayoutDashboard, Users, ScrollText, UserPlus } from 'lucide-react';
 import type { VaultSummary } from '@passvault/shared';
@@ -6,6 +6,9 @@ import { LIMITS } from '@passvault/shared';
 import logo from '../../assets/logo.png';
 import { NavUser } from '../shared/NavUser.js';
 import { useEncryptionContext } from '../../context/EncryptionContext.js';
+import { useVaultTimeout } from '../../hooks/useVaultTimeout.js';
+import { config } from '../../config.js';
+import { ROUTES } from '../../routes.js';
 import {
   Sidebar,
   SidebarContent,
@@ -37,10 +40,77 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { config } from '../../config.js';
-import { ROUTES } from '../../routes.js';
 
 const isProd = config.isProd;
+const VAULT_TIMEOUT = config.timeouts.vaultTimeout;
+
+/* -------------------------------------------------------------------------- */
+/*  VaultTimeoutRing — circular progress for vault lock countdown             */
+/* -------------------------------------------------------------------------- */
+
+interface VaultTimeoutRingProps {
+  vaultId: string;
+  unlocked: boolean;
+  onTimeout: (vaultId: string) => void;
+}
+
+function VaultTimeoutRing({ vaultId, unlocked, onTimeout }: VaultTimeoutRingProps) {
+  const handleTimeout = useCallback(() => {
+    onTimeout(vaultId);
+  }, [onTimeout, vaultId]);
+
+  const { secondsLeft } = useVaultTimeout({
+    timeoutSeconds: VAULT_TIMEOUT,
+    onTimeout: handleTimeout,
+    active: unlocked,
+  });
+
+  if (!unlocked) return null;
+
+  const fraction = secondsLeft / VAULT_TIMEOUT;
+  const radius = 6;
+  const circumference = 2 * Math.PI * radius;
+  const dashOffset = circumference * (1 - fraction);
+
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      className="shrink-0"
+      aria-label={`Vault timeout: ${secondsLeft}s remaining`}
+    >
+      {/* Background ring */}
+      <circle
+        cx="8"
+        cy="8"
+        r={radius}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        className="text-muted-foreground/20"
+      />
+      {/* Progress ring */}
+      <circle
+        cx="8"
+        cy="8"
+        r={radius}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeDasharray={circumference}
+        strokeDashoffset={dashOffset}
+        strokeLinecap="round"
+        className={fraction <= 0.25 ? 'text-destructive' : fraction <= 0.5 ? 'text-amber-500' : 'text-primary'}
+        style={{ transform: 'rotate(-90deg)', transformOrigin: 'center', transition: 'stroke-dashoffset 1s linear' }}
+      />
+    </svg>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/*  VaultSidebar                                                              */
+/* -------------------------------------------------------------------------- */
 
 interface VaultSidebarProps {
   vaults: VaultSummary[];
@@ -62,6 +132,10 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
   const [renameValue, setRenameValue] = useState('');
   const [renaming, setRenaming] = useState(false);
   const [renameError, setRenameError] = useState<string | null>(null);
+
+  const handleVaultTimeout = useCallback((vid: string) => {
+    clearKey(vid);
+  }, [clearKey]);
 
   const handleEmail = async (id: string) => {
     await onEmailVault(id);
@@ -144,7 +218,12 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
                         tooltip={vault.displayName}
                       >
                         <Vault className="h-4 w-4 shrink-0" />
-                        <span>{vault.displayName}</span>
+                        <span className="flex-1 truncate">{vault.displayName}</span>
+                        <VaultTimeoutRing
+                          vaultId={vault.vaultId}
+                          unlocked={unlocked}
+                          onTimeout={handleVaultTimeout}
+                        />
                       </SidebarMenuButton>
                       <DropdownMenu>
                         <DropdownMenuTrigger render={<SidebarMenuAction showOnHover />}>
@@ -282,7 +361,7 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
           <DialogFooter>
             <Button variant="outline" onClick={() => setRenamingVault(null)}>Cancel</Button>
             <Button onClick={handleRename} disabled={renaming || !renameValue.trim()}>
-              {renaming ? 'Saving…' : 'Save'}
+              {renaming ? 'Saving...' : 'Save'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -334,7 +413,7 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDialog(false)}>Cancel</Button>
             <Button onClick={handleCreate} disabled={creating || !newName.trim() || !newPassword}>
-              {creating ? 'Creating…' : 'Create'}
+              {creating ? 'Creating...' : 'Create'}
             </Button>
           </DialogFooter>
         </DialogContent>

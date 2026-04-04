@@ -145,8 +145,8 @@ import { config } from '../../config.js';
 config.passkeyRequired      // VITE_PASSKEY_REQUIRED === 'true'
 config.isDev                // VITE_ENVIRONMENT === 'dev'
 config.isProd               // VITE_ENVIRONMENT === 'prod'
-config.timeouts.view        // VITE_VIEW_TIMEOUT_SECONDS
-config.timeouts.admin       // VITE_ADMIN_TIMEOUT_SECONDS
+config.timeouts.session     // VITE_SESSION_TIMEOUT_SECONDS
+config.timeouts.vaultTimeout // VITE_VAULT_TIMEOUT_SECONDS
 ```
 
 ### Required env vars (`.env.local` for dev)
@@ -155,9 +155,8 @@ config.timeouts.admin       // VITE_ADMIN_TIMEOUT_SECONDS
 VITE_API_BASE_URL=           # empty for prod/beta (CloudFront proxies); set to http://... for local dev
 VITE_ENVIRONMENT=dev         # dev | beta | prod
 VITE_PASSKEY_REQUIRED=false  # true only in prod
-VITE_VIEW_TIMEOUT_SECONDS=900
-VITE_EDIT_TIMEOUT_SECONDS=600
-VITE_ADMIN_TIMEOUT_SECONDS=86400
+VITE_SESSION_TIMEOUT_SECONDS=300
+VITE_VAULT_TIMEOUT_SECONDS=60
 ```
 
 ---

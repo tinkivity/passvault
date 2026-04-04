@@ -1,20 +1,21 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 
-interface UseAutoLogoutOptions {
+interface UseVaultTimeoutOptions {
   timeoutSeconds: number;
-  onLogout: () => void;
+  onTimeout: () => void;
   active: boolean;
 }
 
 /**
- * Countdown timer that fires `onLogout` when `timeoutSeconds` elapses.
- * Returns `secondsLeft` for display.
+ * Per-vault countdown timer that fires `onTimeout` when the timeout elapses.
+ * Separate from the session timeout — this controls how long a vault stays
+ * unlocked (i.e., its derived encryption key is retained).
  */
-export function useAutoLogout({ timeoutSeconds, onLogout, active }: UseAutoLogoutOptions) {
+export function useVaultTimeout({ timeoutSeconds, onTimeout, active }: UseVaultTimeoutOptions) {
   const [secondsLeft, setSecondsLeft] = useState(timeoutSeconds);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const onLogoutRef = useRef(onLogout);
-  onLogoutRef.current = onLogout;
+  const onTimeoutRef = useRef(onTimeout);
+  onTimeoutRef.current = onTimeout;
 
   const reset = useCallback(() => {
     setSecondsLeft(timeoutSeconds);
@@ -32,7 +33,7 @@ export function useAutoLogout({ timeoutSeconds, onLogout, active }: UseAutoLogou
       setSecondsLeft(prev => {
         if (prev <= 1) {
           clearInterval(intervalRef.current!);
-          onLogoutRef.current();
+          onTimeoutRef.current();
           return 0;
         }
         return prev - 1;
@@ -44,5 +45,5 @@ export function useAutoLogout({ timeoutSeconds, onLogout, active }: UseAutoLogou
     };
   }, [active, timeoutSeconds]);
 
-  return { secondsLeft, reset, extend: reset };
+  return { secondsLeft, reset };
 }

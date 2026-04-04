@@ -8,9 +8,10 @@ import { SidebarTrigger } from '@/components/ui/sidebar';
 interface ShellHeaderProps {
   breadcrumbs: ReactNode;
   secondsLeft: number;
+  onExtend?: () => void;
 }
 
-export function ShellHeader({ breadcrumbs, secondsLeft }: ShellHeaderProps) {
+export function ShellHeader({ breadcrumbs, secondsLeft, onExtend }: ShellHeaderProps) {
   const { isDark, toggleTheme } = useTheme();
 
   const hours = Math.floor(secondsLeft / 3600);
@@ -19,11 +20,13 @@ export function ShellHeader({ breadcrumbs, secondsLeft }: ShellHeaderProps) {
   const timeDisplay = hours > 0
     ? `${hours}h ${minutes}m`
     : `${minutes}:${String(secs).padStart(2, '0')}`;
+
+  const isUrgent = secondsLeft <= 60;
   const timerClass = secondsLeft <= 30
-    ? 'text-sm font-mono font-medium text-destructive hidden sm:inline mr-2'
-    : secondsLeft <= 60
-      ? 'text-sm font-mono font-medium text-amber-500 hidden sm:inline mr-2'
-      : 'text-sm font-mono text-foreground/60 hidden sm:inline mr-2';
+    ? 'text-sm font-mono font-medium text-destructive hidden sm:inline'
+    : isUrgent
+      ? 'text-sm font-mono font-medium text-amber-500 hidden sm:inline'
+      : 'text-sm font-mono text-foreground/60 hidden sm:inline';
 
   return (
     <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b bg-background px-4">
@@ -32,6 +35,16 @@ export function ShellHeader({ breadcrumbs, secondsLeft }: ShellHeaderProps) {
       <div className="flex-1 min-w-0">{breadcrumbs}</div>
       <div className="flex items-center gap-1 shrink-0">
         <span className={timerClass}>{timeDisplay}</span>
+        {isUrgent && onExtend && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onExtend}
+            className="text-xs h-7 px-2 text-destructive hover:text-destructive"
+          >
+            Extend
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="icon-sm"

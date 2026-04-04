@@ -67,6 +67,16 @@ describe('useAutoLogout', () => {
     expect(result.current.secondsLeft).toBe(10);
   });
 
+  it('extend() aliases reset() and restores secondsLeft', () => {
+    const { result } = renderHook(() =>
+      useAutoLogout({ timeoutSeconds: 10, onLogout: vi.fn(), active: true })
+    );
+    act(() => { vi.advanceTimersByTime(6000); });
+    expect(result.current.secondsLeft).toBe(4);
+    act(() => { result.current.extend(); });
+    expect(result.current.secondsLeft).toBe(10);
+  });
+
   it('clears the interval on unmount', () => {
     const onLogout = vi.fn();
     const { unmount } = renderHook(() =>

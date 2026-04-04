@@ -16,8 +16,8 @@ export interface ThrottleConfig {
 }
 
 export interface SessionConfig {
-  viewModeTimeoutSeconds: number;
-  editModeTimeoutSeconds: number;
+  sessionTimeoutSeconds: number;
+  vaultTimeoutSeconds: number;
   adminTokenExpiryHours: number;
   userTokenExpiryMinutes: number;
   otpExpiryMinutes: number;
