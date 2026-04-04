@@ -6,7 +6,7 @@ import {
   QueryCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { randomUUID } from 'crypto';
-import type { AuditCategory, AuditAction, AuditConfig, AuditEvent, AuditEventSummary } from '@passvault/shared';
+import type { AuditCategory, AuditAction, AuditConfig, AuditEvent, AuditEventSummary, AuditQueryParams, AuditQueryResponse } from '@passvault/shared';
 import { DEFAULT_AUDIT_CONFIG } from '@passvault/shared';
 import { AUDIT_EVENTS_TABLE, CONFIG_TABLE } from '../config.js';
 import { listAllUsers } from './dynamodb.js';
@@ -99,55 +99,106 @@ export async function recordAuditEvent(input: RecordAuditEventInput): Promise<vo
 
 // ── Query events ────────────────────────────────────────────────────────────
 
-export interface QueryAuditEventsOptions {
-  category?: AuditCategory;
-  from?: string;   // ISO 8601
-  to?: string;     // ISO 8601
-  limit?: number;
-}
-
 export async function queryAuditEvents(
-  options: QueryAuditEventsOptions = {},
-): Promise<AuditEventSummary[]> {
-  const maxResults = Math.min(options.limit ?? 500, 500);
+  params: AuditQueryParams = {},
+): Promise<AuditQueryResponse> {
+  const limit = Math.min(Math.max(params.limit ?? 50, 1), 200);
 
-  // If a category is specified, use the GSI for efficient querying
-  if (options.category) {
-    const events = await queryByCategory(options.category, options.from, options.to, maxResults);
-    return enrichWithUsernames(events);
+  // If a category is specified, use the GSI for efficient querying with cursor pagination
+  if (params.category) {
+    const result = await queryByCategory(params.category, {
+      from: params.from,
+      to: params.to,
+      action: params.action,
+      userId: params.userId,
+      limit,
+      nextToken: params.nextToken,
+      sort: params.sort,
+    });
+    const events = await enrichWithUsernames(result.events);
+    return { events, nextToken: result.nextToken };
   }
 
-  // No category filter — query all 4 categories in parallel and merge
+  // No category filter — query all 4 categories in parallel, merge, sort
+  // No cursor pagination for cross-category queries — cap at limit
   const categories: AuditCategory[] = ['authentication', 'admin_actions', 'vault_operations', 'system'];
   const results = await Promise.all(
-    categories.map(cat => queryByCategory(cat, options.from, options.to, maxResults)),
+    categories.map(cat => queryByCategory(cat, {
+      from: params.from,
+      to: params.to,
+      action: params.action,
+      userId: params.userId,
+      limit,
+      sort: params.sort,
+    })),
   );
-  const merged = results.flat();
-  merged.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  const merged = results.flatMap(r => r.events);
+  const ascending = params.sort === 'asc';
+  merged.sort((a, b) => ascending
+    ? a.timestamp.localeCompare(b.timestamp)
+    : b.timestamp.localeCompare(a.timestamp),
+  );
 
-  // Enrich with usernames
-  return enrichWithUsernames(merged.slice(0, maxResults));
+  const events = await enrichWithUsernames(merged.slice(0, limit));
+  return { events };
+}
+
+interface QueryByCategoryOptions {
+  from?: string;
+  to?: string;
+  action?: string;
+  userId?: string;
+  limit: number;
+  nextToken?: string;
+  sort?: 'asc' | 'desc';
 }
 
 async function queryByCategory(
   category: AuditCategory,
-  from?: string,
-  to?: string,
-  limit: number = 500,
-): Promise<AuditEventSummary[]> {
+  opts: QueryByCategoryOptions,
+): Promise<{ events: AuditEventSummary[]; nextToken?: string }> {
+  const { from, to, action, userId, limit, nextToken, sort } = opts;
+
   let keyCondition = 'category = :cat';
   const exprValues: Record<string, unknown> = { ':cat': category };
+  const exprNames: Record<string, string> = {};
 
   if (from && to) {
     keyCondition += ' AND #ts BETWEEN :from AND :to';
     exprValues[':from'] = from;
     exprValues[':to'] = to;
+    exprNames['#ts'] = 'timestamp';
   } else if (from) {
     keyCondition += ' AND #ts >= :from';
     exprValues[':from'] = from;
+    exprNames['#ts'] = 'timestamp';
   } else if (to) {
     keyCondition += ' AND #ts <= :to';
     exprValues[':to'] = to;
+    exprNames['#ts'] = 'timestamp';
+  }
+
+  // Build FilterExpression for action and userId
+  const filterParts: string[] = [];
+  if (action) {
+    filterParts.push('#act = :act');
+    exprValues[':act'] = action;
+    exprNames['#act'] = 'action';
+  }
+  if (userId) {
+    filterParts.push('userId = :uid');
+    exprValues[':uid'] = userId;
+  }
+  const filterExpression = filterParts.length > 0 ? filterParts.join(' AND ') : undefined;
+
+  // Decode nextToken (base64 JSON → DynamoDB key)
+  let exclusiveStartKey: Record<string, unknown> | undefined;
+  if (nextToken) {
+    try {
+      exclusiveStartKey = JSON.parse(Buffer.from(nextToken, 'base64').toString('utf-8'));
+    } catch {
+      // Invalid token — ignore, start from beginning
+    }
   }
 
   const result = await docClient.send(
@@ -155,14 +206,16 @@ async function queryByCategory(
       TableName: AUDIT_EVENTS_TABLE,
       IndexName: 'byCategoryTimestamp',
       KeyConditionExpression: keyCondition,
-      ExpressionAttributeNames: (from || to) ? { '#ts': 'timestamp' } : undefined,
+      ExpressionAttributeNames: Object.keys(exprNames).length > 0 ? exprNames : undefined,
       ExpressionAttributeValues: exprValues,
-      ScanIndexForward: false, // descending by timestamp
+      FilterExpression: filterExpression,
+      ScanIndexForward: sort === 'asc',
       Limit: limit,
+      ExclusiveStartKey: exclusiveStartKey,
     }),
   );
 
-  return ((result.Items ?? []) as AuditEvent[]).map(ev => ({
+  const events: AuditEventSummary[] = ((result.Items ?? []) as AuditEvent[]).map(ev => ({
     eventId: ev.eventId,
     category: ev.category,
     action: ev.action,
@@ -171,6 +224,13 @@ async function queryByCategory(
     timestamp: ev.timestamp,
     details: ev.details,
   }));
+
+  // Encode LastEvaluatedKey as base64 JSON for the next page cursor
+  const encodedNextToken = result.LastEvaluatedKey
+    ? Buffer.from(JSON.stringify(result.LastEvaluatedKey)).toString('base64')
+    : undefined;
+
+  return { events, nextToken: encodedNextToken };
 }
 
 async function enrichWithUsernames(events: AuditEventSummary[]): Promise<AuditEventSummary[]> {

@@ -13,7 +13,7 @@ import {
 import { createUserInvitation, listUsers, refreshOtp, resetUser, deleteNewUser, lockUser, unlockUser, expireUser, retireUser, reactivateUser, updateUserProfile, getStats, listLoginEvents, adminEmailUserVault } from '../services/admin.js';
 import { downloadVault, listVaults } from '../services/vault.js';
 import { parseBody } from '../utils/request.js';
-import type { AuditCategory, AuditConfig } from '@passvault/shared';
+import type { AuditCategory, AuditAction, AuditConfig } from '@passvault/shared';
 import { recordAuditEvent } from '../utils/audit.js';
 import { getAuditConfig, updateAuditConfig, queryAuditEvents } from '../utils/audit.js';
 
@@ -183,6 +183,11 @@ async function handleGetAuditEvents(event: APIGatewayProxyEvent): Promise<APIGat
   const category = qs.category as AuditCategory | undefined;
   const from = qs.from;
   const to = qs.to;
+  const action = qs.action as AuditAction | undefined;
+  const userId = qs.userId;
+  const limit = qs.limit ? Math.min(Math.max(parseInt(qs.limit, 10) || 50, 1), 200) : 50;
+  const nextToken = qs.nextToken;
+  const sort = (qs.sort === 'asc' ? 'asc' : 'desc') as 'asc' | 'desc';
 
   // Validate category if provided
   const validCategories: AuditCategory[] = ['authentication', 'admin_actions', 'vault_operations', 'system'];
@@ -190,8 +195,8 @@ async function handleGetAuditEvents(event: APIGatewayProxyEvent): Promise<APIGat
     return error('Invalid category', 400);
   }
 
-  const events = await queryAuditEvents({ category, from, to });
-  return success({ events });
+  const result = await queryAuditEvents({ category, from, to, action, userId, limit, nextToken, sort });
+  return success(result);
 }
 
 async function handleGetAuditConfig(): Promise<APIGatewayProxyResult> {

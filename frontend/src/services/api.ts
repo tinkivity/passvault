@@ -31,8 +31,9 @@ import type {
   AdminStats,
   WarningCodeDefinition,
   AuditConfig,
-  AuditEventSummary,
   AuditCategory,
+  AuditQueryParams,
+  AuditQueryResponse,
 } from '@passvault/shared';
 import { API_PATHS, POW_CONFIG } from '@passvault/shared';
 import { solveChallenge } from './pow-solver.js';
@@ -398,14 +399,19 @@ export class ApiClient {
 
   // ---- Audit -----------------------------------------------------------
 
-  async getAuditEvents(params: { category?: AuditCategory; from?: string; to?: string }, token: string): Promise<{ events: AuditEventSummary[] }> {
+  async getAuditEvents(params: AuditQueryParams, token: string): Promise<AuditQueryResponse> {
     const qs = new URLSearchParams();
     if (params.category) qs.set('category', params.category);
     if (params.from) qs.set('from', params.from);
     if (params.to) qs.set('to', params.to);
+    if (params.action) qs.set('action', params.action);
+    if (params.userId) qs.set('userId', params.userId);
+    if (params.limit !== undefined) qs.set('limit', String(params.limit));
+    if (params.nextToken) qs.set('nextToken', params.nextToken);
+    if (params.sort) qs.set('sort', params.sort);
     const query = qs.toString();
     const url = query ? `${API_PATHS.ADMIN_AUDIT_EVENTS}?${query}` : API_PATHS.ADMIN_AUDIT_EVENTS;
-    return this.request<{ events: AuditEventSummary[] }>(url, {
+    return this.request<AuditQueryResponse>(url, {
       method: 'GET',
       token,
       powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
