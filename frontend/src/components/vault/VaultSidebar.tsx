@@ -242,9 +242,9 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
                     </DropdownMenu>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
-                    <SidebarMenuButton render={<NavLink to={ROUTES.UI.ADMIN.LOGINS} />} tooltip="Logins">
+                    <SidebarMenuButton render={<NavLink to={ROUTES.UI.ADMIN.AUDIT} />} tooltip="Audit Log">
                       <ScrollText className="h-4 w-4 shrink-0" />
-                      <span>Logins</span>
+                      <span>Audit Log</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 </SidebarMenu>

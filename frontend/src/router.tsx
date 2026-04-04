@@ -14,6 +14,7 @@ import { DashboardPage } from './components/admin/pages/DashboardPage.js';
 import { UsersPage } from './components/admin/pages/UsersPage.js';
 import { UserDetailPage } from './components/admin/pages/UserDetailPage.js';
 import { LoginsPage } from './components/admin/pages/LoginsPage.js';
+import { AuditPage } from './components/admin/pages/AuditPage.js';
 
 // ---- Guards ---------------------------------------------------------------
 
@@ -104,6 +105,7 @@ export const router = createBrowserRouter([
               { path: 'users', element: <UsersPage /> },
               { path: 'users/:userId', element: <UserDetailPage /> },
               { path: 'logs/logins', element: <LoginsPage /> },
+              { path: 'logs/audit', element: <AuditPage /> },
             ],
           },
         ],

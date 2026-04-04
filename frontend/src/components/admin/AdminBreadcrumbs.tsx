@@ -29,6 +29,13 @@ function buildCrumbs(pathname: string, state: unknown): Crumb[] {
       { label: 'Logins' },
     ];
   }
+  if (pathname === ROUTES.UI.ADMIN.AUDIT) {
+    return [
+      { label: 'Admin', to: ROUTES.UI.ADMIN.DASHBOARD },
+      { label: 'Logs' },
+      { label: 'Audit' },
+    ];
+  }
   return [{ label: 'Admin' }];
 }
 

@@ -16,7 +16,9 @@ export const ROUTES = {
       DASHBOARD: '/ui/admin/dashboard',
       USERS:     '/ui/admin/users',
       USER:      (userId: string) => `/ui/admin/users/${userId}`,
+      /** @deprecated Use AUDIT instead */
       LOGINS:    '/ui/admin/logs/logins',
+      AUDIT:     '/ui/admin/logs/audit',
     },
   },
 } as const;

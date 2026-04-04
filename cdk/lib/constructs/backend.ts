@@ -210,15 +210,33 @@ export class BackendConstruct extends Construct {
     storage.usersTable.grantReadWriteData(this.adminMgmtFn);
     storage.usersTable.grantReadWriteData(this.vaultFn);
 
-    // IAM: login events table — auth + admin-auth write, admin-mgmt reads
+    // IAM: login events table (deprecated) — auth + admin-auth write, admin-mgmt reads
     storage.loginEventsTable.grantWriteData(this.authFn);
     storage.loginEventsTable.grantWriteData(this.adminAuthFn);
     storage.loginEventsTable.grantReadData(this.adminMgmtFn);
 
-    // Pass login events table name to auth + admin Lambdas
+    // Pass login events table name to auth + admin Lambdas (deprecated)
     this.authFn.addEnvironment('LOGIN_EVENTS_TABLE_NAME', storage.loginEventsTable.tableName);
     this.adminAuthFn.addEnvironment('LOGIN_EVENTS_TABLE_NAME', storage.loginEventsTable.tableName);
     this.adminMgmtFn.addEnvironment('LOGIN_EVENTS_TABLE_NAME', storage.loginEventsTable.tableName);
+
+    // IAM: audit events table — auth, admin-auth, admin-mgmt all read/write
+    storage.auditEventsTable.grantReadWriteData(this.authFn);
+    storage.auditEventsTable.grantReadWriteData(this.adminAuthFn);
+    storage.auditEventsTable.grantReadWriteData(this.adminMgmtFn);
+
+    // IAM: config table — admin-mgmt reads/writes, auth + admin-auth read
+    storage.configTable.grantReadData(this.authFn);
+    storage.configTable.grantReadData(this.adminAuthFn);
+    storage.configTable.grantReadWriteData(this.adminMgmtFn);
+
+    // Pass audit and config table names to Lambdas
+    this.authFn.addEnvironment('AUDIT_EVENTS_TABLE', storage.auditEventsTable.tableName);
+    this.adminAuthFn.addEnvironment('AUDIT_EVENTS_TABLE', storage.auditEventsTable.tableName);
+    this.adminMgmtFn.addEnvironment('AUDIT_EVENTS_TABLE', storage.auditEventsTable.tableName);
+    this.authFn.addEnvironment('CONFIG_TABLE', storage.configTable.tableName);
+    this.adminAuthFn.addEnvironment('CONFIG_TABLE', storage.configTable.tableName);
+    this.adminMgmtFn.addEnvironment('CONFIG_TABLE', storage.configTable.tableName);
 
     // IAM: passkey credentials table — auth + admin-auth read/write
     storage.passkeyCredentialsTable.grantReadWriteData(this.authFn);
@@ -401,6 +419,11 @@ export class BackendConstruct extends Construct {
     adminStats.addMethod('GET', new apigateway.LambdaIntegration(this.adminMgmtFn));
     const adminLoginEvents = admin.addResource('login-events');
     adminLoginEvents.addMethod('GET', new apigateway.LambdaIntegration(this.adminMgmtFn));
+    const adminAuditEvents = admin.addResource('audit-events');
+    adminAuditEvents.addMethod('GET', new apigateway.LambdaIntegration(this.adminMgmtFn));
+    const adminAuditConfig = admin.addResource('audit-config');
+    adminAuditConfig.addMethod('GET', new apigateway.LambdaIntegration(this.adminMgmtFn));
+    adminAuditConfig.addMethod('PUT', new apigateway.LambdaIntegration(this.adminMgmtFn));
 
     const authVerifyEmail = auth.addResource('verify-email');
     authVerifyEmail.addMethod('GET', new apigateway.LambdaIntegration(this.authFn));

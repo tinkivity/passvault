@@ -16,6 +16,7 @@ import { hashPassword, verifyPassword } from '../utils/crypto.js';
 import { validatePassword } from '../utils/password.js';
 import { signToken } from '../utils/jwt.js';
 import { verifyPasskeyToken } from './passkey.js';
+import { recordAuditEvent } from '../utils/audit.js';
 
 
 export async function login(request: LoginRequest): Promise<{ response?: LoginResponse; error?: string; statusCode?: number }> {
@@ -112,9 +113,17 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
   });
 
   const loginEventId = randomUUID();
+  // Deprecated: kept for backward compatibility
   recordLoginEvent(loginEventId, user.userId, true, passkeyCredentialId, passkeyName).catch(err => {
     console.error('Failed to record login event:', err);
   });
+  // Audit log
+  recordAuditEvent({
+    category: 'authentication',
+    action: 'login',
+    userId: user.userId,
+    details: passkeyName ? { method: 'passkey', passkeyName } : { method: 'password' },
+  }).catch(err => console.error('Failed to record audit event:', err));
 
   const token = await signToken({
     userId: user.userId,
@@ -244,7 +253,15 @@ async function recordFailedAttempt(userId: string, username: string, currentAtte
       ? new Date(Date.now() + LIMITS.RATE_LIMIT_WINDOW_MINUTES * 60 * 1000).toISOString()
       : null;
   await updateUser(userId, { failedLoginAttempts: newCount, lockedUntil });
+  // Deprecated: kept for backward compatibility
   recordLoginEvent(randomUUID(), userId, false).catch(err => {
     console.error('Failed to record failed login event:', err);
   });
+  // Audit log
+  recordAuditEvent({
+    category: 'authentication',
+    action: 'login_failed',
+    userId,
+    details: { username },
+  }).catch(err => console.error('Failed to record audit event:', err));
 }

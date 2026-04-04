@@ -35,6 +35,8 @@ export const API_PATHS = {
   ADMIN_USER_RESET: '/api/admin/users/{userId}/reset',
   ADMIN_STATS: '/api/admin/stats',
   ADMIN_LOGIN_EVENTS: '/api/admin/login-events',
+  ADMIN_AUDIT_EVENTS: '/api/admin/audit-events',
+  ADMIN_AUDIT_CONFIG: '/api/admin/audit-config',
   VAULTS: '/api/vaults',
   VAULT: '/api/vaults/{vaultId}',
   VAULT_DOWNLOAD: '/api/vaults/{vaultId}/download',
