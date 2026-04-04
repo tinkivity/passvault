@@ -7,7 +7,7 @@ export type VaultItemCategory =
   | 'wifi'
   | 'private_key';
 
-export type WarningCode = 'duplicate_password' | 'too_simple_password';
+export type WarningCode = 'duplicate_password' | 'too_simple_password' | 'breached_password';
 
 export interface WarningCodeDefinition {
   code: WarningCode;
@@ -20,6 +20,7 @@ interface VaultItemBase {
   id: string;            // UUID v4
   name: string;
   category: VaultItemCategory;
+  comment?: string;
   createdAt: string;     // ISO 8601
   updatedAt: string;     // ISO 8601
   warningCodes: WarningCode[];  // stored inside encrypted vault — backend never sees this
@@ -104,4 +105,26 @@ export type VaultItem =
 export interface VaultFile {
   version: 1;
   items: VaultItem[];
+}
+
+// ── V2 split vault format ───────────────────────────────────────────────────
+
+export interface VaultIndexEntry {
+  id: string;
+  name: string;
+  category: VaultItemCategory;
+  createdAt: string;
+  updatedAt: string;
+  warningCodes: WarningCode[];
+  comment?: string;
+}
+
+export interface VaultIndexFile {
+  version: 2;
+  entries: VaultIndexEntry[];
+}
+
+export interface VaultItemsFile {
+  version: 2;
+  items: Record<string, VaultItem>;
 }
