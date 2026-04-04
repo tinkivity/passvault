@@ -6,6 +6,8 @@ PassVault is an invitation-only, personal password manager and secure vault with
 
 **Critical Privacy Feature**: The admin has **zero access** to user file content. Files are encrypted with keys derived from each user's personal password (not the admin password), ensuring complete user privacy. Even with full system access, the admin cannot decrypt user files without knowing the individual user's password.
 
+> **User State Model**: For the complete account state machine (statuses, transitions, admin expiration rules, brute-force lockout), see [USER-STATE-MODEL.md](USER-STATE-MODEL.md).
+
 ## 2. Functional Requirements
 
 ### 2.1 User Management
