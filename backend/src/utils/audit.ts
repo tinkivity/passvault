@@ -16,12 +16,14 @@ const docClient = DynamoDBDocumentClient.from(client);
 
 const TTL_SECONDS = 90 * 24 * 60 * 60; // 90 days
 
-// ── Config cache ────────────────────────────────────────────────────────────
+// ── Config cache (60s TTL — config changes propagate within a minute) ───────
 
 let cachedConfig: AuditConfig | undefined;
+let cacheTimestamp = 0;
+const CACHE_TTL_MS = 60_000;
 
 export async function getAuditConfig(): Promise<AuditConfig> {
-  if (cachedConfig) return cachedConfig;
+  if (cachedConfig && Date.now() - cacheTimestamp < CACHE_TTL_MS) return cachedConfig;
   try {
     const result = await docClient.send(
       new GetCommand({
@@ -31,12 +33,14 @@ export async function getAuditConfig(): Promise<AuditConfig> {
     );
     if (result.Item?.config) {
       cachedConfig = result.Item.config as AuditConfig;
+      cacheTimestamp = Date.now();
       return cachedConfig;
     }
   } catch (err) {
     console.error('Failed to read audit config, using defaults:', err);
   }
   cachedConfig = { ...DEFAULT_AUDIT_CONFIG };
+  cacheTimestamp = Date.now();
   return cachedConfig;
 }
 

@@ -63,7 +63,19 @@ export function adminAuditScenarios(ctx: SitContext) {
       expect(userCreated[0].performedByUsername).toBeDefined();
     });
 
-    it('vault_operations events exist from earlier scenarios', async () => {
+    it('vault_operations events are recorded', async () => {
+      // Rename the vault to trigger a vault_renamed event (audit config is already enabled)
+      const renamePath = `/api/vaults/${ctx.vaultId}`;
+      const renameRes = await request<{ success: boolean }>('PATCH', renamePath, {
+        body: { displayName: 'SIT Audit Test Vault' },
+        token: ctx.proUserToken,
+        powDifficulty: pow(HIGH),
+      });
+      expect(renameRes.status).toBe(200);
+
+      // Small delay to allow fire-and-forget audit write to complete
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
       const res = await request<{ success: boolean; data: { events: AuditEvent[] } }>(
         'GET', `${API_PATHS.ADMIN_AUDIT_EVENTS}?category=vault_operations`, {
           token: ctx.adminToken,
@@ -73,7 +85,7 @@ export function adminAuditScenarios(ctx: SitContext) {
 
       expect(res.status).toBe(200);
       const actions = res.data.data.events.map(e => e.action);
-      expect(actions).toContain('vault_created');
+      expect(actions).toContain('vault_renamed');
     });
   });
 }
