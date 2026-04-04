@@ -272,6 +272,7 @@ export async function listUsers(): Promise<ListUsersResponse> {
 
 export async function refreshOtp(
   userId: string,
+  adminUserId: string,
 ): Promise<{ response?: CreateUserResponse; error?: string; statusCode?: number }> {
   const user = await getUserById(userId);
   if (!user) return { error: ERRORS.NOT_FOUND, statusCode: 404 };
@@ -305,6 +306,14 @@ export async function refreshOtp(
       console.error(`Failed to send refreshed OTP email to ${user.username}:`, err);
     }
   }
+
+  recordAuditEvent({
+    category: 'admin_actions',
+    action: 'user_otp_refreshed',
+    userId,
+    performedBy: adminUserId,
+    details: { username: user.username },
+  }).catch(err => console.error('Failed to record audit event:', err));
 
   return {
     response: {
@@ -627,6 +636,7 @@ export async function updateUserProfile(
 
 export async function adminEmailUserVault(
   userId: string,
+  adminUserId: string,
   vaultId?: string,
 ): Promise<{ response?: { success: true }; error?: string; statusCode?: number }> {
   if (!process.env.SENDER_EMAIL) {
@@ -647,6 +657,14 @@ export async function adminEmailUserVault(
     const result = await sendVaultEmail(userId, vault.vaultId);
     if (result.error) return { error: result.error, statusCode: result.statusCode };
   }
+
+  recordAuditEvent({
+    category: 'admin_actions',
+    action: 'user_emailed_vault',
+    userId,
+    performedBy: adminUserId,
+    details: { vaultCount: String(targets.length) },
+  }).catch(err => console.error('Failed to record audit event:', err));
 
   return { response: { success: true } };
 }

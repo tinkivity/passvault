@@ -93,7 +93,7 @@ export async function createVault(
 
   recordAuditEvent({
     category: 'vault_operations',
-    action: 'vault_created',
+    action: request.source === 'import' ? 'vault_imported' : 'vault_created',
     userId,
     details: { vaultId, displayName: request.displayName },
   }).catch(err => console.error('Failed to record audit event:', err));
@@ -160,6 +160,14 @@ export async function getVaultIndex(userId: string, vaultId: string): Promise<{ 
   await ensureMigrated(userId, vault);
 
   const indexFile = await getVaultIndexFile(vaultId);
+
+  recordAuditEvent({
+    category: 'vault_operations',
+    action: 'vault_opened',
+    userId,
+    details: { vaultId },
+  }).catch(err => console.error('Failed to record audit event:', err));
+
   return {
     response: {
       encryptedIndex: indexFile?.content || '',
@@ -237,6 +245,13 @@ export async function downloadVault(
     getVaultItemsFile(vaultId),
   ]);
   const lastModified = indexFile?.lastModified || itemsFile?.lastModified || new Date().toISOString();
+
+  recordAuditEvent({
+    category: 'vault_operations',
+    action: 'vault_downloaded',
+    userId,
+    details: { vaultId },
+  }).catch(err => console.error('Failed to record audit event:', err));
 
   return {
     response: {

@@ -117,8 +117,8 @@ export function VaultShell() {
       const itemsPlaintext = await decryptContent(tempId, fileData.encryptedItems);
       clearCryptoKey(tempId);
 
-      // Create new vault
-      const newVault = await createVault(displayName);
+      // Create new vault (flagged as import for audit trail)
+      const newVault = await createVault(displayName, 'import');
       setVaults(prev => [...prev, newVault]);
 
       // Re-encrypt both files with the new vault's salt

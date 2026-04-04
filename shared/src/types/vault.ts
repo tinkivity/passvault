@@ -7,6 +7,7 @@ export interface VaultSummary {
 
 export interface CreateVaultRequest {
   displayName: string;
+  source?: 'import';
 }
 
 export interface RenameVaultRequest {

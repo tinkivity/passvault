@@ -14,6 +14,7 @@ import { createUserInvitation, listUsers, refreshOtp, resetUser, deleteNewUser, 
 import { downloadVault, listVaults } from '../services/vault.js';
 import { parseBody } from '../utils/request.js';
 import type { AuditCategory, AuditConfig } from '@passvault/shared';
+import { recordAuditEvent } from '../utils/audit.js';
 import { getAuditConfig, updateAuditConfig, queryAuditEvents } from '../utils/audit.js';
 
 const HIGH = POW_CONFIG.DIFFICULTY.HIGH;
@@ -67,8 +68,9 @@ async function handleDeleteUser(event: APIGatewayProxyEvent, params: Record<stri
   return success(result.response);
 }
 
-async function handleRefreshOtp(_event: APIGatewayProxyEvent, params: Record<string, string>): Promise<APIGatewayProxyResult> {
-  const result = await refreshOtp(params.userId);
+async function handleRefreshOtp(event: APIGatewayProxyEvent, params: Record<string, string>): Promise<APIGatewayProxyResult> {
+  const { user: admin } = await requireAdminActive(event);
+  const result = await refreshOtp(params.userId, admin!.userId);
   if (result.error) {
     return error(result.error, result.statusCode || 400);
   }
@@ -137,7 +139,8 @@ async function handleEmailUserVault(event: APIGatewayProxyEvent, params: Record<
   if ('parseError' in parsed) return parsed.parseError;
   const { vaultId } = parsed.body as { vaultId?: string };
 
-  const result = await adminEmailUserVault(params.userId, vaultId);
+  const { user: admin } = await requireAdminActive(event);
+  const result = await adminEmailUserVault(params.userId, admin!.userId, vaultId);
   if (result.error) return error(result.error, result.statusCode || 400);
   return success(result.response);
 }
@@ -218,5 +221,15 @@ async function handleUpdateAuditConfig(event: APIGatewayProxyEvent): Promise<API
   };
 
   await updateAuditConfig(config);
+
+  const { user: admin } = await requireAdminActive(event);
+  recordAuditEvent({
+    category: 'admin_actions',
+    action: 'audit_config_changed',
+    userId: admin!.userId,
+    performedBy: admin!.userId,
+    details: Object.fromEntries(Object.entries(config).map(([k, v]) => [k, String(v)])),
+  }).catch(err => console.error('Failed to record audit event:', err));
+
   return success(config);
 }

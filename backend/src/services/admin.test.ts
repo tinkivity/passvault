@@ -608,26 +608,26 @@ describe('adminEmailUserVault', () => {
 
   it('returns 503 when SENDER_EMAIL is not set', async () => {
     delete process.env.SENDER_EMAIL;
-    const result = await adminEmailUserVault('user-1');
+    const result = await adminEmailUserVault('user-1', 'admin-1');
     expect(result.statusCode).toBe(503);
   });
 
   it('returns 404 when user not found', async () => {
     mockGetUserById.mockResolvedValue(null);
-    const result = await adminEmailUserVault('user-1');
+    const result = await adminEmailUserVault('user-1', 'admin-1');
     expect(result.statusCode).toBe(404);
   });
 
   it('returns 400 when admin has no email address', async () => {
     mockGetUserById.mockResolvedValue(makeAdmin({ role: 'admin', username: 'admin-local' }));
-    const result = await adminEmailUserVault('admin-1');
+    const result = await adminEmailUserVault('admin-1', 'admin-1');
     expect(result.statusCode).toBe(400);
   });
 
   it('returns 404 when user has no vaults', async () => {
     mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', username: 'alice@example.com' }));
     vi.mocked(listVaultsByUser).mockResolvedValue([]);
-    const result = await adminEmailUserVault('user-1');
+    const result = await adminEmailUserVault('user-1', 'admin-1');
     expect(result.statusCode).toBe(404);
   });
 });
@@ -639,19 +639,19 @@ describe('refreshOtp', () => {
 
   it('returns 404 when user not found', async () => {
     mockGetUserById.mockResolvedValue(null);
-    const result = await refreshOtp('user-1');
+    const result = await refreshOtp('user-1', 'admin-1');
     expect(result.statusCode).toBe(404);
   });
 
   it('returns 403 when user is not pending_first_login', async () => {
     mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', status: 'active' }));
-    const result = await refreshOtp('user-1');
+    const result = await refreshOtp('user-1', 'admin-1');
     expect(result.statusCode).toBe(403);
   });
 
   it('returns new OTP for pending user', async () => {
     mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', status: 'pending_first_login' }));
-    const result = await refreshOtp('user-1');
+    const result = await refreshOtp('user-1', 'admin-1');
     expect(result.response?.oneTimePassword).toBe('ABCDEFGH12345678');
     expect(mockUpdateUser).toHaveBeenCalledWith('user-1', expect.objectContaining({
       failedLoginAttempts: 0,

@@ -21,12 +21,12 @@ export function useVaults(token: string | null) {
     }
   }, [token]);
 
-  const createVault = useCallback(async (displayName: string): Promise<VaultSummary> => {
+  const createVault = useCallback(async (displayName: string, source?: 'import'): Promise<VaultSummary> => {
     if (!token) throw new Error('Not authenticated');
     setLoading(true);
     setError(null);
     try {
-      return await api.createVault({ displayName }, token);
+      return await api.createVault({ displayName, ...(source && { source }) }, token);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to create vault';
       setError(msg);

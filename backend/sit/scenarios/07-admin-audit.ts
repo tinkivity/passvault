@@ -43,7 +43,6 @@ export function adminAuditScenarios(ctx: SitContext) {
       expect(res.status).toBe(200);
       expect(res.data.data.events.length).toBeGreaterThan(0);
 
-      // Events should have username field populated (an email address, not undefined)
       const withUsername = res.data.data.events.filter(e => e.username && e.username.includes('@'));
       expect(withUsername.length).toBeGreaterThan(0);
     });
@@ -63,20 +62,82 @@ export function adminAuditScenarios(ctx: SitContext) {
       expect(userCreated[0].performedByUsername).toBeDefined();
     });
 
-    it('vault_operations events are recorded', async () => {
+    it('admin_actions includes audit_config_changed', async () => {
+      const res = await request<{ success: boolean; data: { events: AuditEvent[] } }>(
+        'GET', `${API_PATHS.ADMIN_AUDIT_EVENTS}?category=admin_actions`, {
+          token: ctx.adminToken,
+          powDifficulty: pow(HIGH),
+        },
+      );
+
+      expect(res.status).toBe(200);
+      const configChanged = res.data.data.events.filter(e => e.action === 'audit_config_changed');
+      expect(configChanged.length).toBeGreaterThan(0);
+    });
+
+    it('vault_operations: vault_opened recorded when index is fetched', async () => {
       // Wait for config cache to expire on vault Lambda (5s TTL + margin)
       await new Promise(resolve => setTimeout(resolve, 6000));
 
-      // Rename the vault to trigger a vault_renamed event
+      // Fetch the vault index (this triggers vault_opened)
+      const indexPath = API_PATHS.VAULT_INDEX.replace('{vaultId}', ctx.vaultId);
+      const indexRes = await request<{ success: boolean }>('GET', indexPath, {
+        token: ctx.proUserToken,
+        powDifficulty: pow(HIGH),
+      });
+      expect(indexRes.status).toBe(200);
+
+      // Wait for fire-and-forget write
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      const res = await request<{ success: boolean; data: { events: AuditEvent[] } }>(
+        'GET', `${API_PATHS.ADMIN_AUDIT_EVENTS}?category=vault_operations`, {
+          token: ctx.adminToken,
+          powDifficulty: pow(HIGH),
+        },
+      );
+
+      expect(res.status).toBe(200);
+      const actions = res.data.data.events.map(e => e.action);
+      expect(actions).toContain('vault_opened');
+    });
+
+    it('vault_operations: vault_saved recorded after PUT', async () => {
+      const res = await request<{ success: boolean; data: { events: AuditEvent[] } }>(
+        'GET', `${API_PATHS.ADMIN_AUDIT_EVENTS}?category=vault_operations`, {
+          token: ctx.adminToken,
+          powDifficulty: pow(HIGH),
+        },
+      );
+
+      expect(res.status).toBe(200);
+      const actions = res.data.data.events.map(e => e.action);
+      expect(actions).toContain('vault_saved');
+    });
+
+    it('vault_operations: vault_created recorded', async () => {
+      const res = await request<{ success: boolean; data: { events: AuditEvent[] } }>(
+        'GET', `${API_PATHS.ADMIN_AUDIT_EVENTS}?category=vault_operations`, {
+          token: ctx.adminToken,
+          powDifficulty: pow(HIGH),
+        },
+      );
+
+      expect(res.status).toBe(200);
+      const actions = res.data.data.events.map(e => e.action);
+      expect(actions).toContain('vault_created');
+    });
+
+    it('vault_operations: vault_renamed recorded', async () => {
+      // Trigger a rename
       const renamePath = `/api/vaults/${ctx.vaultId}`;
       const renameRes = await request<{ success: boolean }>('PATCH', renamePath, {
-        body: { displayName: 'SIT Audit Test Vault' },
+        body: { displayName: 'SIT Audit Final Name' },
         token: ctx.proUserToken,
         powDifficulty: pow(HIGH),
       });
       expect(renameRes.status).toBe(200);
 
-      // Allow fire-and-forget audit write to complete
       await new Promise(resolve => setTimeout(resolve, 2000));
 
       const res = await request<{ success: boolean; data: { events: AuditEvent[] } }>(
@@ -89,6 +150,29 @@ export function adminAuditScenarios(ctx: SitContext) {
       expect(res.status).toBe(200);
       const actions = res.data.data.events.map(e => e.action);
       expect(actions).toContain('vault_renamed');
+    });
+
+    it('vault_operations: vault_downloaded recorded', async () => {
+      // Trigger a download
+      const downloadPath = API_PATHS.VAULT_DOWNLOAD.replace('{vaultId}', ctx.vaultId);
+      const downloadRes = await request<{ success: boolean }>('GET', downloadPath, {
+        token: ctx.proUserToken,
+        powDifficulty: pow(HIGH),
+      });
+      expect(downloadRes.status).toBe(200);
+
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      const res = await request<{ success: boolean; data: { events: AuditEvent[] } }>(
+        'GET', `${API_PATHS.ADMIN_AUDIT_EVENTS}?category=vault_operations`, {
+          token: ctx.adminToken,
+          powDifficulty: pow(HIGH),
+        },
+      );
+
+      expect(res.status).toBe(200);
+      const actions = res.data.data.events.map(e => e.action);
+      expect(actions).toContain('vault_downloaded');
     });
   });
 }
