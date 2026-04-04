@@ -13,6 +13,14 @@ import { VaultBreadcrumbs } from './VaultBreadcrumbs.js';
 import { AdminBreadcrumbs } from '../admin/AdminBreadcrumbs.js';
 import { ShellHeader } from '../shared/ShellHeader.js';
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 import { config } from '../../config.js';
 import { ROUTES } from '../../routes.js';
 import { ShellContext } from '../../context/VaultShellContext.js';
@@ -20,8 +28,7 @@ import { ShellContext } from '../../context/VaultShellContext.js';
 export type { VaultShellContext } from '../../context/VaultShellContext.js';
 export { useVaultShellContext } from '../../context/VaultShellContext.js';
 
-const VIEW_TIMEOUT = config.timeouts.view;
-const ADMIN_TIMEOUT = config.timeouts.admin;
+const SESSION_TIMEOUT = config.timeouts.session;
 
 export function VaultShell() {
   const navigate = useNavigate();
@@ -33,19 +40,30 @@ export function VaultShell() {
   const { catalog, fetchCatalog } = useWarningCatalog();
 
   const [vaults, setVaults] = useState<VaultSummary[]>([]);
+  const [showExtendModal, setShowExtendModal] = useState(false);
 
   const handleLogout = useCallback(() => {
     logout();
     navigate(ROUTES.LOGIN, { replace: true });
   }, [logout, navigate]);
 
-  const timeoutSeconds = role === 'admin' ? ADMIN_TIMEOUT : VIEW_TIMEOUT;
-
-  const { secondsLeft } = useAutoLogout({
-    timeoutSeconds,
+  const { secondsLeft, extend } = useAutoLogout({
+    timeoutSeconds: SESSION_TIMEOUT,
     onLogout: handleLogout,
     active: true,
   });
+
+  // Show extend-session modal when less than 10 seconds remain
+  useEffect(() => {
+    if (secondsLeft > 0 && secondsLeft < 10) {
+      setShowExtendModal(true);
+    }
+  }, [secondsLeft]);
+
+  const handleExtendSession = useCallback(() => {
+    extend();
+    setShowExtendModal(false);
+  }, [extend]);
 
   const refreshVaults = useCallback(async () => {
     const list = await fetchVaults();
@@ -108,6 +126,7 @@ export function VaultShell() {
               <ShellHeader
                 breadcrumbs={isAdminRoute ? <AdminBreadcrumbs /> : <VaultBreadcrumbs />}
                 secondsLeft={secondsLeft}
+                onExtend={handleExtendSession}
               />
               <main className="flex-1 overflow-auto bg-muted p-6">
                 {!isAdminRoute && vaults.length === 0 ? (
@@ -128,6 +147,23 @@ export function VaultShell() {
           </div>
         </div>
       </SidebarProvider>
+
+      {/* Extend-session modal */}
+      <Dialog open={showExtendModal} onOpenChange={setShowExtendModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Session expiring</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground py-2">
+            Your session will expire in {secondsLeft} second{secondsLeft !== 1 ? 's' : ''}.
+            Would you like to extend it?
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={handleLogout}>Log out</Button>
+            <Button onClick={handleExtendSession}>Extend session</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </ShellContext.Provider>
   );
 }

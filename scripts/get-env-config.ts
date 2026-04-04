@@ -7,9 +7,8 @@
  *
  * Output (shell-compatible, suitable for eval or .env.local):
  *   VITE_PASSKEY_REQUIRED=false
- *   VITE_VIEW_TIMEOUT_SECONDS=300
- *   VITE_EDIT_TIMEOUT_SECONDS=600
- *   VITE_ADMIN_TIMEOUT_SECONDS=86400
+ *   VITE_SESSION_TIMEOUT_SECONDS=300
+ *   VITE_VAULT_TIMEOUT_SECONDS=60
  */
 
 import { getEnvironmentConfig } from '../shared/src/config/environments.js';
@@ -23,6 +22,5 @@ if (!env) {
 const c = getEnvironmentConfig(env);
 
 console.log(`VITE_PASSKEY_REQUIRED=${c.features.passkeyRequired}`);
-console.log(`VITE_VIEW_TIMEOUT_SECONDS=${c.session.viewModeTimeoutSeconds}`);
-console.log(`VITE_EDIT_TIMEOUT_SECONDS=${c.session.editModeTimeoutSeconds}`);
-console.log(`VITE_ADMIN_TIMEOUT_SECONDS=${c.session.adminTokenExpiryHours * 3600}`);
+console.log(`VITE_SESSION_TIMEOUT_SECONDS=${c.session.sessionTimeoutSeconds}`);
+console.log(`VITE_VAULT_TIMEOUT_SECONDS=${c.session.vaultTimeoutSeconds}`);
