@@ -8,6 +8,7 @@ export default defineConfig({
     include: [resolve(sitDir, 'scenarios/**/*.test.ts')],
     testTimeout: 60_000,
     hookTimeout: 30_000,
+    fileParallelism: false,
     sequence: { sequential: true },
   },
 });
