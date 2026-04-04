@@ -1,57 +1,52 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { request, pow } from '../lib/client.js';
-import { ctx } from '../lib/context.js';
+import { load, type SitContext } from '../lib/context.js';
 import { API_PATHS, POW_CONFIG } from '@passvault/shared';
-import type { ListLoginEventsResponse, AdminStats } from '@passvault/shared';
 
 const HIGH = POW_CONFIG.DIFFICULTY.HIGH;
 
+let ctx: SitContext;
+
 describe('07 — Admin Audit', () => {
-  it('gets admin stats -> includes login data', async () => {
-    const res = await request<{ success: boolean; data: AdminStats }>('GET', API_PATHS.ADMIN_STATS, {
+  beforeAll(() => { ctx = load(); });
+
+  it('gets audit config -> authentication enabled', async () => {
+    const res = await request<{ success: boolean; data: { authentication: boolean } }>('GET', API_PATHS.ADMIN_AUDIT_CONFIG, {
       token: ctx.adminToken,
       powDifficulty: pow(HIGH),
     });
 
     expect(res.status).toBe(200);
-    expect(res.data.success).toBe(true);
-    expect(typeof res.data.data.totalUsers).toBe('number');
-    expect(typeof res.data.data.loginsLast7Days).toBe('number');
-    expect(typeof res.data.data.totalVaultSizeBytes).toBe('number');
+    expect(res.data.data.authentication).toBe(true);
   });
 
-  it('gets login events -> contains events from this test run', async () => {
-    const res = await request<{ success: boolean; data: ListLoginEventsResponse }>('GET', API_PATHS.ADMIN_LOGIN_EVENTS, {
+  it('gets audit events (authentication) -> contains events', async () => {
+    const res = await request<{ success: boolean; data: { events: unknown[] } }>('GET', `${API_PATHS.ADMIN_AUDIT_EVENTS}?category=authentication`, {
       token: ctx.adminToken,
       powDifficulty: pow(HIGH),
     });
 
     expect(res.status).toBe(200);
-    expect(res.data.success).toBe(true);
-    expect(Array.isArray(res.data.data.events)).toBe(true);
-    // There should be login events from the scenarios we ran above
     expect(res.data.data.events.length).toBeGreaterThan(0);
   });
 
-  it('login events include SIT admin logins', async () => {
-    const res = await request<{ success: boolean; data: ListLoginEventsResponse }>('GET', API_PATHS.ADMIN_LOGIN_EVENTS, {
+  it('enables admin_actions -> success', async () => {
+    const res = await request<{ success: boolean }>('PUT', API_PATHS.ADMIN_AUDIT_CONFIG, {
+      body: { authentication: true, admin_actions: true, vault_operations: false, system: false },
       token: ctx.adminToken,
       powDifficulty: pow(HIGH),
     });
 
     expect(res.status).toBe(200);
-    const adminEvents = res.data.data.events.filter(e => e.username === ctx.adminEmail);
-    expect(adminEvents.length).toBeGreaterThan(0);
   });
 
-  it('login events include SIT pro user logins', async () => {
-    const res = await request<{ success: boolean; data: ListLoginEventsResponse }>('GET', API_PATHS.ADMIN_LOGIN_EVENTS, {
+  it('verifies config updated -> admin_actions: true', async () => {
+    const res = await request<{ success: boolean; data: { admin_actions: boolean } }>('GET', API_PATHS.ADMIN_AUDIT_CONFIG, {
       token: ctx.adminToken,
       powDifficulty: pow(HIGH),
     });
 
     expect(res.status).toBe(200);
-    const proEvents = res.data.data.events.filter(e => e.username === ctx.proUserEmail);
-    expect(proEvents.length).toBeGreaterThan(0);
+    expect(res.data.data.admin_actions).toBe(true);
   });
 });

@@ -1,12 +1,16 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { request, pow } from '../lib/client.js';
-import { ctx } from '../lib/context.js';
+import { load, save, type SitContext } from '../lib/context.js';
 import { API_PATHS, POW_CONFIG, ERRORS } from '@passvault/shared';
 import type { VaultSummary, VaultGetResponse, VaultDownloadResponse } from '@passvault/shared';
 
 const HIGH = POW_CONFIG.DIFFICULTY.HIGH;
 
+let ctx: SitContext;
+
 describe('04 — Vault Lifecycle', () => {
+  beforeAll(() => { ctx = load(); });
+
   it('creates vault -> vaultId + encryptionSalt', async () => {
     const res = await request<{ success: boolean; data: VaultSummary }>('POST', API_PATHS.VAULTS, {
       body: { displayName: 'SIT Test Vault' },
@@ -22,6 +26,7 @@ describe('04 — Vault Lifecycle', () => {
     ctx.vaultId = res.data.data.vaultId;
     ctx.vaultSalt = res.data.data.encryptionSalt;
     ctx.createdVaultIds.push(ctx.vaultId);
+    save(ctx);
   });
 
   it('lists vaults -> contains created vault', async () => {
@@ -79,6 +84,7 @@ describe('04 — Vault Lifecycle', () => {
 
     ctx.secondVaultId = res.data.data.vaultId;
     ctx.createdVaultIds.push(ctx.secondVaultId);
+    save(ctx);
   });
 
   it('deletes second vault -> success', async () => {

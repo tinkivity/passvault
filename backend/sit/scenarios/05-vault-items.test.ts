@@ -1,7 +1,7 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { request, pow } from '../lib/client.js';
-import { ctx } from '../lib/context.js';
+import { load, type SitContext } from '../lib/context.js';
 import { deriveKey, encrypt, decrypt } from '../lib/crypto.js';
 import { API_PATHS, POW_CONFIG } from '@passvault/shared';
 import type { VaultPutResponse, VaultGetResponse } from '@passvault/shared';
@@ -78,8 +78,12 @@ function buildItems(itemList: SitVaultItem[]) {
   };
 }
 
+let ctx: SitContext;
+
 describe('05 — Vault Items', () => {
   let vaultKey: Buffer;
+
+  beforeAll(() => { ctx = load(); });
 
   it('saves vault with 3 items -> encrypt index+items, PUT, success', async () => {
     const salt = Buffer.from(ctx.vaultSalt, 'base64');

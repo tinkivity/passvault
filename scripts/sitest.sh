@@ -184,6 +184,9 @@ trap cleanup EXIT
 # ── Run tests ─────────────────────────────────────────────────────────────────
 section "Running tests"
 
+# Reset shared context file so scenarios start clean
+rm -f /tmp/passvault-sit-context.json
+
 SIT_BASE_URL="$API_URL" \
 SIT_ENV="$ENV" \
 SIT_ADMIN_EMAIL="$SIT_EMAIL" \

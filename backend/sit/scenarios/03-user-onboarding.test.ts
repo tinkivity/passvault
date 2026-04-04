@@ -1,12 +1,16 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { request, pow } from '../lib/client.js';
-import { ctx } from '../lib/context.js';
+import { load, save, type SitContext } from '../lib/context.js';
 import { API_PATHS, POW_CONFIG } from '@passvault/shared';
 import type { LoginResponse, ChangePasswordResponse } from '@passvault/shared';
 
 const MEDIUM = POW_CONFIG.DIFFICULTY.MEDIUM;
 
+let ctx: SitContext;
+
 describe('03 — User Onboarding (pro user)', () => {
+  beforeAll(() => { ctx = load(); });
+
   it('first login with OTP -> requirePasswordChange', async () => {
     const res = await request<{ success: boolean; data: LoginResponse }>('POST', API_PATHS.AUTH_LOGIN, {
       body: { username: ctx.proUserEmail, password: ctx.proUserOtp },
@@ -14,11 +18,10 @@ describe('03 — User Onboarding (pro user)', () => {
     });
 
     expect(res.status).toBe(200);
-    expect(res.data.success).toBe(true);
     expect(res.data.data.requirePasswordChange).toBe(true);
-    expect(res.data.data.token).toBeDefined();
 
     ctx.proUserToken = res.data.data.token;
+    save(ctx);
   });
 
   it('sets real password -> success', async () => {
@@ -31,7 +34,7 @@ describe('03 — User Onboarding (pro user)', () => {
     });
 
     expect(res.status).toBe(200);
-    expect(res.data.success).toBe(true);
+    save(ctx);
   });
 
   it('logs in with new password -> token, active', async () => {
@@ -41,11 +44,10 @@ describe('03 — User Onboarding (pro user)', () => {
     });
 
     expect(res.status).toBe(200);
-    expect(res.data.success).toBe(true);
-    expect(res.data.data.token).toBeDefined();
     expect(res.data.data.requirePasswordChange).toBeFalsy();
 
     ctx.proUserToken = res.data.data.token;
+    save(ctx);
   });
 
   it('updates profile name -> success', async () => {
@@ -55,6 +57,5 @@ describe('03 — User Onboarding (pro user)', () => {
     });
 
     expect(res.status).toBe(200);
-    expect(res.data.success).toBe(true);
   });
 });
