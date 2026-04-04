@@ -30,6 +30,7 @@ const USERS_TABLE = process.env.DYNAMODB_TABLE ?? `passvault-users-${ENV}`;
 const VAULTS_TABLE = process.env.VAULTS_TABLE_NAME ?? `passvault-vaults-${ENV}`;
 const FILES_BUCKET = process.env.FILES_BUCKET ?? '';
 const LOGIN_EVENTS_TABLE = process.env.LOGIN_EVENTS_TABLE_NAME ?? `passvault-login-events-${ENV}`;
+const AUDIT_EVENTS_TABLE = process.env.AUDIT_EVENTS_TABLE ?? `passvault-audit-${ENV}`;
 
 const SIT_ADMIN_EMAIL = process.env.SIT_ADMIN_EMAIL;
 if (!SIT_ADMIN_EMAIL) {
@@ -91,7 +92,7 @@ async function findVaultsByUser(userId: string): Promise<Array<{ vaultId: string
   const result = await dynamo.send(
     new QueryCommand({
       TableName: VAULTS_TABLE,
-      IndexName: 'userId-index',
+      IndexName: 'byUser',
       KeyConditionExpression: 'userId = :uid',
       ExpressionAttributeValues: { ':uid': userId },
     }),
@@ -103,16 +104,19 @@ async function deleteVaultFiles(vaultIds: string[]): Promise<number> {
   if (!FILES_BUCKET || vaultIds.length === 0) return 0;
   let deleted = 0;
   for (const vaultId of vaultIds) {
-    try {
-      await s3.send(
-        new DeleteObjectCommand({
-          Bucket: FILES_BUCKET,
-          Key: `vault-${vaultId}.enc`,
-        }),
-      );
-      deleted++;
-    } catch {
-      // File may not exist
+    // v2 split format: two files per vault
+    for (const suffix of ['-index.enc', '-items.enc']) {
+      try {
+        await s3.send(
+          new DeleteObjectCommand({
+            Bucket: FILES_BUCKET,
+            Key: `vault-${vaultId}${suffix}`,
+          }),
+        );
+        deleted++;
+      } catch {
+        // File may not exist
+      }
     }
   }
   return deleted;
@@ -149,36 +153,41 @@ async function deleteLoginEvents(userIds: string[]): Promise<number> {
   if (userIds.length === 0) return 0;
   let deleted = 0;
 
-  for (const userId of userIds) {
+  // Login events table has no GSI — scan with filter
+  // Also clean audit events table
+  for (const table of [LOGIN_EVENTS_TABLE, AUDIT_EVENTS_TABLE]) {
     try {
-      const result = await dynamo.send(
-        new QueryCommand({
-          TableName: LOGIN_EVENTS_TABLE,
-          IndexName: 'userId-index',
-          KeyConditionExpression: 'userId = :uid',
-          ExpressionAttributeValues: { ':uid': userId },
-        }),
-      );
+      let lastKey: Record<string, unknown> | undefined;
+      do {
+        const result = await dynamo.send(
+          new ScanCommand({
+            TableName: table,
+            FilterExpression: `userId IN (${userIds.map((_, i) => `:u${i}`).join(',')})`,
+            ExpressionAttributeValues: Object.fromEntries(userIds.map((id, i) => [`:u${i}`, id])),
+            ExclusiveStartKey: lastKey,
+          }),
+        );
 
-      if (result.Items && result.Items.length > 0) {
-        // Batch delete in groups of 25
-        const items = result.Items as Array<{ eventId: string }>;
-        for (let i = 0; i < items.length; i += 25) {
-          const batch = items.slice(i, i + 25);
-          await dynamo.send(
-            new BatchWriteCommand({
-              RequestItems: {
-                [LOGIN_EVENTS_TABLE]: batch.map(item => ({
-                  DeleteRequest: { Key: { eventId: item.eventId } },
-                })),
-              },
-            }),
-          );
-          deleted += batch.length;
+        if (result.Items && result.Items.length > 0) {
+          const items = result.Items as Array<{ eventId: string }>;
+          for (let i = 0; i < items.length; i += 25) {
+            const batch = items.slice(i, i + 25);
+            await dynamo.send(
+              new BatchWriteCommand({
+                RequestItems: {
+                  [table]: batch.map(item => ({
+                    DeleteRequest: { Key: { eventId: item.eventId } },
+                  })),
+                },
+              }),
+            );
+            deleted += batch.length;
+          }
         }
-      }
+        lastKey = result.LastEvaluatedKey as Record<string, unknown> | undefined;
+      } while (lastKey);
     } catch {
-      // Login events table may not exist or index may differ
+      // Table may not exist
     }
   }
 
@@ -244,7 +253,7 @@ async function main() {
   console.log(`    Users deleted        : ${summary.usersDeleted}`);
   console.log(`    Vaults deleted       : ${summary.vaultsDeleted}`);
   console.log(`    Vault files deleted  : ${summary.filesDeleted}`);
-  console.log(`    Login events deleted : ${summary.loginEventsDeleted}`);
+  console.log(`    Events deleted       : ${summary.loginEventsDeleted}`);
   console.log('');
 }
 

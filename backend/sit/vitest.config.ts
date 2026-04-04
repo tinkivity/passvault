@@ -1,11 +1,14 @@
 import { defineConfig } from 'vitest/config';
+import { resolve } from 'path';
+
+const sitDir = resolve(__dirname);
 
 export default defineConfig({
   test: {
-    include: ['sit/scenarios/**/*.test.ts'],
+    include: [resolve(sitDir, 'scenarios/**/*.test.ts')],
     testTimeout: 60_000,
     hookTimeout: 30_000,
     sequence: { sequential: true },
-    reporters: ['./sit/lib/progress-reporter.ts'],
+    reporters: [resolve(sitDir, 'lib/progress-reporter.ts')],
   },
 });
