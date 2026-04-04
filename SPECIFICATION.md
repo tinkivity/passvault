@@ -11,7 +11,7 @@ PassVault is an invitation-only, personal password manager and secure vault with
 ### 2.1 User Management
 
 #### Admin Functions
-- **Single Admin**: The system has exactly one admin account
+- **Multi-Admin Peer Model**: The system supports multiple admin accounts. Any admin can create and manage other admins by setting `plan: 'administrator'` on a user invitation. Admins cannot modify their own plan or expiration date (self-modification prevention). Admin accounts auto-lock on expiration (the `expiresAt` field applies to admins the same way it does to users).
 - **Admin First-Time Login**: On first login, admin must change initial password
   - Initial admin password is generated and printed to console by `scripts/init-admin.ts` after deployment
   - The script must be run by someone with AWS credentials and DynamoDB write access
@@ -40,7 +40,7 @@ PassVault is an invitation-only, personal password manager and secure vault with
   - **Unlock** (`locked` → `active`): Restores login access
   - **Expire** (`active` → `expired`): User can log in and read but cannot create/update/delete vault items; returns `ACCOUNT_EXPIRED` (403) on write attempts
   - **Retire** (any non-retired status → `retired`): Username is renamed to `_retired_{userId}_{original}` freeing the email for reuse; user disappears from the admin list; login returns `INVALID_CREDENTIALS` (indistinguishable from wrong password)
-  - Admin cannot lock/unlock/expire/retire another admin account (returns 403)
+  - > **v2 change (peer model):** Any admin can lock/unlock/expire/retire another admin account. Self-modification of plan and expiration is prevented (returns 403). Admin accounts auto-lock on expiration, same as user accounts.
 - **Refresh OTP**: Admin can generate a new OTP for a user that is still in `pending_first_login` state (e.g. OTP expired or was lost); sends email if the user is in a beta/prod environment
 - **Delete Pending User**: Admin can delete a user that has not yet completed first login; removes the DynamoDB record and all associated S3 vault files
 - **Reactivate User**: Admin can reactivate an `expired` user, optionally setting a new `expiresAt` date or granting lifetime access
@@ -88,11 +88,12 @@ interface VaultFile {
 
 **Item categories:** `login`, `email`, `credit_card`, `identity`, `wifi`, `private_key`, `note`
 
-Each item has a common base (`id`, `name`, `category`, `createdAt`, `updatedAt`, `warningCodes`) plus category-specific fields (e.g. `login` has `username`, `password`, optional `url`/`totp`/`notes`).
+Each item has a common base (`id`, `name`, `category`, `comment`, `createdAt`, `updatedAt`, `warningCodes`) plus category-specific fields (e.g. `login` has `username`, `password`, optional `url`/`totp`). The `comment` field (optional) replaces the former `notes` field, providing a unified free-text annotation on any item category.
 
 **`warningCodes`** are zero-knowledge metadata computed entirely client-side and stored inside the encrypted vault. The backend never sees or processes them. Current codes:
 - `duplicate_password` — password appears in more than one login/email/wifi item
 - `too_simple_password` — password fails the shared password policy
+- `breached_password` — password matches a known breach database entry
 
 #### Multiple Vaults
 
@@ -125,12 +126,14 @@ Plan is set by the admin on the user record and enforced server-side on vault cr
 
 #### Session Timeouts
 
-Auto-logout fires after configurable inactivity; a countdown timer is always visible.
+> **v2 change:** The old view-mode / edit-mode split has been replaced by two independent timers: `sessionTimeoutSeconds` (overall session inactivity) and `vaultTimeoutSeconds` (per-vault unlock duration). An "Extend session" button allows users to reset the session timer without re-authenticating. When the vault timeout fires, the vault auto-locks (encryption key cleared) and a lock indicator appears in the sidebar; the session itself remains active.
 
-| Environment | View mode | Edit mode |
-|-------------|-----------|-----------|
-| Dev / Beta  | 5 min     | 10 min    |
-| Prod        | 60 sec    | 120 sec   |
+Auto-logout fires after configurable session inactivity; a countdown timer is always visible. Vault auto-lock fires independently.
+
+| Environment | Session timeout | Vault timeout |
+|-------------|----------------|---------------|
+| Dev / Beta  | 5 min          | 10 min        |
+| Prod        | 10 min         | 60 sec        |
 
 #### Expired Accounts
 
@@ -334,6 +337,8 @@ For a detailed bot attack cost analysis including worst-case calculations and de
   - Password fields include `[Generate]` button (cryptographically random, mixed character classes)
   - Note items include format toggle (raw / markdown)
 
+- **Import vault** (v2): Pro+ users can import a previously exported vault backup (`VaultDownloadResponse` JSON). The import dialog decrypts the file client-side using the original password, then re-encrypts with the current vault key and saves. This is entirely client-side — no new backend endpoint is required.
+
 - No longer a single text-area vault editor — vault is always structured items
 
 ### 2.5 Environment Modes
@@ -350,8 +355,8 @@ PassVault supports three deployment environments with different security profile
 | **Proof of Work** | Disabled | Enabled | Enabled |
 | **Honeypot** | Enabled | Enabled | Enabled |
 | **CloudFront CDN** | Optional (direct S3/APIGW) | Enabled | Enabled |
-| **View timeout** | 5 min | 5 min | 60 sec |
-| **Edit timeout** | 10 min | 10 min | 120 sec |
+| **Session timeout** | 5 min | 5 min | 10 min |
+| **Vault timeout** | 10 min | 10 min | 60 sec |
 | **Admin token expiry** | 24 hours | 24 hours | 8 hours |
 | **User token expiry** | 30 min | 30 min | 5 min |
 | **OTP expiry** | 60 min | 10 min | 120 min |
@@ -369,7 +374,7 @@ PassVault supports three deployment environments with different security profile
 - **Passkeys**: Disabled — status goes directly from "pending_first_login" → "active" after password change
 - **Proof of Work**: Disabled — faster iteration
 - **CloudFront**: Optional — can access API Gateway directly
-- **Session timeouts**: Relaxed (5 min view, 10 min edit)
+- **Session timeouts**: Relaxed (5 min session, 10 min vault)
 - **Token expiry**: Relaxed (24h admin, 30m user)
 - **Visual indicator**: "DEV ENVIRONMENT" banner in the UI
 - **DynamoDB**: No point-in-time recovery
@@ -380,7 +385,7 @@ PassVault supports three deployment environments with different security profile
 - **Passkeys**: Disabled — same simplified flow as dev
 - **Proof of Work**: Enabled — validates PoW flow works correctly
 - **CloudFront**: Enabled — matches prod architecture
-- **Session timeouts**: Relaxed (5 min view, 10 min edit)
+- **Session timeouts**: Relaxed (5 min session, 10 min vault)
 - **Token expiry**: Relaxed (24h admin, 30m user)
 - **Visual indicator**: "BETA ENVIRONMENT" banner in the UI
 
@@ -390,7 +395,7 @@ PassVault supports three deployment environments with different security profile
 - **CloudFront flat-rate plan**: Enrolled (AWS console) — provides edge WAF + DDoS + bot management at $0
 - **Proof of Work**: Enabled with production difficulty levels
 - **CloudFront**: Enabled
-- **Session timeouts**: Strict (60s view, 120s edit)
+- **Session timeouts**: Strict (10 min session, 60s vault)
 - **Token expiry**: Strict (8h admin, 5m user)
 - **Visual indicator**: None
 
@@ -414,7 +419,7 @@ All environment differences are driven by a single `EnvironmentConfig` type. The
 - **Framework**: React (latest stable version)
 - **State Management**:
   - React hooks (useState, useEffect, useContext for auth state)
-  - View mode vs Edit mode state
+  - Session timeout and vault timeout state (replaced view/edit modes)
   - Auto-logout timer management (setInterval for countdown)
   - Unsaved changes tracking
   - Encryption key management (derived from password, held in memory during session)
@@ -428,9 +433,9 @@ All environment differences are driven by a single `EnvironmentConfig` type. The
   - **Key Management**: Encryption key derived at login, held in memory (never persisted)
   - **Automatic Operations**: Encrypt before PUT /vault, decrypt after GET /vault
 - **Client-Side Session Management**:
-  - Countdown timer implementation (60s view mode, 120s edit mode)
-  - Automatic logout when timer reaches zero
-  - Timer reset logic when entering edit mode
+  - Session countdown timer with extend-session button
+  - Per-vault timeout with auto-lock (clears encryption key for that vault)
+  - Automatic logout when session timer reaches zero
   - Clear encryption key from memory on logout
   - Warning before logout (optional)
 
@@ -706,7 +711,12 @@ Protection Layers:
 ### 4.4 Vault Operations (Protected Endpoints)
 All endpoints require user authentication via Authorization header (Bearer token).
 
-> **Note:** The email-change feature (`POST /api/auth/email/change` + `POST /api/auth/email/verify`) is **suspended**. Changing email = changing login identity = invalidating the registered passkey. These endpoints are not implemented.
+> **v2 change:** The email-change feature has been **implemented** with a secure verification flow:
+> - `POST /api/auth/email-change` — initiates the change; sends a 6-digit code to the new email (beta/prod only; returns `EMAIL_CHANGE_NOT_AVAILABLE` on dev)
+> - `POST /api/auth/verify-email-change` — verifies the code and updates the username
+> - `POST /api/auth/lock-self` — allows the original email owner to lock the account if they receive a fraud-notification email (uses a signed lock token)
+>
+> On dev, email changes are applied immediately (no verification). On beta/prod, a verification code must be confirmed before the change takes effect. Passkey credentials remain valid after an email change (the credential is bound to `userId`, not the email).
 
 - **GET /api/vaults** (Requires user auth)
   - Response: `{ "vaults": [{ "vaultId": "string", "displayName": "string", "createdAt": "string" }] }`
@@ -836,6 +846,41 @@ Attributes:
 - Auth Lambda: `dynamodb:PutItem` + `dynamodb:UpdateItem` on this table
 - Admin Lambda: `dynamodb:Scan` on this table
 
+### 5.2a DynamoDB Audit Events Table (v2)
+```
+Table: passvault-audit-{env}
+Primary Key: eventId (String) — UUID
+
+Attributes:
+- eventId:     UUID (String) — PK
+- category:    audit category (String) — GSI PK (byCategory index)
+- action:      audit action (String)
+- userId:      target user (String)
+- performedBy: admin who performed the action (String, optional)
+- timestamp:   ISO 8601 (String) — GSI sort key
+- details:     key-value metadata (Map, optional)
+- expiresAt:   TTL epoch seconds — 90 days
+```
+
+- GSI `byCategory`: PK=category, SK=timestamp — enables filtering by audit category
+- PITR disabled (events are ephemeral, 90-day TTL)
+- removalPolicy: DESTROY
+
+### 5.2b DynamoDB Config Table (v2)
+```
+Table: passvault-config-{env}
+Primary Key: configKey (String)
+
+Attributes:
+- configKey:   identifier (String) — PK (e.g. "auditConfig")
+- config:      JSON object (Map)
+- updatedAt:   ISO 8601 (String)
+```
+
+- Stores per-environment configuration (currently audit config)
+- PITR disabled
+- removalPolicy: DESTROY
+
 ### 5.3 DynamoDB Vaults Table
 ```
 Table: passvault-vaults-{env}
@@ -856,20 +901,26 @@ Global Secondary Index (GSI):
 The first vault (`Personal Vault`) is created automatically by `createUserInvitation` in the admin service. Plan limits (free=1, pro=10) are enforced by `createVault`.
 
 ### 5.4 S3 Storage Structure
+
+> **v2 change:** Vaults now use a **split format** with 2 S3 files per vault (index + items), enabling lazy loading. The frontend fetches the lightweight index first (item names, categories, warning codes) and only fetches the full encrypted items blob when the user opens an item.
+
 ```
 s3://passvault-files-{env}/
-  ├── vault-{vaultId-1}.enc
-  ├── vault-{vaultId-2}.enc
-  └── vault-{vaultId-3}.enc
+  ├── vault-{vaultId-1}-index.enc
+  ├── vault-{vaultId-1}-items.enc
+  ├── vault-{vaultId-2}-index.enc
+  ├── vault-{vaultId-2}-items.enc
+  └── ...
 ```
 
-- Files stored with naming pattern: `vault-{vaultId}.enc` (one S3 object per vault record)
-- Multiple vaults per user are supported; each has its own encrypted object
+- Files stored with naming pattern: `vault-{vaultId}-index.enc` and `vault-{vaultId}-items.enc` (two S3 objects per vault record)
+- Multiple vaults per user are supported; each has its own pair of encrypted objects
 - **Files contain encrypted content only** - server cannot decrypt without user's password
-- File created (as empty blob) when a vault record is first written
-- Auto-migration: if `user-{userId}.enc` exists on first `GET /api/vault/:vaultId`, it is copied to `vault-{vaultId}.enc` and the old key is deleted
+- Files created when a vault is first written (via `putVaultSplitFiles`)
+- Auto-migration: if legacy `user-{userId}.enc` exists on first access, it is migrated to the split format
 - File metadata (`lastModified`) retrieved from S3 object metadata
 - Extension `.enc` indicates encrypted content
+- **Prod lifecycle**: S3 versioning enabled; lifecycle rule retains only the last 3 noncurrent versions
 
 ### 5.4 Password Policy
 
@@ -1285,12 +1336,12 @@ All phases are complete. The build plan was documented in the now-deleted `IMPLE
 
 ### 10.4 Session Timeouts
 
-Session timeouts vary by environment (see Section 2.5):
+> **v2 change:** View/edit mode timeouts replaced by session + vault timeouts (see Section 2.2).
 
 | Timeout | Dev/Beta | Prod |
 |---------|----------|------|
-| View Mode Auto-Logout | 5 minutes | 60 seconds |
-| Edit Mode Auto-Logout | 10 minutes | 120 seconds |
+| Session Auto-Logout | 5 minutes | 10 minutes |
+| Vault Auto-Lock | 10 minutes | 60 seconds |
 | Admin Token Expiry | 24 hours | 8 hours |
 | User Token Expiry | 30 minutes | 5 minutes |
 
@@ -1311,24 +1362,65 @@ Session timeouts vary by environment (see Section 2.5):
 - Graceful error handling with user-friendly messages
 - Data durability: 99.999999999% (S3 standard storage class)
 
+### 10.5 Audit Log (v2)
+
+A configurable audit system records significant events across the application. Events are written fire-and-forget to the `passvault-audit-{env}` DynamoDB table.
+
+**4 audit categories** (each independently toggleable via `AuditConfig`):
+- `authentication` — login, login_failed, logout
+- `admin_actions` — user_created, user_locked, user_unlocked, user_expired, user_retired, user_reset, user_reactivated, user_updated, user_deleted
+- `vault_operations` — vault_created, vault_deleted, vault_renamed
+- `system` — password_changed, passkey_registered, passkey_revoked, email_changed
+
+**Defaults**: `authentication` enabled; all others disabled. Configuration stored in the `passvault-config-{env}` table (key: `auditConfig`) and can be updated via `PUT /api/admin/audit-config`.
+
+**PITR is disabled** on the audit table (events have a 90-day TTL and are not considered critical data).
+
+**Endpoints**:
+- `GET /api/admin/audit-events` — returns audit events (filterable by category)
+- `GET /api/admin/audit-config` — returns current audit configuration
+- `PUT /api/admin/audit-config` — updates audit configuration
+
+### 10.6 Notifications (v2)
+
+> **v2 change:** The failed-login digest email has been removed (replaced by the audit log). Notifications are simplified to **vault backup emails only** (weekly or monthly), configured per-user via `notificationPrefs.vaultBackup`.
+
+The `digest` Lambda runs daily at 01:00 UTC. For each user with backup notifications enabled, it emails the encrypted vault as an attachment (split-format index + items JSON). Frequency is honored via `lastBackupSentAt` on the user record.
+
+### 10.7 Internationalisation (i18n) — planned
+
+The frontend will support EN, DE, FR, and RU via `react-i18next`. Language is detected from the browser's `navigator.language` and can be overridden by a user preference stored in their profile. Translation files live in `frontend/src/i18n/locales/{lang}.json`.
+
+### 10.8 System Integration Tests (SIT)
+
+`scripts/sitest.sh` runs end-to-end integration tests against a live environment:
+
+```bash
+scripts/sitest.sh --env dev
+```
+
+Test scenarios are documented in `backend/sit/SCENARIOS.md`. The SIT suite creates a temporary admin, exercises the main API flows (auth, vault CRUD, admin operations), and tears down afterwards.
+
 ## 11. Future Enhancements (Out of Scope for v1)
 - **Admin Features**:
-  - Delete/deactivate user accounts
-  - Reset user passwords (generate new OTP)
-  - Admin activity audit log
-  - Multiple admin accounts with admin management
-  - Email integration for sending OTP directly to users
+  - ~~Delete/deactivate user accounts~~ **Implemented v1**
+  - ~~Reset user passwords (generate new OTP)~~ **Implemented v1**
+  - ~~Admin activity audit log~~ **Implemented v2** — configurable audit system with 4 categories
+  - ~~Multiple admin accounts with admin management~~ **Implemented v2** — peer model with self-modification prevention
+  - ~~Email integration for sending OTP directly to users~~ **Implemented v1**
 - **User Features**:
-  - Self-service password change (after initial setup)
+  - ~~Self-service password change (after initial setup)~~ **Implemented v1**
   - Password expiration policy (force password change every N days)
   - Account recovery flow (admin-assisted password reset + passkey reset)
   - Passkey recovery codes (recovery codes in case of lost authenticator)
   - Passkey reset capability (admin can clear passkey for locked-out users)
-  - ~~Multiple passkey support (register backup authenticator / device)~~ **Implemented** -- users: max 10, admins: max 2
+  - ~~Multiple passkey support (register backup authenticator / device)~~ **Implemented v1** -- users: max 10, admins: max 2
   - Configurable session timeout preferences (per user or global)
-  - "Extend session" button to add time before auto-logout
+  - ~~"Extend session" button to add time before auto-logout~~ **Implemented v2** — extend-session modal with countdown
   - Audio/visual warning alerts before auto-logout (e.g., 10 seconds warning)
   - Copy individual lines or selected text (not just entire file)
+  - ~~Email change flow~~ **Implemented v2** — verification + fraud lock on beta/prod
+  - ~~Vault import~~ **Implemented v2** — import exported vaults client-side
 - **File Features**:
   - Version history / file versioning (S3 versioning, view/restore previous versions)
   - Rich text editing (WYSIWYG editor, markdown support)

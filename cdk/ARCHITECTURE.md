@@ -39,6 +39,8 @@ After constructing the frontend, the stack sets `FRONTEND_ORIGIN` on all Lambdas
 | `passvault-vaults-{env}` | `vaultId` | `byUser` (PK: userId) | RETAIN on delete |
 | `passvault-login-events-{env}` | `eventId` | none | TTL on `expiresAt` (90 days); DESTROY on delete |
 | `passvault-passkey-credentials-{env}` | `credentialId` | `byUser` (PK: userId) | DESTROY on delete |
+| `passvault-audit-{env}` | `eventId` | `byCategory` (PK: category, SK: timestamp) | TTL on `expiresAt` (90 days); PITR disabled; DESTROY on delete |
+| `passvault-config-{env}` | `configKey` | none | PITR disabled; DESTROY on delete |
 
 All tables use PAY_PER_REQUEST billing.
 
@@ -50,6 +52,8 @@ All tables use PAY_PER_REQUEST billing.
 | Frontend bucket | Static frontend assets | no | DESTROY (auto-delete objects) |
 
 Both buckets enforce SSL and block all public access. The files bucket is tagged `passvault:env` for post-destroy cleanup.
+
+**S3 lifecycle rule (prod only):** The files bucket retains only the last 3 noncurrent versions of vault objects. Noncurrent versions older than 1 day (beyond the 3-version limit) are expired automatically.
 
 ## BackendConstruct
 
@@ -83,6 +87,8 @@ The JWT signing secret is stored in SSM Parameter Store (`/passvault/{env}/jwt-s
 - **Vaults table**: read/write for vault and admin-mgmt; read for digest
 - **Login events table**: write for auth and admin-auth; read for admin-mgmt and digest
 - **Passkey credentials table**: read/write for auth and admin-auth
+- **Audit events table**: read/write for auth, admin-auth, and admin-mgmt
+- **Config table**: read/write for admin-mgmt; read for auth, admin-auth
 - **Files bucket**: read/write for vault and admin-mgmt; read for digest
 
 ### API Gateway
@@ -139,9 +145,18 @@ All routes are nested under `/api`:
     /users/{userId}/email-vault POST -> adminMgmtFn
     /stats                  GET  -> adminMgmtFn
     /login-events           GET  -> adminMgmtFn
+    /audit-events           GET  -> adminMgmtFn
+    /audit-config           GET, PUT  -> adminMgmtFn
+  /auth
+    ...
+    /email-change           POST -> authFn
+    /verify-email-change    POST -> authFn
+    /lock-self              POST -> authFn
   /vaults                   GET, POST -> vaultFn
     /notifications          GET, POST -> vaultFn
     /{vaultId}              GET, PUT, PATCH, DELETE -> vaultFn
+    /{vaultId}/index        GET  -> vaultFn
+    /{vaultId}/items        GET  -> vaultFn
     /{vaultId}/download     GET  -> vaultFn
     /{vaultId}/email        POST -> vaultFn
   /config

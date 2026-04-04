@@ -38,7 +38,7 @@ For post-deploy scripts, see [../scripts/README.md](../scripts/README.md).
 - Sufficient service quotas:
   - Lambda functions: 10 minimum
   - API Gateway: 1 REST API
-  - DynamoDB tables: 4 (users, vaults, config, login-events)
+  - DynamoDB tables: 6 (users, vaults, passkey-credentials, login-events, audit, config)
   - S3 buckets: 2-3
   - CloudFront distributions: 1
 

@@ -61,6 +61,36 @@ For complete instructions covering all environments, custom domains, SES email, 
 
 ---
 
+---
+
+## Frontend Environment Variables
+
+The frontend reads configuration from `VITE_*` env vars at build time. Set these in `.env.local` (for local dev) or inject them during CI builds:
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `VITE_API_BASE_URL` | API base URL; empty for beta/prod (CloudFront proxies) | `http://localhost:3000` |
+| `VITE_ENVIRONMENT` | Target environment | `dev` / `beta` / `prod` |
+| `VITE_PASSKEY_REQUIRED` | Whether passkeys are required | `false` / `true` |
+| `VITE_SESSION_TIMEOUT_SECONDS` | Session inactivity timeout | `300` |
+| `VITE_VAULT_TIMEOUT_SECONDS` | Per-vault unlock timeout | `60` |
+
+> **v2 change:** `VITE_VIEW_TIMEOUT_SECONDS`, `VITE_EDIT_TIMEOUT_SECONDS`, and `VITE_ADMIN_TIMEOUT_SECONDS` have been removed. They are replaced by `VITE_SESSION_TIMEOUT_SECONDS` and `VITE_VAULT_TIMEOUT_SECONDS`.
+
+---
+
+## System Integration Tests (SIT)
+
+After deploying, run the SIT suite to validate the API end-to-end:
+
+```bash
+scripts/sitest.sh --env dev
+```
+
+The SIT creates a temporary admin, exercises auth, vault, and admin flows, and cleans up afterwards. See `backend/sit/SCENARIOS.md` for the full scenario list.
+
+---
+
 ## Related Documentation
 
 | Document | Description |

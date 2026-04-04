@@ -14,11 +14,14 @@ src/
 │   │   ├── VaultItemsPage.tsx
 │   │   ├── VaultItemNewPage.tsx
 │   │   └── VaultItemDetailPage.tsx
-│   └── admin/
-│       ├── DashboardPage.tsx
-│       ├── UsersPage.tsx
-│       ├── UserDetailPage.tsx
-│       └── LoginsPage.tsx
+│   ├── admin/
+│   │   ├── DashboardPage.tsx
+│   │   ├── UsersPage.tsx
+│   │   ├── UserDetailPage.tsx
+│   │   └── AuditPage.tsx
+│   └── auth/
+│       ├── VerifyEmailChangePage.tsx
+│       └── LockAccountPage.tsx
 │
 ├── components/                   ← reusable, non-page components
 │   ├── auth/                     ← auth page implementations (pages/ re-exports these)
@@ -27,6 +30,7 @@ src/
 │   │   ├── VaultSidebar.tsx
 │   │   ├── VaultBreadcrumbs.tsx
 │   │   ├── SecretField.tsx
+│   │   ├── ImportVaultDialog.tsx  ← import exported vault backup (client-side decrypt + re-encrypt)
 │   │   └── pages/                ← vault page implementations (pages/ re-exports these)
 │   ├── admin/                    ← admin widgets and page implementations
 │   │   ├── AdminBreadcrumbs.tsx
@@ -36,6 +40,9 @@ src/
 │   │   ├── OtpDisplay.tsx
 │   │   ├── UserList.tsx
 │   │   └── pages/                ← admin page implementations (pages/ re-exports these)
+│   ├── auth/                     ← auth page implementations
+│   │   ├── VerifyEmailChangePage.tsx
+│   │   └── LockAccountPage.tsx
 │   ├── shared/                   ← cross-feature widgets
 │   │   ├── AccountDialog.tsx
 │   │   ├── Breadcrumbs.tsx
@@ -90,7 +97,9 @@ The router is assembled in `router/index.tsx` from three sub-routers:
     /ui/admin/dashboard           → DashboardPage
     /ui/admin/users               → UsersPage
     /ui/admin/users/:userId       → UserDetailPage
-    /ui/admin/logs/logins         → LoginsPage
+    /ui/admin/logs/audit          → AuditPage
+/verify-email-change          → VerifyEmailChangePage (public, token in query string)
+/lock-account                 → LockAccountPage (public, lock token in query string)
 ```
 
 ### Guards
@@ -130,6 +139,15 @@ ROUTES.UI.ADMIN.USER(userId)      // /ui/admin/users/:userId
 - **Lazy / optional data** (e.g. `UserActivityCard`): fetched in the component that renders it, managing its own loading/error state. This prevents shared loading flags from disabling unrelated UI.
 
 The `useAdmin` hook manages a single `loading` flag for all admin operations. Components that have independent data needs (like `UserActivityCard`) manage their own state to avoid the shared flag disabling action buttons while data loads.
+
+### Split vault data fetching (v2)
+
+Vault data is stored as two separate S3 files (index + items). The `useVault` hook exposes two fetch functions:
+
+- **`fetchIndex(vaultId)`** — fetches the lightweight index blob (item names, categories, warning codes). Called immediately when a vault is opened.
+- **`fetchItems(vaultId)`** — fetches the full encrypted items blob. Called lazily when the user opens an individual item detail page.
+
+This split enables faster initial vault load times since the index is much smaller than the full items payload.
 
 ---
 
@@ -183,6 +201,36 @@ The dialog contains two sections:
 2. **Passkey management** -- lists the user's registered passkeys (name, provider, registration date) with the ability to register new passkeys (with a user-provided name) and revoke existing ones. Duplicate providers (same aaguid) are prevented.
 
 `PasskeySetupPage` (onboarding flow) now includes a name input field for the passkey being registered and an optional skip button in dev/beta environments.
+
+---
+
+## Audit Page (v2)
+
+`AuditPage` (`components/admin/pages/AuditPage.tsx`) replaces the former `LoginsPage`. It displays audit events from the `GET /api/admin/audit-events` endpoint, filterable by category. The page also provides a configuration panel to toggle which audit categories are enabled (via `GET/PUT /api/admin/audit-config`).
+
+---
+
+## Import Vault Dialog (v2)
+
+`ImportVaultDialog` (`components/vault/ImportVaultDialog.tsx`) allows Pro+ users to import a previously exported vault backup. The flow:
+
+1. User selects a `.json` backup file (must match `VaultDownloadResponse` format)
+2. User enters the password that was used when the backup was created
+3. Client decrypts the backup, shows a preview (item count, categories)
+4. On confirm, the items are re-encrypted with the current vault key and saved
+
+This is entirely client-side -- no new backend endpoint is required.
+
+---
+
+## Email Change Flow (v2)
+
+Two public pages handle the email change verification flow (beta/prod only):
+
+- **`VerifyEmailChangePage`** (`pages/auth/VerifyEmailChangePage.tsx`) — the user clicks a link in the verification email; the page reads the token from the query string and calls `POST /api/auth/verify-email-change`.
+- **`LockAccountPage`** (`pages/auth/LockAccountPage.tsx`) — the original email owner receives a fraud-notification email with a lock link; clicking it calls `POST /api/auth/lock-self` to immediately lock the account.
+
+Both pages are routed as flat siblings at the root level (no auth required).
 
 ---
 
@@ -250,13 +298,24 @@ Difficulty levels: LOW (public), MEDIUM (auth), HIGH (admin/vault). Dev stacks s
 
 ---
 
-## Auto-Logout
+## Session & Vault Timeouts
 
-`hooks/useAutoLogout.ts` manages session timeouts. A countdown timer is always visible in the shell header. Timeouts are configured per environment via `config.timeouts`:
+Two independent timeout hooks manage session lifecycle:
 
-| Environment | View mode | Edit mode | Admin |
-|-------------|-----------|-----------|-------|
-| Dev/Beta | 5 min | 10 min | 24 hours |
-| Prod | 60 sec | 120 sec | 8 hours |
+### `useAutoLogout` — session inactivity timeout
+`hooks/useAutoLogout.ts` manages the overall session timeout. A countdown timer is always visible in the shell header. User activity (mouse, keyboard, touch) resets the countdown. An "Extend session" button (modal with countdown) allows the user to reset the timer without re-authenticating. On expiry, `logout()` is called automatically.
 
-User activity (mouse, keyboard, touch) resets the countdown. On expiry, `logout()` is called automatically.
+| Environment | Session timeout |
+|-------------|----------------|
+| Dev/Beta | 5 min |
+| Prod | 10 min |
+
+### `useVaultTimeout` — per-vault unlock timeout
+`hooks/useVaultTimeout.ts` manages how long a vault remains unlocked after password entry. When the timeout fires, the vault's derived encryption key is cleared (auto-lock), but the session remains active. A lock indicator appears next to the vault in the sidebar. The user must re-enter their password to unlock the vault again.
+
+| Environment | Vault timeout |
+|-------------|---------------|
+| Dev/Beta | 10 min |
+| Prod | 60 sec |
+
+Timeouts are configured via `config.timeouts.session` and `config.timeouts.vaultTimeout` (from `VITE_SESSION_TIMEOUT_SECONDS` and `VITE_VAULT_TIMEOUT_SECONDS`).
