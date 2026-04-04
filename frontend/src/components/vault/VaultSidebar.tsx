@@ -503,7 +503,7 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
           </DialogHeader>
           <div className="space-y-3 py-2">
             <p className="text-sm text-muted-foreground">
-              Are you sure you want to delete <span className="font-medium text-foreground">{deletingVault?.displayName}</span>? This action cannot be undone and all items in the vault will be permanently lost.
+              {t('deleteVaultConfirm', { name: deletingVault?.displayName })}
             </p>
             {deleteError && <p className="text-sm text-destructive">{deleteError}</p>}
           </div>

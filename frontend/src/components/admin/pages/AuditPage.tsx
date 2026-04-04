@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { ColumnDef } from '@tanstack/react-table';
 import type { AuditCategory, AuditConfig, AuditEventSummary } from '@passvault/shared';
 import {
@@ -57,12 +58,12 @@ const ALL_CATEGORIES: Array<AuditCategory | 'all'> = [
   'system',
 ];
 
-const categoryLabel: Record<AuditCategory | 'all', string> = {
-  all: 'All',
-  authentication: 'Authentication',
-  admin_actions: 'Admin Actions',
-  vault_operations: 'Vault Operations',
-  system: 'System',
+const categoryLabelKey: Record<AuditCategory | 'all', string> = {
+  all: 'allCategories',
+  authentication: 'authentication',
+  admin_actions: 'adminActions',
+  vault_operations: 'vaultOperations',
+  system: 'system',
 };
 
 const categoryDot: Record<AuditCategory, string> = {
@@ -83,6 +84,7 @@ function FacetedFilter<T extends string>({
   selected,
   onToggle,
   onClear,
+  clearLabel = 'Clear filters',
 }: {
   label: string;
   ariaLabel: string;
@@ -92,6 +94,7 @@ function FacetedFilter<T extends string>({
   selected: Set<T>;
   onToggle: (v: T) => void;
   onClear: () => void;
+  clearLabel?: string;
 }) {
   return (
     <Popover>
@@ -149,7 +152,7 @@ function FacetedFilter<T extends string>({
                     onSelect={onClear}
                     className="justify-center text-center"
                   >
-                    Clear filters
+                    {clearLabel}
                   </CommandItem>
                 </CommandGroup>
               </>
@@ -163,10 +166,11 @@ function FacetedFilter<T extends string>({
 
 // ---- Column definitions -----------------------------------------------------
 
-const auditColumns: ColumnDef<AuditEventSummary>[] = [
+function getAuditColumns(t: (key: string) => string): ColumnDef<AuditEventSummary>[] {
+  return [
   {
     accessorKey: 'timestamp',
-    header: 'Timestamp (UTC)',
+    header: t('timestampUtc'),
     cell: ({ row }) => (
       <span className="text-muted-foreground tabular-nums">
         {formatTimestamp(row.original.timestamp)}
@@ -175,7 +179,7 @@ const auditColumns: ColumnDef<AuditEventSummary>[] = [
   },
   {
     accessorKey: 'category',
-    header: 'Category',
+    header: t('category'),
     size: 160,
     cell: ({ row }) => {
       const cat = row.original.category;
@@ -190,13 +194,13 @@ const auditColumns: ColumnDef<AuditEventSummary>[] = [
   },
   {
     accessorKey: 'action',
-    header: 'Action',
+    header: t('action'),
     size: 160,
     cell: ({ row }) => <span>{formatAction(row.original.action)}</span>,
   },
   {
     id: 'user',
-    header: 'User',
+    header: t('user'),
     size: 160,
     accessorFn: row => row.username ?? row.userId,
     cell: ({ row }) => (
@@ -207,7 +211,7 @@ const auditColumns: ColumnDef<AuditEventSummary>[] = [
   },
   {
     id: 'performedBy',
-    header: 'Performed By',
+    header: t('performedBy'),
     size: 160,
     accessorFn: row => row.performedByUsername ?? row.performedBy ?? '',
     cell: ({ row }) => {
@@ -221,7 +225,7 @@ const auditColumns: ColumnDef<AuditEventSummary>[] = [
   },
   {
     id: 'details',
-    header: 'Details',
+    header: t('details'),
     cell: ({ row }) => {
       const details = row.original.details;
       if (!details) return <span className="text-muted-foreground">--</span>;
@@ -233,7 +237,8 @@ const auditColumns: ColumnDef<AuditEventSummary>[] = [
       );
     },
   },
-];
+  ];
+}
 
 // ---- Settings panel ---------------------------------------------------------
 
@@ -246,13 +251,14 @@ function AuditSettings({
   onUpdate: (config: AuditConfig) => void;
   loading: boolean;
 }) {
+  const { t } = useTranslation('admin');
   const categories: AuditCategory[] = ['authentication', 'admin_actions', 'vault_operations', 'system'];
 
   return (
     <div className="border border-base-300 rounded-lg p-4 space-y-3">
-      <h3 className="text-sm font-medium">Audit Categories</h3>
+      <h3 className="text-sm font-medium">{t('auditCategories')}</h3>
       <p className="text-xs text-muted-foreground">
-        Enable or disable logging for each category. Changes take effect immediately.
+        {t('auditCategoriesDesc')}
       </p>
       <div className="grid grid-cols-2 gap-2">
         {categories.map(cat => (
@@ -276,6 +282,7 @@ function AuditSettings({
 
 export function AuditPage() {
   const { token } = useAuth();
+  const { t } = useTranslation('admin');
   const [events, setEvents] = useState<AuditEventSummary[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -290,6 +297,9 @@ export function AuditPage() {
   const [showSettings, setShowSettings] = useState(false);
   const [auditConfig, setAuditConfig] = useState<AuditConfig | null>(null);
   const [configLoading, setConfigLoading] = useState(false);
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const auditColumns = useMemo(() => getAuditColumns(t), [t]);
 
   const loadEvents = useCallback(async () => {
     if (!token) return;
@@ -388,14 +398,14 @@ export function AuditPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-bold">Audit Log</h1>
+        <h1 className="text-xl font-bold">{t('auditLog')}</h1>
         <div className="flex items-center gap-2">
           <Button
             variant="ghost"
             size="icon-sm"
             onClick={() => setShowSettings(!showSettings)}
-            title="Settings"
-            aria-label="Audit settings"
+            title={t('settings')}
+            aria-label={t('settings')}
           >
             <Cog6ToothIcon className="w-4 h-4" />
           </Button>
@@ -404,8 +414,8 @@ export function AuditPage() {
             size="icon-sm"
             onClick={() => { setLoaded(false); }}
             disabled={loading}
-            title="Refresh"
-            aria-label="Refresh"
+            title={t('common:refresh')}
+            aria-label={t('common:refresh')}
           >
             <ArrowPathIcon className="w-4 h-4" />
           </Button>
@@ -438,7 +448,7 @@ export function AuditPage() {
                   : 'border-transparent text-muted-foreground hover:text-foreground'
               }`}
             >
-              {categoryLabel[cat]}
+              {t(categoryLabelKey[cat])}
             </button>
           ))}
         </div>
@@ -446,28 +456,30 @@ export function AuditPage() {
         {/* Toolbar */}
         <div className="flex items-center gap-2 flex-wrap">
           <FacetedFilter
-            label="Action"
-            ariaLabel="Filter by action"
+            label={t('action')}
+            ariaLabel={t('action')}
             options={uniqueActions}
             getLabel={formatAction}
             selected={selectedActions}
             onToggle={v => toggle(selectedActions, setSelectedActions, v)}
             onClear={() => setSelectedActions(new Set())}
+            clearLabel={t('common:clearFilters')}
           />
 
           <FacetedFilter
-            label="User"
-            ariaLabel="Filter by username"
+            label={t('user')}
+            ariaLabel={t('filterByUsername')}
             options={uniqueUsernames}
             getLabel={v => v}
             selected={selectedUsernames}
             onToggle={v => toggle(selectedUsernames, setSelectedUsernames, v)}
             onClear={() => setSelectedUsernames(new Set())}
+            clearLabel={t('common:clearFilters')}
           />
 
           <DateRangeFilter
-            label="Date"
-            ariaLabel="Filter by date"
+            label={t('date')}
+            ariaLabel={t('filterByDate')}
             from={dateFrom}
             to={dateTo}
             onFrom={v => { setDateFrom(v); setLoaded(false); }}
@@ -481,7 +493,7 @@ export function AuditPage() {
               className="h-8 px-2 lg:px-3"
               onClick={clearFilters}
             >
-              Reset
+              {t('common:reset')}
               <XMarkIcon className="ml-1 h-4 w-4" />
             </Button>
           )}
@@ -491,16 +503,16 @@ export function AuditPage() {
         {!loaded && !loading ? null : loaded && events.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
             <InboxIcon className="w-10 h-10 mb-3" />
-            <p className="font-medium">No audit events yet</p>
-            <p className="text-sm mt-1">Events will appear here as they are recorded.</p>
+            <p className="font-medium">{t('noAuditEventsYet')}</p>
+            <p className="text-sm mt-1">{t('auditEventsAppearHere')}</p>
           </div>
         ) : (
           <DataTable
             columns={auditColumns}
             data={displayedEvents}
             loading={loading && !loaded}
-            loadingLabel="Loading audit events..."
-            emptyMessage={hasFilters ? 'No events match the current filters' : 'No audit events yet'}
+            loadingLabel={t('loadingAuditEvents')}
+            emptyMessage={hasFilters ? t('noEventsMatchCurrentFilters') : t('noAuditEventsYet')}
             defaultSorting={[{ id: 'timestamp', desc: true }]}
           />
         )}
@@ -509,8 +521,8 @@ export function AuditPage() {
         {loaded && events.length > 0 && (
           <div className="text-sm text-muted-foreground">
             {hasFilters
-              ? `Showing ${displayedEvents.length} of ${events.length} ${events.length === 1 ? 'event' : 'events'}`
-              : `${events.length} ${events.length === 1 ? 'event' : 'events'}`}
+              ? t('common:showing', { count: displayedEvents.length, total: events.length, label: events.length === 1 ? t('common:event') : t('common:events') })
+              : t('common:countLabel', { count: events.length, label: events.length === 1 ? t('common:event') : t('common:events') })}
           </div>
         )}
       </div>

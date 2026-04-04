@@ -1,4 +1,5 @@
 import { useMemo, useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { ColumnDef, SortingFn } from '@tanstack/react-table';
 import type { UserSummary, UserStatus, UserPlan, UserVaultStub } from '@passvault/shared';
 import {
@@ -96,7 +97,7 @@ const ALL_STATUSES: UserStatus[] = [
 
 const ALL_PLANS: UserPlan[] = ['free', 'pro', 'administrator'];
 
-const planLabel: Record<UserPlan, string> = { free: 'Free', pro: 'Pro', administrator: 'Administrator' };
+const planLabelKey: Record<UserPlan, string> = { free: 'planFree', pro: 'planPro', administrator: 'planAdmin' };
 
 const planPill: Record<UserPlan, string> = {
   free: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
@@ -104,14 +105,14 @@ const planPill: Record<UserPlan, string> = {
   administrator: 'bg-purple-500/10 text-purple-600',
 };
 
-const statusLabel: Record<UserStatus, string> = {
-  pending_email_verification: 'Awaiting email verification',
-  pending_first_login: 'Awaiting first login',
-  pending_passkey_setup: 'Awaiting passkey setup',
-  active: 'Active',
-  locked: 'Locked',
-  expired: 'Expired',
-  retired: 'Retired',
+const statusLabelKey: Record<UserStatus, string> = {
+  pending_email_verification: 'statusPendingEmailVerification',
+  pending_first_login: 'statusPendingFirstLogin',
+  pending_passkey_setup: 'statusPendingPasskeySetup',
+  active: 'statusActive',
+  locked: 'statusLocked',
+  expired: 'statusExpired',
+  retired: 'statusRetired',
 };
 
 const statusDot: Record<UserStatus, string> = {
@@ -197,11 +198,12 @@ function getUserColumns(
   onShowUser: ((user: UserSummary) => void) | undefined,
   actionLoading: string | null,
   isProd: boolean,
+  t: (key: string) => string,
 ): ColumnDef<UserSummary>[] {
   const cols: ColumnDef<UserSummary>[] = [
     {
       accessorKey: 'username',
-      header: 'Username',
+      header: t('common:username'),
       size: 144,
       cell: ({ row }) => (
         <span className="font-mono">{row.original.username}</span>
@@ -209,25 +211,25 @@ function getUserColumns(
     },
     {
       accessorKey: 'status',
-      header: 'Status',
+      header: t('admin:status'),
       size: 176,
       sortingFn: (rowA, rowB) =>
-        statusLabel[rowA.original.status].localeCompare(statusLabel[rowB.original.status]),
+        t(`admin:${statusLabelKey[rowA.original.status]}`).localeCompare(t(`admin:${statusLabelKey[rowB.original.status]}`)),
       cell: ({ row }) => (
         <span className={`inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${statusPill[row.original.status]}`}>
           <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${statusDot[row.original.status]}`} />
-          {statusLabel[row.original.status]}
+          {t(`admin:${statusLabelKey[row.original.status]}`)}
         </span>
       ),
     },
     {
       accessorKey: 'plan',
-      header: 'Plan',
+      header: t('common:plan'),
       size: 72,
       sortingFn: (rowA, rowB) => rowA.original.plan.localeCompare(rowB.original.plan),
       cell: ({ row }) => (
         <span className={`inline-flex items-center text-xs font-medium px-2 py-0.5 rounded-full ${planPill[row.original.plan]}`}>
-          {planLabel[row.original.plan]}
+          {t(`common:${planLabelKey[row.original.plan]}`)}
         </span>
       ),
     },
@@ -236,7 +238,7 @@ function getUserColumns(
   cols.push(
     {
       accessorKey: 'createdAt',
-      header: 'Created',
+      header: t('common:created'),
       size: 112,
       cell: ({ row }) => (
         <span className="text-muted-foreground">
@@ -246,7 +248,7 @@ function getUserColumns(
     },
     {
       accessorKey: 'lastLoginAt',
-      header: 'Last login',
+      header: t('common:lastLogin'),
       size: 112,
       sortingFn: nullLastSortFn,
       cell: ({ row }) => (
@@ -260,14 +262,14 @@ function getUserColumns(
     {
       id: 'expiresAt',
       accessorKey: 'expiresAt',
-      header: 'Expires',
+      header: t('common:expires'),
       size: 112,
       sortingFn: nullLastSortFn,
       cell: ({ row }) => <ExpiresCell expiresAt={row.original.expiresAt} />,
     },
     {
       accessorKey: 'vaultSizeBytes',
-      header: 'Vault',
+      header: t('common:vaults'),
       size: 80,
       cell: ({ row }) => (
         <span className="text-muted-foreground tabular-nums">
@@ -299,7 +301,7 @@ function getUserColumns(
                     onClick={() => onSetLockTarget(user)}
                   >
                     <LockClosedIcon className="mr-2 h-4 w-4" />
-                    lock
+                    {t('admin:lock')}
                   </DropdownMenuItem>
                 )}
 
@@ -310,7 +312,7 @@ function getUserColumns(
                     onClick={() => onSetUnlockTarget(user)}
                   >
                     <LockOpenIcon className="mr-2 h-4 w-4" />
-                    unlock
+                    {t('admin:unlock')}
                   </DropdownMenuItem>
                 )}
 
@@ -321,7 +323,7 @@ function getUserColumns(
                     onClick={() => onSetExpireTarget(user)}
                   >
                     <ClockIcon className="mr-2 h-4 w-4" />
-                    expire
+                    {t('admin:expire')}
                   </DropdownMenuItem>
                 )}
 
@@ -332,7 +334,7 @@ function getUserColumns(
                     onClick={() => onSetReactivateTarget(user)}
                   >
                     <ArrowUturnUpIcon className="mr-2 h-4 w-4" />
-                    reactivate
+                    {t('admin:reactivate')}
                   </DropdownMenuItem>
                 )}
 
@@ -350,7 +352,7 @@ function getUserColumns(
                     }
                   }}>
                     <ArrowDownTrayIcon className="mr-2 h-4 w-4" />
-                    download vault
+                    {t('admin:downloadVault')}
                   </DropdownMenuItem>
                 )}
 
@@ -360,7 +362,7 @@ function getUserColumns(
                   onClick={() => { if (isProd) onEmailVault(user.userId); }}
                 >
                   <EnvelopeIcon className="mr-2 h-4 w-4" />
-                  email vault
+                  {t('admin:emailVault')}
                 </DropdownMenuItem>
 
                 <DropdownMenuSeparator />
@@ -368,7 +370,7 @@ function getUserColumns(
                 {/* 5. Show user details */}
                 <DropdownMenuItem onClick={() => onShowUser?.(user)}>
                   <UserIcon className="mr-2 h-4 w-4" />
-                  user details
+                  {t('admin:userDetails')}
                 </DropdownMenuItem>
 
                 {/* Refresh OTP + delete — only for pending_first_login */}
@@ -380,14 +382,14 @@ function getUserColumns(
                       disabled={actionLoading === user.userId + ':refresh'}
                     >
                       <ArrowPathIcon className="mr-2 h-4 w-4" />
-                      refresh OTP
+                      {t('admin:refreshOtpAction')}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       variant="destructive"
                       onClick={() => onDeleteUser(user)}
                     >
                       <TrashIcon className="mr-2 h-4 w-4" />
-                      delete user
+                      {t('admin:deleteUserAction')}
                     </DropdownMenuItem>
                   </>
                 )}
@@ -398,7 +400,7 @@ function getUserColumns(
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={() => onSetResetTarget(user)}>
                       <ArrowPathIcon className="mr-2 h-4 w-4" />
-                      reset login
+                      {t('admin:resetLoginAction')}
                     </DropdownMenuItem>
                   </>
                 )}
@@ -414,6 +416,7 @@ function getUserColumns(
 }
 
 export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser, onDeleteUser, onLockUser, onUnlockUser, onExpireUser, onReactivateUser, onEmailVault, onOtpRefreshed, onRowClick }: UserListProps) {
+  const { t } = useTranslation(['admin', 'common']);
   const [selectedStatuses, setSelectedStatuses] = useState<Set<UserStatus>>(new Set());
   const [selectedPlans, setSelectedPlans] = useState<Set<UserPlan>>(new Set());
   const [usernameFilter, setUsernameFilter] = useState('');
@@ -555,9 +558,10 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser
       onRowClick,
       actionLoading,
       isProd,
+      t,
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [onDownload, handlePickVault, onRowClick, onEmailVault, actionLoading, isProd],
+    [onDownload, handlePickVault, onRowClick, onEmailVault, actionLoading, isProd, t],
   );
 
 
@@ -567,15 +571,15 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser
   const filtered = applyFilters(users, selectedStatuses, selectedPlans, usernameFilter, createdFrom, createdTo, lastLoginFrom, lastLoginTo);
 
   const footerLabel = hasFilters
-    ? `Showing ${filtered.length} of ${users.length} ${users.length === 1 ? 'record' : 'records'}`
-    : `${users.length} ${users.length === 1 ? 'record' : 'records'}`;
+    ? t('common:showing', { count: filtered.length, total: users.length, label: users.length === 1 ? t('common:record') : t('common:records') })
+    : t('common:countLabel', { count: users.length, label: users.length === 1 ? t('common:record') : t('common:records') });
 
   if (users.length === 0 && !loading) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
         <InboxIcon className="w-10 h-10 mb-3" />
-        <p className="font-medium">No users yet</p>
-        <p className="text-sm mt-1">Create the first user to get started.</p>
+        <p className="font-medium">{t('admin:noUsersYet')}</p>
+        <p className="text-sm mt-1">{t('admin:createFirstUser')}</p>
       </div>
     );
   }
@@ -586,8 +590,8 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser
         {/* Toolbar */}
         <div className="flex items-center gap-2 flex-wrap">
           <Input
-            placeholder="Filter by username..."
-            aria-label="Filter by username"
+            placeholder={t('admin:filterByUsername')}
+            aria-label={t('admin:filterByUsername')}
             value={usernameFilter}
             onChange={(e) => setUsernameFilter(e.target.value)}
             className="h-8 w-[150px] lg:w-[250px]"
@@ -595,10 +599,10 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser
 
           <Popover>
             <PopoverTrigger render={
-              <Button variant="outline" size="sm" className="h-8 border-dashed" aria-label="Filter by status" />
+              <Button variant="outline" size="sm" className="h-8 border-dashed" aria-label={t('admin:filterByStatus')} />
             }>
               <PlusCircleIcon className="mr-1 h-4 w-4" />
-              Status
+              {t('admin:status')}
               {selectedStatuses.size > 0 && (
                 <>
                   <Separator orientation="vertical" className="mx-2 h-4" />
@@ -613,7 +617,7 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser
                     ) : (
                       Array.from(selectedStatuses).map(status => (
                         <Badge key={status} variant="secondary" className="rounded-sm px-1 font-normal">
-                          {statusLabel[status]}
+                          {t(`admin:${statusLabelKey[status]}`)}
                         </Badge>
                       ))
                     )}
@@ -636,7 +640,7 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser
                           data-checked={isSelected ? 'true' : undefined}
                         >
                           <span className={`mr-2 inline-block h-2 w-2 rounded-full shrink-0 ${statusDot[status]}`} />
-                          {statusLabel[status]}
+                          {t(`admin:${statusLabelKey[status]}`)}
                         </CommandItem>
                       );
                     })}
@@ -649,7 +653,7 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser
                           onSelect={() => setSelectedStatuses(new Set())}
                           className="justify-center text-center"
                         >
-                          Clear filters
+                          {t('common:clearFilters')}
                         </CommandItem>
                       </CommandGroup>
                     </>
@@ -661,17 +665,17 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser
 
           <Popover>
             <PopoverTrigger render={
-              <Button variant="outline" size="sm" className="h-8 border-dashed" aria-label="Filter by plan" />
+              <Button variant="outline" size="sm" className="h-8 border-dashed" aria-label={t('admin:filterByPlan')} />
             }>
               <PlusCircleIcon className="mr-1 h-4 w-4" />
-              Plan
+              {t('common:plan')}
               {selectedPlans.size > 0 && (
                 <>
                   <Separator orientation="vertical" className="mx-2 h-4" />
                   <div className="hidden space-x-1 lg:flex">
                     {Array.from(selectedPlans).map(plan => (
                       <Badge key={plan} variant="secondary" className="rounded-sm px-1 font-normal">
-                        {planLabel[plan]}
+                        {t(`common:${planLabelKey[plan]}`)}
                       </Badge>
                     ))}
                   </div>
@@ -691,7 +695,7 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser
                         onSelect={() => togglePlan(plan)}
                         data-checked={selectedPlans.has(plan) ? 'true' : undefined}
                       >
-                        {planLabel[plan]}
+                        {t(`common:${planLabelKey[plan]}`)}
                       </CommandItem>
                     ))}
                   </CommandGroup>
@@ -703,7 +707,7 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser
                           onSelect={() => setSelectedPlans(new Set())}
                           className="justify-center text-center"
                         >
-                          Clear filters
+                          {t('common:clearFilters')}
                         </CommandItem>
                       </CommandGroup>
                     </>
@@ -714,8 +718,8 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser
           </Popover>
 
           <DateRangeFilter
-            label="Created"
-            ariaLabel="Filter by created date"
+            label={t('common:created')}
+            ariaLabel={t('admin:filterByCreatedDate')}
             from={createdFrom}
             to={createdTo}
             onFrom={setCreatedFrom}
@@ -723,8 +727,8 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser
           />
 
           <DateRangeFilter
-            label="Last login"
-            ariaLabel="Filter by last login date"
+            label={t('common:lastLogin')}
+            ariaLabel={t('admin:filterByLastLoginDate')}
             from={lastLoginFrom}
             to={lastLoginTo}
             onFrom={setLastLoginFrom}
@@ -746,7 +750,7 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser
                 setLastLoginTo('');
               }}
             >
-              Reset
+              {t('common:reset')}
               <XMarkIcon className="ml-1 h-4 w-4" />
             </Button>
           )}
@@ -756,8 +760,8 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser
           columns={columns}
           data={filtered}
           loading={loading}
-          loadingLabel="Loading users…"
-          emptyMessage={hasFilters ? 'No users match the current filters' : 'No users yet'}
+          loadingLabel={t('admin:loadingUsers')}
+          emptyMessage={hasFilters ? t('admin:noUsersMatchFilters') : t('admin:noUsersYet')}
           defaultSorting={[{ id: 'username', desc: false }]}
           onRowClick={onRowClick}
         />
@@ -773,19 +777,19 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser
       >
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete user?</AlertDialogTitle>
+            <AlertDialogTitle>{t('admin:deleteUserConfirm')}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will permanently delete <strong>{deleteTarget?.username}</strong> and all associated data. This action cannot be undone.
+              {t('admin:deleteUserDescription', { username: deleteTarget?.username })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t('common:cancel')}</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               onClick={handleDeleteConfirm}
               disabled={deleteLoading}
             >
-              {deleteLoading ? 'Deleting…' : 'Delete'}
+              {deleteLoading ? t('admin:deletingUser') : t('common:delete')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -798,19 +802,19 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser
       >
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
-            <AlertDialogTitle>Lock user?</AlertDialogTitle>
+            <AlertDialogTitle>{t('admin:lockUserConfirm')}</AlertDialogTitle>
             <AlertDialogDescription>
-              <strong>{lockTarget?.username}</strong> will be locked and will no longer be able to log in. You can unlock them at any time.
+              {t('admin:lockUserDescription', { username: lockTarget?.username })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t('common:cancel')}</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               onClick={handleLockConfirm}
               disabled={lockLoading}
             >
-              {lockLoading ? 'Locking…' : 'Lock user'}
+              {lockLoading ? t('admin:lockingUser') : t('admin:lockUser')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -823,18 +827,18 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser
       >
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
-            <AlertDialogTitle>Unlock user?</AlertDialogTitle>
+            <AlertDialogTitle>{t('admin:unlockUserConfirm')}</AlertDialogTitle>
             <AlertDialogDescription>
-              <strong>{unlockTarget?.username}</strong> will be restored to active status and will be able to log in again.
+              {t('admin:unlockUserDescription', { username: unlockTarget?.username })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t('common:cancel')}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleUnlockConfirm}
               disabled={unlockLoading}
             >
-              {unlockLoading ? 'Unlocking…' : 'Unlock user'}
+              {unlockLoading ? t('admin:unlockingUser') : t('admin:unlockUser')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -847,30 +851,30 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser
       >
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
-            <AlertDialogTitle>Expire user?</AlertDialogTitle>
-            <AlertDialogDescription className="sr-only">Expire user confirmation</AlertDialogDescription>
+            <AlertDialogTitle>{t('admin:expireUserConfirm')}</AlertDialogTitle>
+            <AlertDialogDescription className="sr-only">{t('admin:expireUser')}</AlertDialogDescription>
             <div className="space-y-2 text-sm text-muted-foreground -mt-2">
               <p>
-                <strong className="text-foreground">{expireTarget?.username}</strong> will be set to expired status. They will be able to log in and read their vault but cannot make changes.
+                {expireTarget?.username} {t('admin:expireUserReadOnly')}
               </p>
               {expireTarget?.expiresAt ? (
                 <p>
-                  Planned expiration date:{' '}
+                  {t('admin:plannedExpirationDate')}{' '}
                   <span className="font-medium text-orange-600">{expireTarget.expiresAt.slice(0, 10)}</span>
                 </p>
               ) : (
-                <p className="text-muted-foreground/60">This is a lifetime user — no planned expiration date.</p>
+                <p className="text-muted-foreground/60">{t('admin:lifetimeUserNoExpiration')}</p>
               )}
             </div>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t('common:cancel')}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-orange-600 hover:bg-orange-700 text-white"
               onClick={handleExpireConfirm}
               disabled={expireLoading}
             >
-              {expireLoading ? 'Expiring…' : 'Expire user'}
+              {expireLoading ? t('admin:expiringUser') : t('admin:expireUser')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -883,19 +887,19 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser
       >
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
-            <AlertDialogTitle>Reset login?</AlertDialogTitle>
+            <AlertDialogTitle>{t('admin:resetLoginConfirm')}</AlertDialogTitle>
             <AlertDialogDescription>
-              This will delete all passkeys, clear the password, and generate a new one-time password for <strong>{resetTarget?.username}</strong>. The user will need to set up their account again. Existing vaults and their encrypted content will not be affected.
+              {t('admin:resetLoginDescription', { username: resetTarget?.username })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t('common:cancel')}</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               onClick={handleResetConfirm}
               disabled={resetLoading}
             >
-              {resetLoading ? 'Resetting…' : 'Reset login'}
+              {resetLoading ? t('admin:resettingLogin') : t('admin:resetLogin')}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -908,11 +912,11 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser
       >
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Select vault to download</DialogTitle>
+            <DialogTitle>{t('admin:selectVaultToDownload')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-2 py-2">
             <p className="text-sm text-muted-foreground">
-              <strong className="text-foreground">{vaultPickerUser?.username}</strong> has {vaultPickerUser?.vaultCount} vaults. Choose one to download.
+              {t('admin:userHasVaults', { username: vaultPickerUser?.username, count: vaultPickerUser?.vaultCount })}
             </p>
             <div className="flex flex-col gap-2 mt-3">
               {(vaultPickerUser?.vaults ?? []).map((v: UserVaultStub) => (
@@ -932,7 +936,7 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setVaultPickerUser(null)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setVaultPickerUser(null)}>{t('common:cancel')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -950,14 +954,14 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser
       >
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Reactivate user</DialogTitle>
+            <DialogTitle>{t('admin:reactivateUser')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2 text-sm">
             <p className="text-muted-foreground">
-              Reactivate <strong className="text-foreground">{reactivateTarget?.username}</strong> and set a new expiration date.
+              {t('admin:reactivateDescription', { username: reactivateTarget?.username })}
             </p>
             <div className="space-y-2">
-              <Label htmlFor="reactivate-expires">Expiration date</Label>
+              <Label htmlFor="reactivate-expires">{t('admin:expirationDate')}</Label>
               <Input
                 id="reactivate-expires"
                 type="date"
@@ -973,18 +977,18 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser
                   onChange={e => setReactivatePerpetual(e.target.checked)}
                   className="rounded"
                 />
-                ♾ Lifetime — never expires
+                {t('common:lifetimeNeverExpires')}
               </label>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setReactivateTarget(null)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setReactivateTarget(null)}>{t('common:cancel')}</Button>
             <Button
               className="bg-green-600 hover:bg-green-700 text-white"
               onClick={handleReactivateConfirm}
               disabled={reactivateLoading}
             >
-              {reactivateLoading ? 'Reactivating…' : 'Reactivate'}
+              {reactivateLoading ? t('admin:reactivatingUser') : t('admin:reactivate')}
             </Button>
           </DialogFooter>
         </DialogContent>

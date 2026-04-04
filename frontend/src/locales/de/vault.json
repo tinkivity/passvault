@@ -73,5 +73,7 @@
   "plainText": "Klartext",
   "markdown": "Markdown",
   "createUser": "Benutzer erstellen",
-  "vaultActions": "Tresor-Aktionen"
+  "vaultActions": "Tresor-Aktionen",
+  "deleteVault": "Tresor l\u00f6schen",
+  "importVault": "Tresor importieren"
 }

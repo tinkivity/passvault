@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { CreateUserRequest } from '@passvault/shared';
 import { LIMITS } from '@passvault/shared';
 import { Button } from '@/components/ui/button';
@@ -18,6 +19,7 @@ interface CreateUserFormProps {
 }
 
 export function CreateUserForm({ onCreateUser, loading, onDone, onOtpVisibleChange }: CreateUserFormProps) {
+  const { t } = useTranslation('admin');
   const [email, setEmail] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -34,7 +36,7 @@ export function CreateUserForm({ onCreateUser, loading, onDone, onOtpVisibleChan
     setError(null);
 
     if (!LIMITS.EMAIL_PATTERN.test(email.trim())) {
-      setError('Enter a valid email address');
+      setError(t('enterValidEmail'));
       return;
     }
 
@@ -59,7 +61,7 @@ export function CreateUserForm({ onCreateUser, loading, onDone, onOtpVisibleChan
       setIsPerpetual(false);
       setExpiresAt(defaultExpiresAt());
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create user');
+      setError(err instanceof Error ? err.message : t('failedToCreateUser'));
     }
   };
 
@@ -77,7 +79,7 @@ export function CreateUserForm({ onCreateUser, loading, onDone, onOtpVisibleChan
     <form onSubmit={handleSubmit} className="space-y-4">
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <Label htmlFor="new-first-name">First name</Label>
+          <Label htmlFor="new-first-name">{t('common:firstName')}</Label>
           <Input
             id="new-first-name"
             type="text"
@@ -87,7 +89,7 @@ export function CreateUserForm({ onCreateUser, loading, onDone, onOtpVisibleChan
           />
         </div>
         <div className="space-y-1">
-          <Label htmlFor="new-last-name">Last name</Label>
+          <Label htmlFor="new-last-name">{t('common:lastName')}</Label>
           <Input
             id="new-last-name"
             type="text"
@@ -99,7 +101,7 @@ export function CreateUserForm({ onCreateUser, loading, onDone, onOtpVisibleChan
       </div>
 
       <div className="space-y-1">
-        <Label htmlFor="new-display-name">Display name <span className="text-muted-foreground font-normal">(optional)</span></Label>
+        <Label htmlFor="new-display-name">{t('common:displayName')} <span className="text-muted-foreground font-normal">({t('common:optional')})</span></Label>
         <Input
           id="new-display-name"
           type="text"
@@ -110,7 +112,7 @@ export function CreateUserForm({ onCreateUser, loading, onDone, onOtpVisibleChan
       </div>
 
       <div className="space-y-1">
-        <Label htmlFor="new-username">Email address <span className="text-destructive">*</span></Label>
+        <Label htmlFor="new-username">{t('common:emailAddress')} <span className="text-destructive">*</span></Label>
         <Input
           id="new-username"
           type="text"
@@ -124,7 +126,7 @@ export function CreateUserForm({ onCreateUser, loading, onDone, onOtpVisibleChan
       </div>
 
       <div className="space-y-1">
-        <Label>Plan</Label>
+        <Label>{t('common:plan')}</Label>
         <div className="flex gap-2">
           {(['free', 'pro', 'administrator'] as const).map(p => (
             <button
@@ -139,19 +141,19 @@ export function CreateUserForm({ onCreateUser, loading, onDone, onOtpVisibleChan
               }}
               className={`flex-1 rounded-md border px-3 py-1.5 text-sm transition-colors ${plan === p ? (p === 'administrator' ? 'border-red-500 bg-red-500/10 text-red-600 font-medium' : 'border-primary bg-primary/10 text-primary font-medium') : 'border-border text-muted-foreground hover:border-primary/50'}`}
             >
-              {p === 'administrator' ? 'Admin' : p.charAt(0).toUpperCase() + p.slice(1)}
+              {p === 'administrator' ? t('common:admin') : p.charAt(0).toUpperCase() + p.slice(1)}
             </button>
           ))}
         </div>
         {plan === 'administrator' && adminConfirm && (
           <p className="text-xs text-destructive mt-1">
-            This will create a full administrator account with access to all admin features.
+            {t('adminCreateWarning')}
           </p>
         )}
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="new-expires-at">Expires</Label>
+        <Label htmlFor="new-expires-at">{t('common:expires')}</Label>
         <Input
           id="new-expires-at"
           type="date"
@@ -167,13 +169,13 @@ export function CreateUserForm({ onCreateUser, loading, onDone, onOtpVisibleChan
             onChange={e => setIsPerpetual(e.target.checked)}
             className="rounded"
           />
-          ♾ Lifetime — never expires
+          {t('common:lifetimeNeverExpires')}
         </label>
       </div>
 
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       <Button type="submit" disabled={loading} className="w-full">
-        {loading ? 'Creating…' : 'Create user'}
+        {loading ? t('common:creating') : t('vault:createUser')}
       </Button>
     </form>
   );

@@ -22,16 +22,18 @@ export default defineConfig({
   build: {
     rollupOptions: {
       output: {
-        manualChunks: {
-          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-          'vendor-ui': ['@base-ui/react', 'cmdk'],
-          'vendor-charts': ['recharts'],
-          'vendor-crypto': ['hash-wasm'],
-          'vendor-passkey': ['@simplewebauthn/browser'],
-          'vendor-markdown': ['react-markdown'],
-          'vendor-table': ['@tanstack/react-table'],
-          'vendor-icons': ['@heroicons/react', 'lucide-react'],
-          'vendor-i18n': ['i18next', 'react-i18next', 'i18next-browser-languagedetector'],
+        manualChunks(id) {
+          if (id.includes('node_modules/react-dom')) return 'vendor-react';
+          if (id.includes('node_modules/react/') || id.includes('node_modules/react-router')) return 'vendor-react';
+          if (id.includes('node_modules/@base-ui') || id.includes('node_modules/cmdk')) return 'vendor-ui';
+          if (id.includes('node_modules/recharts') || id.includes('node_modules/d3-')) return 'vendor-charts';
+          if (id.includes('node_modules/hash-wasm')) return 'vendor-crypto';
+          if (id.includes('node_modules/@simplewebauthn')) return 'vendor-passkey';
+          if (id.includes('node_modules/react-markdown') || id.includes('node_modules/remark-') || id.includes('node_modules/rehype-') || id.includes('node_modules/unified') || id.includes('node_modules/mdast-') || id.includes('node_modules/micromark')) return 'vendor-markdown';
+          if (id.includes('node_modules/@tanstack/react-table')) return 'vendor-table';
+          if (id.includes('node_modules/@heroicons') || id.includes('node_modules/lucide-react')) return 'vendor-icons';
+          if (id.includes('node_modules/i18next') || id.includes('node_modules/react-i18next')) return 'vendor-i18n';
+          if (id.includes('/locales/')) return 'locales';
         },
       },
     },

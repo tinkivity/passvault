@@ -73,5 +73,7 @@
   "plainText": "Texte brut",
   "markdown": "Markdown",
   "createUser": "Cr\u00e9er un utilisateur",
-  "vaultActions": "Actions du coffre"
+  "vaultActions": "Actions du coffre",
+  "deleteVault": "Supprimer le coffre",
+  "importVault": "Importer un coffre"
 }

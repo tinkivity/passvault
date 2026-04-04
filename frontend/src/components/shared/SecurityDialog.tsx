@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { KeyRound, Trash2, ShieldCheck, Pencil, Check, X } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth.js';
 import { ApiClient } from '../../services/api.js';
@@ -40,6 +41,7 @@ interface SecurityDialogProps {
 
 export function SecurityDialog({ open, onOpenChange }: SecurityDialogProps) {
   const { selfChangePassword, loading, token, username, role } = useAuth();
+  const { t } = useTranslation('auth');
 
   // Password state
   const [current, setCurrent] = useState('');
@@ -103,7 +105,7 @@ export function SecurityDialog({ open, onOpenChange }: SecurityDialogProps) {
     setPwSuccess(false);
 
     if (newPw !== confirm) {
-      setPwError('Passwords do not match');
+      setPwError(t('passwordsDoNotMatch'));
       return;
     }
 
@@ -144,11 +146,11 @@ export function SecurityDialog({ open, onOpenChange }: SecurityDialogProps) {
       const res = await registerFn({ challengeJwt, attestation, name: passkeyName.trim() }, token);
       setPasskeyName('');
       if ((res as { replacedExisting?: boolean }).replacedExisting) {
-        setPasskeyNotice('An existing passkey from the same provider was replaced.');
+        setPasskeyNotice(t('existingPasskeyReplaced'));
       }
       await loadPasskeys();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Passkey registration failed';
+      const msg = err instanceof Error ? err.message : t('passkeyRegistrationFailed');
       setPasskeyError(msg);
     } finally {
       setPasskeyActionLoading(false);
@@ -198,22 +200,22 @@ export function SecurityDialog({ open, onOpenChange }: SecurityDialogProps) {
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ShieldCheck className="h-5 w-5" />
-            Security
+            {t('common:security')}
           </DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
           {/* Password section */}
           <div>
-            <Label className="text-sm font-semibold">Password</Label>
+            <Label className="text-sm font-semibold">{t('common:password')}</Label>
             {!isAdmin && hasPasskeys ? (
               <p className="mt-2 text-sm text-muted-foreground rounded-md bg-muted px-3 py-2">
-                Password login is disabled. You are using passkey authentication.
+                {t('passwordLoginDisabled')}
               </p>
             ) : showPasswordForm ? (
               <form onSubmit={handlePasswordSubmit} className="mt-2 flex flex-col gap-3">
                 <div className="flex flex-col gap-1">
-                  <Label htmlFor="sec-current">Current password</Label>
+                  <Label htmlFor="sec-current">{t('currentPassword')}</Label>
                   <Input
                     id="sec-current"
                     type="password"
@@ -224,7 +226,7 @@ export function SecurityDialog({ open, onOpenChange }: SecurityDialogProps) {
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <Label htmlFor="sec-new">New password</Label>
+                  <Label htmlFor="sec-new">{t('newPasswordLabel')}</Label>
                   <Input
                     id="sec-new"
                     type="password"
@@ -235,7 +237,7 @@ export function SecurityDialog({ open, onOpenChange }: SecurityDialogProps) {
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <Label htmlFor="sec-confirm">Confirm new password</Label>
+                  <Label htmlFor="sec-confirm">{t('confirmNewPassword')}</Label>
                   <Input
                     id="sec-confirm"
                     type="password"
@@ -246,13 +248,13 @@ export function SecurityDialog({ open, onOpenChange }: SecurityDialogProps) {
                   />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  At least 12 characters with uppercase, lowercase, number, and special character.
+                  {t('passwordRequirementsShort')}
                 </p>
                 {pwError && <p className="text-sm text-destructive">{pwError}</p>}
-                {pwSuccess && <p className="text-sm text-green-600">Password changed successfully.</p>}
+                {pwSuccess && <p className="text-sm text-green-600">{t('passwordChangedSuccess')}</p>}
                 <div className="flex justify-end">
                   <Button type="submit" size="sm" disabled={loading}>
-                    {loading ? 'Saving...' : 'Change Password'}
+                    {loading ? t('common:saving') : t('changePasswordBtn')}
                   </Button>
                 </div>
               </form>
@@ -262,7 +264,7 @@ export function SecurityDialog({ open, onOpenChange }: SecurityDialogProps) {
           {/* Passkeys section */}
           <div className="border-t border-border pt-4">
             <div className="flex items-center justify-between">
-              <Label className="text-sm font-semibold">Passkeys</Label>
+              <Label className="text-sm font-semibold">{t('passkeys')}</Label>
               {!passkeysLoading && (
                 <span className="text-xs text-muted-foreground">
                   {passkeys.length} / {maxPasskeys}
@@ -272,7 +274,7 @@ export function SecurityDialog({ open, onOpenChange }: SecurityDialogProps) {
 
             {!isAdmin && !hasPasskeys && !passkeysLoading && (
               <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                Once you register a passkey, username/password login will be permanently disabled for your account.
+                {t('passkeyWarning')}
               </div>
             )}
 
@@ -312,7 +314,7 @@ export function SecurityDialog({ open, onOpenChange }: SecurityDialogProps) {
                             <div className="flex flex-col">
                               <span className="text-sm font-medium">{pk.name}</span>
                               <span className="text-xs text-muted-foreground">
-                                Registered {formatDate(pk.createdAt)}
+                                {t('registered', { date: formatDate(pk.createdAt) })}
                               </span>
                             </div>
                             <div className="flex items-center gap-1">
@@ -323,7 +325,7 @@ export function SecurityDialog({ open, onOpenChange }: SecurityDialogProps) {
                                 className="h-8 w-8 text-muted-foreground"
                                 disabled={passkeyActionLoading}
                                 onClick={() => { setRenamingId(pk.credentialId); setRenameValue(pk.name); }}
-                                title="Rename passkey"
+                                title={t('renamePasskey')}
                               >
                                 <Pencil className="h-3.5 w-3.5" />
                               </Button>
@@ -334,7 +336,7 @@ export function SecurityDialog({ open, onOpenChange }: SecurityDialogProps) {
                                 className="h-8 w-8 text-muted-foreground hover:text-destructive"
                                 disabled={passkeyActionLoading || !canRevokePasskey(pk.credentialId)}
                                 onClick={() => handleRevokePasskey(pk.credentialId)}
-                                title={canRevokePasskey(pk.credentialId) ? 'Revoke passkey' : 'Cannot revoke last passkey'}
+                                title={canRevokePasskey(pk.credentialId) ? t('revokePasskey') : t('cannotRevokeLastPasskey')}
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
@@ -350,7 +352,7 @@ export function SecurityDialog({ open, onOpenChange }: SecurityDialogProps) {
                 <div className="mt-3 flex items-end gap-2">
                   <div className="flex-1 flex flex-col gap-1">
                     <Label htmlFor="sec-passkey-name" className="text-xs">
-                      Passkey name
+                      {t('passkeyName')}
                     </Label>
                     <Input
                       id="sec-passkey-name"
@@ -372,7 +374,7 @@ export function SecurityDialog({ open, onOpenChange }: SecurityDialogProps) {
                     onClick={handleRegisterPasskey}
                   >
                     <KeyRound className="h-3.5 w-3.5 mr-1.5" />
-                    {passkeyActionLoading ? 'Registering...' : 'Register passkey'}
+                    {passkeyActionLoading ? t('registeringPasskey') : t('registerPasskey')}
                   </Button>
                 </div>
               </>
@@ -389,7 +391,7 @@ export function SecurityDialog({ open, onOpenChange }: SecurityDialogProps) {
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Close
+            {t('common:close')}
           </Button>
         </DialogFooter>
       </DialogContent>

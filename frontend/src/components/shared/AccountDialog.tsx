@@ -155,7 +155,7 @@ export function AccountDialog({ open, onOpenChange }: AccountDialogProps) {
           {config.isDev ? (
             /* Dev: direct email input */
             <div className="space-y-1">
-              <Label htmlFor="account-email">Email address</Label>
+              <Label htmlFor="account-email">{t('emailAddress')}</Label>
               <Input
                 id="account-email"
                 type="email"
@@ -166,13 +166,13 @@ export function AccountDialog({ open, onOpenChange }: AccountDialogProps) {
                 required
               />
               <p className="text-xs text-muted-foreground">
-                This is also your login email. Changing it takes effect immediately.
+                {t('emailLoginNote')}
               </p>
             </div>
           ) : (
             /* Beta/Prod: read-only email with Change button */
             <div className="space-y-2">
-              <Label>Email address</Label>
+              <Label>{t('emailAddress')}</Label>
               <div className="flex items-center gap-2">
                 <Input
                   value={username ?? ''}
@@ -191,12 +191,12 @@ export function AccountDialog({ open, onOpenChange }: AccountDialogProps) {
                     setEmailChangeSuccess(null);
                   }}
                 >
-                  Change Email
+                  {t('changeEmail')}
                 </Button>
               </div>
               {emailChangeSuccess && (
                 <p className="text-sm text-green-600">
-                  Verification email sent to {emailChangeSuccess}. Check your inbox.
+                  {t('verificationSent', { email: emailChangeSuccess })}
                 </p>
               )}
             </div>
@@ -206,10 +206,10 @@ export function AccountDialog({ open, onOpenChange }: AccountDialogProps) {
             <Label>{t('accountExpiration')}</Label>
             {expiresAt ? (
               <p className={`text-sm ${accountExpired ? 'text-destructive font-medium' : 'text-muted-foreground'}`}>
-                {accountExpired ? 'Expired on ' : 'Expires '}{new Date(expiresAt).toLocaleDateString()}
+                {accountExpired ? t('expiredOn', { date: new Date(expiresAt).toLocaleDateString() }) : t('expiresOn', { date: new Date(expiresAt).toLocaleDateString() })}
               </p>
             ) : (
-              <p className="text-sm text-muted-foreground">No expiration date set</p>
+              <p className="text-sm text-muted-foreground">{t('noExpirationDate')}</p>
             )}
           </div>
 
@@ -245,15 +245,14 @@ export function AccountDialog({ open, onOpenChange }: AccountDialogProps) {
         <Dialog open={emailChangeOpen} onOpenChange={setEmailChangeOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Change Email Address</DialogTitle>
+              <DialogTitle>{t('changeEmail')}</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleEmailChangeSubmit} className="grid gap-4 pt-2">
               <p className="text-sm text-muted-foreground">
-                A verification link will be sent to the new email address.
-                Your current email will receive a notification.
+                {t('verificationLink')}
               </p>
               <div className="space-y-1">
-                <Label htmlFor="new-email">New email address</Label>
+                <Label htmlFor="new-email">{t('newEmailAddress')}</Label>
                 <Input
                   id="new-email"
                   type="email"
@@ -270,10 +269,10 @@ export function AccountDialog({ open, onOpenChange }: AccountDialogProps) {
               )}
               <DialogFooter>
                 <Button variant="outline" type="button" onClick={() => setEmailChangeOpen(false)}>
-                  Cancel
+                  {t('cancel')}
                 </Button>
                 <Button type="submit" disabled={emailChangeLoading}>
-                  {emailChangeLoading ? 'Sending...' : 'Send verification'}
+                  {emailChangeLoading ? t('sending') : t('sendVerification')}
                 </Button>
               </DialogFooter>
             </form>

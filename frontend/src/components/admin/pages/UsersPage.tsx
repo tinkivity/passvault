@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import type { CreateUserRequest, UserSummary } from '@passvault/shared';
 import { ArrowPathIcon } from '@heroicons/react/24/outline';
 import { useAuth } from '../../../hooks/useAuth.js';
@@ -16,6 +17,7 @@ export function UsersPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { token } = useAuth();
   const admin = useAdmin(token);
+  const { t } = useTranslation('admin');
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [usersLoaded, setUsersLoaded] = useState(false);
   const [createOpen, setCreateOpen] = useState(searchParams.get('create') === '1');
@@ -88,15 +90,15 @@ export function UsersPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-bold">Users</h1>
+        <h1 className="text-xl font-bold">{t('common:users')}</h1>
         <div className="flex items-center gap-2">
           <Button
             variant="ghost"
             size="icon-sm"
             onClick={refreshUsers}
             disabled={admin.loading}
-            title="Refresh"
-            aria-label="Refresh"
+            title={t('common:refresh')}
+            aria-label={t('common:refresh')}
           >
             <ArrowPathIcon className="w-4 h-4" />
           </Button>
@@ -104,7 +106,7 @@ export function UsersPage() {
             size="sm"
             onClick={() => setCreateOpen(true)}
           >
-            + Create User
+            {t('createUser')}
           </Button>
         </div>
       </div>
@@ -130,7 +132,7 @@ export function UsersPage() {
       <Dialog open={createOpen} onOpenChange={createOtpShowing ? () => {} : handleDialogOpenChange}>
         <DialogContent showCloseButton={!createOtpShowing}>
           <DialogHeader>
-            <DialogTitle>{createOtpShowing ? 'One-Time Password' : 'Create User'}</DialogTitle>
+            <DialogTitle>{createOtpShowing ? t('oneTimePassword') : t('createUserTitle')}</DialogTitle>
           </DialogHeader>
           <CreateUserForm
             onCreateUser={handleCreateUser}
@@ -144,7 +146,7 @@ export function UsersPage() {
       <Dialog open={otpResult !== null} onOpenChange={() => {}}>
         <DialogContent showCloseButton={false}>
           <DialogHeader>
-            <DialogTitle>One-Time Password</DialogTitle>
+            <DialogTitle>{t('oneTimePassword')}</DialogTitle>
           </DialogHeader>
           {otpResult && (
             <OtpDisplay

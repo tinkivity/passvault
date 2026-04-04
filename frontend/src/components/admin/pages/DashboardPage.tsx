@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 import type { AdminStats } from '@passvault/shared';
 import type { LoginEventSummary } from '@passvault/shared';
@@ -26,10 +27,10 @@ function formatBytes(bytes: number): string {
 
 type RangeKey = 'today' | '7d' | '30d';
 
-const RANGES: { key: RangeKey; label: string }[] = [
-  { key: 'today', label: 'Today' },
-  { key: '7d', label: 'Last 7 days' },
-  { key: '30d', label: 'Last 30 days' },
+const RANGE_KEYS: { key: RangeKey; labelKey: string }[] = [
+  { key: 'today', labelKey: 'today' },
+  { key: '7d', labelKey: 'last7Days' },
+  { key: '30d', labelKey: 'last30Days' },
 ];
 
 function buildDateRange(key: RangeKey): string[] {
@@ -109,6 +110,7 @@ const chartConfig = {
 export function DashboardPage() {
   const { token } = useAuth();
   const admin = useAdmin(token);
+  const { t } = useTranslation('admin');
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [events, setEvents] = useState<LoginEventSummary[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -137,7 +139,7 @@ export function DashboardPage() {
 
   return (
     <div>
-      <h1 className="text-xl font-bold mb-6">Dashboard</h1>
+      <h1 className="text-xl font-bold mb-6">{t('common:dashboard')}</h1>
       {admin.error && (
         <p className="text-destructive text-sm mb-4">{admin.error}</p>
       )}
@@ -145,16 +147,16 @@ export function DashboardPage() {
       {/* Metric cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         <MetricCard
-          label="Users"
+          label={t('common:users')}
           value={statsLoading ? null : String(stats?.totalUsers ?? 0)}
           linkTo="/ui/admin/users"
         />
         <MetricCard
-          label="Vault Storage"
+          label={t('vaultStorage')}
           value={statsLoading ? null : formatBytes(stats?.totalVaultSizeBytes ?? 0)}
         />
         <MetricCard
-          label="Logins (last 7 days)"
+          label={t('loginsLast7Days')}
           value={statsLoading ? null : String(stats?.loginsLast7Days ?? 0)}
           linkTo="/ui/admin/logs/audit"
         />
@@ -164,13 +166,13 @@ export function DashboardPage() {
       <div className="bg-card rounded-xl border border-border p-6">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <p className="font-semibold text-sm">Login Activity</p>
+            <p className="font-semibold text-sm">{t('loginActivity')}</p>
             <p className="text-xs text-muted-foreground">
-              {range === 'today' ? 'Number of logins per hour' : 'Number of logins per day'}
+              {range === 'today' ? t('loginsPerHour') : t('loginsPerDay')}
             </p>
           </div>
           <div className="flex items-center gap-1">
-            {RANGES.map(r => (
+            {RANGE_KEYS.map(r => (
               <Button
                 key={r.key}
                 variant={range === r.key ? 'secondary' : 'ghost'}
@@ -178,7 +180,7 @@ export function DashboardPage() {
                 className="h-7 text-xs"
                 onClick={() => setRange(r.key)}
               >
-                {r.label}
+                {t(r.labelKey)}
               </Button>
             ))}
           </div>

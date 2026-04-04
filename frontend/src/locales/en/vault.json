@@ -73,5 +73,8 @@
   "plainText": "Plain text",
   "markdown": "Markdown",
   "createUser": "Create user",
-  "vaultActions": "Vault actions"
+  "vaultActions": "Vault actions",
+  "deleteVault": "Delete Vault",
+  "importVault": "Import Vault",
+  "deleteVaultConfirm": "Are you sure you want to delete \"{{name}}\"? This action cannot be undone and all items in the vault will be permanently lost."
 }

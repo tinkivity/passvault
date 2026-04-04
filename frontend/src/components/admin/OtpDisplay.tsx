@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Eye, EyeOff, Copy, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -9,6 +10,7 @@ interface OtpDisplayProps {
 }
 
 export function OtpDisplay({ username, oneTimePassword, onDone }: OtpDisplayProps) {
+  const { t } = useTranslation('admin');
   const [hasCopied, setHasCopied] = useState(false);
   const [showCheck, setShowCheck] = useState(false);
   const [revealed, setRevealed] = useState(false);
@@ -33,21 +35,21 @@ export function OtpDisplay({ username, oneTimePassword, onDone }: OtpDisplayProp
           User: <span className="font-mono">{username}</span>
         </p>
         <p className="text-xs text-amber-600/80 mb-3">
-          Share this one-time password with the user. It will not be shown again.
+          {t('otpShareMessage')}
         </p>
         <div className="flex items-center gap-2">
           <code className="flex-1 bg-background border border-amber-500/30 rounded px-3 py-2 text-sm font-mono tracking-widest select-all">
             {revealed ? oneTimePassword : masked}
           </code>
-          <Button variant="ghost" size="icon" onClick={() => setRevealed(r => !r)} title={revealed ? 'Hide' : 'Reveal'}>
+          <Button variant="ghost" size="icon" onClick={() => setRevealed(r => !r)} title={revealed ? t('common:hide') : t('reveal')}>
             {revealed ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           </Button>
-          <Button variant="secondary" size="icon" onClick={handleCopy} title="Copy">
+          <Button variant="secondary" size="icon" onClick={handleCopy} title={t('copy')}>
             {showCheck ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
           </Button>
         </div>
       </div>
-      <Button onClick={onDone} disabled={!hasCopied}>Done</Button>
+      <Button onClick={onDone} disabled={!hasCopied}>{t('common:done')}</Button>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import type { UpdateUserRequest, UserPlan, UserSummary, UserStatus, UserVaultStub } from '@passvault/shared';
 import { useAuth } from '../../../hooks/useAuth.js';
 import { useAdmin } from '../../../hooks/useAdmin.js';
@@ -19,14 +20,14 @@ import { ROUTES } from '../../../routes.js';
 
 const isDev = config.isDev;
 
-const statusLabel: Record<UserStatus, string> = {
-  pending_email_verification: 'Awaiting email verification',
-  pending_first_login: 'Awaiting first login',
-  pending_passkey_setup: 'Awaiting passkey setup',
-  active: 'Active',
-  locked: 'Locked',
-  expired: 'Expired',
-  retired: 'Retired',
+const statusLabelKey: Record<UserStatus, string> = {
+  pending_email_verification: 'statusPendingEmailVerification',
+  pending_first_login: 'statusPendingFirstLogin',
+  pending_passkey_setup: 'statusPendingPasskeySetup',
+  active: 'statusActive',
+  locked: 'statusLocked',
+  expired: 'statusExpired',
+  retired: 'statusRetired',
 };
 
 const statusClass: Record<UserStatus, string> = {
@@ -39,15 +40,15 @@ const statusClass: Record<UserStatus, string> = {
   retired: 'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-gray-400/15 text-gray-500 border-gray-400/20',
 };
 
-function formatBytes(bytes: number | null): string {
-  if (bytes === null || bytes === 0) return 'Empty';
+function formatBytes(bytes: number | null, emptyLabel: string): string {
+  if (bytes === null || bytes === 0) return emptyLabel;
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function ExpiresDisplay({ expiresAt }: { expiresAt?: string | null }) {
-  if (!expiresAt) return <span className="text-muted-foreground/50">♾ Lifetime</span>;
+function ExpiresDisplay({ expiresAt, lifetimeLabel }: { expiresAt?: string | null; lifetimeLabel: string }) {
+  if (!expiresAt) return <span className="text-muted-foreground/50">{lifetimeLabel}</span>;
   const isPast = new Date(expiresAt) < new Date();
   return (
     <span className={isPast ? 'text-orange-600 font-medium' : undefined}>
@@ -62,6 +63,7 @@ export function UserDetailPage() {
   const navigate = useNavigate();
   const { token, userId: currentAdminId } = useAuth();
   const admin = useAdmin(token);
+  const { t } = useTranslation('admin');
 
   const [user, setUser] = useState<UserSummary | null>(
     (location.state as { user?: UserSummary } | null)?.user ?? null,
@@ -129,12 +131,12 @@ export function UserDetailPage() {
     return (
       <div>
         <Button variant="ghost" size="sm" className="mb-4" onClick={handleBack}>
-          ← Users
+          {t('common:back')}
         </Button>
         <p className="text-muted-foreground text-sm">
-          User not found.{' '}
+          {t('userNotFound')}{' '}
           <button className="underline" onClick={handleBack}>
-            Return to users list
+            {t('returnToUsersList')}
           </button>
           .
         </p>
@@ -189,7 +191,7 @@ export function UserDetailPage() {
   return (
     <div className="max-w-xl space-y-4">
       <Button variant="ghost" size="sm" onClick={handleBack}>
-        ← Users
+        {t('common:back')}
       </Button>
 
       <div className="bg-card rounded-xl border border-border p-6 space-y-6">
@@ -202,11 +204,11 @@ export function UserDetailPage() {
             <p className="font-mono text-sm text-muted-foreground">{user.username}</p>
             <div className="mt-1 flex items-center gap-2">
               <span className={statusClass[user.status]}>
-                {statusLabel[user.status]}
+                {t(statusLabelKey[user.status])}
               </span>
               {isTargetAdmin && (
                 <span className="inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold bg-purple-500/15 text-purple-600 border-purple-500/20">
-                  Admin
+                  {t('common:admin')}
                 </span>
               )}
               {isSelf && (
@@ -216,37 +218,37 @@ export function UserDetailPage() {
           </div>
           {!editing && (
             <Button variant="outline" size="sm" onClick={startEdit}>
-              Edit
+              {t('common:edit')}
             </Button>
           )}
         </div>
 
         {/* Read-only metadata */}
         <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-3 text-sm">
-          <dt className="text-muted-foreground">Plan</dt>
+          <dt className="text-muted-foreground">{t('common:plan')}</dt>
           <dd className="capitalize">{user.plan}</dd>
-          <dt className="text-muted-foreground">Expires</dt>
-          <dd><ExpiresDisplay expiresAt={user.expiresAt} /></dd>
-          <dt className="text-muted-foreground">Created</dt>
+          <dt className="text-muted-foreground">{t('common:expires')}</dt>
+          <dd><ExpiresDisplay expiresAt={user.expiresAt} lifetimeLabel={t('common:lifetime')} /></dd>
+          <dt className="text-muted-foreground">{t('common:created')}</dt>
           <dd>{new Date(user.createdAt).toISOString().slice(0, 10)}</dd>
-          <dt className="text-muted-foreground">Last login</dt>
+          <dt className="text-muted-foreground">{t('common:lastLogin')}</dt>
           <dd>
             {user.lastLoginAt
               ? new Date(user.lastLoginAt).toISOString().slice(0, 10)
               : '—'}
           </dd>
-          <dt className="text-muted-foreground">User ID</dt>
+          <dt className="text-muted-foreground">{t('common:userId')}</dt>
           <dd className="font-mono text-xs text-muted-foreground break-all">{user.userId}</dd>
         </dl>
 
         {/* Inline edit form */}
         {editing && (
           <div className="border-t border-border pt-4 space-y-4">
-            <p className="text-sm font-medium">Edit profile</p>
+            <p className="text-sm font-medium">{t('editProfile')}</p>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label htmlFor="edit-first">First name</Label>
+                <Label htmlFor="edit-first">{t('common:firstName')}</Label>
                 <Input
                   id="edit-first"
                   value={editFirstName}
@@ -255,7 +257,7 @@ export function UserDetailPage() {
                 />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="edit-last">Last name</Label>
+                <Label htmlFor="edit-last">{t('common:lastName')}</Label>
                 <Input
                   id="edit-last"
                   value={editLastName}
@@ -267,7 +269,7 @@ export function UserDetailPage() {
 
             <div className="space-y-1">
               <Label htmlFor="edit-display">
-                Display name <span className="text-muted-foreground font-normal">(optional)</span>
+                {t('common:displayName')} <span className="text-muted-foreground font-normal">({t('common:optional')})</span>
               </Label>
               <Input
                 id="edit-display"
@@ -279,7 +281,7 @@ export function UserDetailPage() {
 
             {!isSelf && (
               <div className="space-y-1">
-                <Label>Plan</Label>
+                <Label>{t('common:plan')}</Label>
                 <div className="flex gap-2">
                   {(['free', 'pro', 'administrator'] as const).map(p => (
                     <button
@@ -292,13 +294,13 @@ export function UserDetailPage() {
                       }}
                       className={`flex-1 rounded-md border px-3 py-1.5 text-sm transition-colors ${editPlan === p ? (p === 'administrator' ? 'border-purple-500 bg-purple-500/10 text-purple-600 font-medium' : 'border-primary bg-primary/10 text-primary font-medium') : 'border-border text-muted-foreground hover:border-primary/50'}`}
                     >
-                      {p === 'administrator' ? 'Admin' : p.charAt(0).toUpperCase() + p.slice(1)}
+                      {p === 'administrator' ? t('common:admin') : p.charAt(0).toUpperCase() + p.slice(1)}
                     </button>
                   ))}
                 </div>
                 {downgradeWarning && (
                   <p className="text-xs text-destructive mt-1">
-                    Downgrading from Administrator will revoke all admin privileges. This user will no longer be able to access the admin panel or manage other users.
+                    {t('downgradeWarning')}
                   </p>
                 )}
               </div>
@@ -306,7 +308,7 @@ export function UserDetailPage() {
 
             {!isSelf && (
               <div className="space-y-2">
-                <Label htmlFor="edit-expires">Expiration date</Label>
+                <Label htmlFor="edit-expires">{t('expirationDate')}</Label>
                 <Input
                   id="edit-expires"
                   type="date"
@@ -321,7 +323,7 @@ export function UserDetailPage() {
                   onChange={e => setEditIsPerpetual(e.target.checked)}
                   className="rounded"
                 />
-                ♾ Lifetime — never expires
+                {t('common:lifetimeNeverExpires')}
               </label>
               </div>
             )}
@@ -330,10 +332,10 @@ export function UserDetailPage() {
 
             <div className="flex gap-2">
               <Button size="sm" onClick={handleSaveEdit} disabled={admin.loading}>
-                {admin.loading ? 'Saving…' : 'Save'}
+                {admin.loading ? t('common:saving') : t('common:save')}
               </Button>
               <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>
-                Cancel
+                {t('common:cancel')}
               </Button>
             </div>
           </div>
@@ -345,7 +347,7 @@ export function UserDetailPage() {
         <div className="border-t border-border pt-4 flex flex-wrap gap-2">
           {user.status === 'pending_first_login' && (
             <Button variant="ghost" size="sm" onClick={handleRefreshOtp} disabled={admin.loading}>
-              Refresh OTP
+              {t('refreshOtp')}
             </Button>
           )}
 
@@ -353,31 +355,31 @@ export function UserDetailPage() {
             resetConfirm ? (
               <>
                 <div className="w-full text-xs text-destructive mb-1">
-                  This will delete all passkeys, clear the password, and generate a new one-time password. The user will need to set up their account again. Existing vaults and their encrypted content will not be affected.
+                  {t('resetWarning')}
                 </div>
                 <Button variant="destructive" size="sm" onClick={() => { setResetConfirm(false); handleResetUser(); }} disabled={admin.loading}>
-                  Confirm reset
+                  {t('confirmReset')}
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => setResetConfirm(false)}>
-                  Cancel
+                  {t('common:cancel')}
                 </Button>
               </>
             ) : (
               <Button variant="ghost" size="sm" onClick={() => setResetConfirm(true)} disabled={admin.loading}>
-                Reset Login
+                {t('resetLogin')}
               </Button>
             )
           )}
 
           {user.status === 'active' && !isSelf && (
             <Button variant="outline" size="sm" onClick={handleLock} disabled={admin.loading}>
-              Lock
+              {t('lock')}
             </Button>
           )}
 
           {user.status === 'locked' && !isSelf && (
             <Button variant="outline" size="sm" onClick={handleUnlock} disabled={admin.loading}>
-              Unlock
+              {t('unlock')}
             </Button>
           )}
 
@@ -389,7 +391,7 @@ export function UserDetailPage() {
               onClick={handleExpire}
               disabled={admin.loading}
             >
-              Expire
+              {t('expire')}
             </Button>
           )}
 
@@ -397,10 +399,10 @@ export function UserDetailPage() {
             retireConfirm ? (
               <>
                 <Button variant="destructive" size="sm" onClick={handleRetire} disabled={admin.loading}>
-                  Confirm retire
+                  {t('confirmRetire')}
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => setRetireConfirm(false)}>
-                  Cancel
+                  {t('common:cancel')}
                 </Button>
               </>
             ) : (
@@ -411,7 +413,7 @@ export function UserDetailPage() {
                 onClick={() => setRetireConfirm(true)}
                 disabled={admin.loading}
               >
-                Retire user
+                {t('retireUser')}
               </Button>
             )
           )}
@@ -420,10 +422,10 @@ export function UserDetailPage() {
             deleteConfirm ? (
               <>
                 <Button variant="destructive" size="sm" onClick={handleDelete} disabled={admin.loading}>
-                  Confirm delete
+                  {t('confirmDelete')}
                 </Button>
                 <Button variant="ghost" size="sm" onClick={() => setDeleteConfirm(false)}>
-                  Cancel
+                  {t('common:cancel')}
                 </Button>
               </>
             ) : (
@@ -433,7 +435,7 @@ export function UserDetailPage() {
                 className="text-destructive hover:text-destructive"
                 onClick={() => setDeleteConfirm(true)}
               >
-                Delete user
+                {t('deleteUser')}
               </Button>
             )
           )}
@@ -444,7 +446,7 @@ export function UserDetailPage() {
       {user.vaults.length === 0 ? (
         <div className="bg-card rounded-xl border border-border p-6 flex items-center gap-3 text-muted-foreground text-sm">
           <ArchiveBoxIcon className="h-5 w-5 shrink-0" />
-          No vaults
+          {t('noVaults')}
         </div>
       ) : (
         user.vaults.map((vault: UserVaultStub) => (
@@ -468,7 +470,7 @@ export function UserDetailPage() {
       <Dialog open={refreshedOtp !== null} onOpenChange={() => {}}>
         <DialogContent showCloseButton={false}>
           <DialogHeader>
-            <DialogTitle>One-Time Password</DialogTitle>
+            <DialogTitle>{t('oneTimePassword')}</DialogTitle>
           </DialogHeader>
           {refreshedOtp && (
             <OtpDisplay
@@ -494,6 +496,7 @@ interface VaultCardProps {
 }
 
 function VaultCard({ vault, emailedVaultId, onDownload, onEmail, loading }: VaultCardProps) {
+  const { t } = useTranslation('admin');
   return (
     <div className="bg-card rounded-xl border border-border p-5 space-y-4">
       <div className="flex items-center justify-between gap-3">
@@ -501,7 +504,7 @@ function VaultCard({ vault, emailedVaultId, onDownload, onEmail, loading }: Vaul
           <ArchiveBoxIcon className="h-4 w-4 text-muted-foreground shrink-0" />
           <span className="font-medium text-sm">{vault.displayName}</span>
         </div>
-        <span className="text-xs text-muted-foreground tabular-nums">{formatBytes(vault.sizeBytes)}</span>
+        <span className="text-xs text-muted-foreground tabular-nums">{formatBytes(vault.sizeBytes, t('empty'))}</span>
       </div>
       <div className="flex gap-2">
         <Button
@@ -511,17 +514,17 @@ function VaultCard({ vault, emailedVaultId, onDownload, onEmail, loading }: Vaul
           disabled={loading}
         >
           <ArrowDownTrayIcon className="mr-1.5 h-3.5 w-3.5" />
-          Download
+          {t('common:download')}
         </Button>
         <Button
           variant="outline"
           size="sm"
           disabled={isDev || loading}
           onClick={() => onEmail(vault.vaultId)}
-          title={isDev ? 'Email sending is disabled in dev' : undefined}
+          title={isDev ? t('emailDisabledInDev') : undefined}
         >
           <EnvelopeIcon className="mr-1.5 h-3.5 w-3.5" />
-          {emailedVaultId === vault.vaultId ? 'Sent!' : 'Email to user'}
+          {emailedVaultId === vault.vaultId ? t('sent') : t('emailToUser')}
         </Button>
       </div>
     </div>

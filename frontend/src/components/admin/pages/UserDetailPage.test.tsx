@@ -198,7 +198,7 @@ describe('UserDetailPage', () => {
 
   it('navigates back to users list when back button is clicked', async () => {
     renderDetail(pendingUser);
-    await userEvent.click(screen.getByText(/← Users/));
+    await userEvent.click(screen.getByText(/← Back/));
     expect(screen.getByText('Users List')).toBeInTheDocument();
   });
 
