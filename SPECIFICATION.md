@@ -1313,41 +1313,52 @@ Session timeouts vary by environment (see Section 2.5):
 - Graceful error handling with user-friendly messages
 - Data durability: 99.999999999% (S3 standard storage class)
 
-## 11. Future Enhancements (Out of Scope for v1)
-- **Admin Features**:
-  - Delete/deactivate user accounts
-  - Reset user passwords (generate new OTP)
-  - Admin activity audit log
-  - Multiple admin accounts with admin management
-  - Email integration for sending OTP directly to users
-- **User Features**:
-  - Self-service password change (after initial setup)
-  - Password expiration policy (force password change every N days)
-  - Account recovery flow (admin-assisted password reset + passkey reset)
-  - Passkey recovery codes (recovery codes in case of lost authenticator)
-  - Passkey reset capability (admin can clear passkey for locked-out users)
-  - ~~Multiple passkey support (register backup authenticator / device)~~ **Implemented** -- users: max 10, admins: max 2
-  - Configurable session timeout preferences (per user or global)
-  - "Extend session" button to add time before auto-logout
-  - Audio/visual warning alerts before auto-logout (e.g., 10 seconds warning)
-  - Copy individual lines or selected text (not just entire file)
-- **File Features**:
-  - Version history / file versioning (S3 versioning, view/restore previous versions)
-  - Rich text editing (WYSIWYG editor, markdown support)
-  - File export/download functionality
-  - Auto-save functionality (save as user types)
-- **UI/UX**:
-  - Dark mode / theme customization
-  - Responsive mobile design improvements
-  - Offline support (local caching, sync on reconnect)
-  - Mobile app (React Native or PWA)
-- **Security**:
-  - Session management dashboard (view/revoke active sessions)
-  - Login history and suspicious activity alerts
-  - IP whitelisting for admin access
-- **Encryption Enhancements**:
-  - ML-KEM (CRYSTALS-Kyber) key encapsulation for additional post-quantum protection
-  - Hardware security key support (YubiKey) for key derivation
-  - Key rotation policy (periodic re-encryption with new salt/key)
-  - Encrypted file versioning with per-version keys
-  - Password strength meter based on derived key entropy
+## 11. Future Enhancements
+
+### Completed in v2
+
+The following items from the original roadmap have been implemented:
+
+- ~~Delete/deactivate user accounts~~ — lock, retire, and reset via admin panel (v2 Phase 1)
+- ~~Reset user passwords (generate new OTP)~~ — admin reset with OTP delivery (v2 Phase 1)
+- ~~Admin activity audit log~~ — configurable audit system with retention policies (v2 Phase 2)
+- ~~Multiple admin accounts with admin management~~ — peer admin model (v2 Phase 1)
+- ~~Email integration for sending OTP directly to users~~ — SES integration (v2 Phase 3)
+- ~~Self-service password change~~ — change-password/self endpoint (v2 Phase 1)
+- ~~Multiple passkey support~~ — users: max 10, admins: max 2 (pre-v2)
+- ~~File export/download functionality~~ — vault download (pre-v2)
+- ~~Configurable session timeout preferences~~ — per-role timeout settings (v2 Phase 6)
+- ~~"Extend session" button~~ — extend time before auto-logout (v2 Phase 6)
+- ~~Audio/visual warning alerts before auto-logout~~ — red timer and confirmation modal (v2 Phase 6)
+- ~~Passkey reset capability~~ — admin reset clears passkeys for locked-out users (v2 Phase 1)
+- ~~Password breach detection (HIBP k-anonymity)~~ — breached password checks (v2 Phase 4)
+- ~~Vault import~~ — import from external formats, pro+ only (v2 Phase 8)
+- ~~Internationalization~~ — EN, DE, FR, RU (v2 Phase 11)
+- ~~Secure email change with verification~~ — email change flow with confirmation (v2 Phase 10)
+
+### Planned
+
+#### Security
+- Password expiration policy (force password change every N days)
+- Account recovery flow (admin-assisted password reset + passkey reset)
+- Passkey recovery codes (recovery codes in case of lost authenticator)
+- Session management dashboard (view/revoke active sessions)
+- Login history and suspicious activity alerts
+- IP whitelisting for admin access
+
+#### Encryption
+- ML-KEM (CRYSTALS-Kyber) key encapsulation for post-quantum protection
+- Hardware security key support (YubiKey) for key derivation
+- Key rotation policy (periodic re-encryption with new salt/key)
+
+#### UX & Editor
+- Version history / file versioning (view/restore previous versions via S3 versioning)
+- Rich text editing (WYSIWYG editor, markdown preview improvements)
+- Auto-save functionality (save as user types)
+- Dark mode / theme customization
+- Copy individual lines or selected text (not just entire file)
+
+#### Mobile & Offline
+- Responsive mobile design improvements
+- Offline support (local caching, sync on reconnect)
+- Mobile app (React Native or PWA)
