@@ -7,16 +7,19 @@ export interface LoginRequest {
 
 export interface LoginResponse {
   token: string;
+  userId: string;
   role: 'admin' | 'user';
   username: string;
   encryptionSalt?: string;
   plan?: import('./user.js').UserPlan;
   requirePasswordChange?: boolean;
   requirePasskeySetup?: boolean;
+  accountExpired?: boolean;
   loginEventId?: string;
   firstName?: string | null;
   lastName?: string | null;
   displayName?: string | null;
+  expiresAt?: string | null;
 }
 
 export interface UpdateProfileRequest {

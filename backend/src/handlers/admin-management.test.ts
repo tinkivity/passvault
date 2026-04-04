@@ -152,7 +152,7 @@ describe('GET /admin/users', () => {
   it('returns 200 with user list', async () => {
     adminAuthOk();
     mockListUsers.mockResolvedValue({
-      users: [{ userId: 'u1', username: 'alice', status: 'active', plan: 'free' as const, createdAt: '2024-01-01', lastLoginAt: null, vaultSizeBytes: 0 }],
+      users: [{ userId: 'u1', username: 'alice', status: 'active', plan: 'free' as const, createdAt: '2024-01-01', lastLoginAt: null, vaultSizeBytes: 0, role: 'user' as const, vaultCount: 0, vaults: [] }],
     });
     const res = await handler(makeEvent(API_PATHS.ADMIN_USERS, 'GET'));
     expect(res.statusCode).toBe(200);

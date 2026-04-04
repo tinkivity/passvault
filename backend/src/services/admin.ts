@@ -59,6 +59,11 @@ export async function adminLogin(request: LoginRequest): Promise<{ response?: Lo
     }
   }
 
+  // Admin-locked accounts (by another admin or auto-lock on expiration)
+  if (user.status === 'locked') {
+    return { error: ERRORS.ACCOUNT_SUSPENDED, statusCode: 403 };
+  }
+
   // Check brute-force lockout
   const now = new Date();
   if (user.lockedUntil && new Date(user.lockedUntil) > now) {
@@ -69,6 +74,12 @@ export async function adminLogin(request: LoginRequest): Promise<{ response?: Lo
   if (!valid) {
     await recordFailedAttempt(user.userId, user.username, user.failedLoginAttempts ?? 0);
     return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
+  }
+
+  // Admin accounts auto-lock when expiration date has passed
+  if (user.expiresAt && new Date(user.expiresAt) < now) {
+    await updateUser(user.userId, { status: 'locked' });
+    return { error: ERRORS.ACCOUNT_EXPIRED, statusCode: 403 };
   }
 
   await updateUser(user.userId, {
@@ -91,6 +102,7 @@ export async function adminLogin(request: LoginRequest): Promise<{ response?: Lo
 
   const response: LoginResponse = {
     token,
+    userId: user.userId,
     role: user.role,
     username: user.username,
     loginEventId,
@@ -115,10 +127,8 @@ export async function createUserInvitation(
     return { error: ERRORS.INVALID_EMAIL, statusCode: 400 };
   }
 
-  // Reject reserved plan value
-  if (request.plan === 'administrator') {
-    return { error: ERRORS.FORBIDDEN, statusCode: 400 };
-  }
+  // Determine role from plan
+  const isAdminInvite = request.plan === 'administrator';
 
   // Check if username already exists (excluding retired users — their usernames are renamed)
   const existing = await getUserByUsername(request.username);
@@ -147,7 +157,7 @@ export async function createUserInvitation(
     userId,
     username: request.username,
     passwordHash: otpHash,
-    role: 'user',
+    role: isAdminInvite ? 'admin' : 'user',
     status: userStatus,
     plan: request.plan ?? 'free',
     oneTimePasswordHash: otpHash,
@@ -211,7 +221,7 @@ export async function listUsers(): Promise<ListUsersResponse> {
   const vaultData = await Promise.all(
     regularUsers.map(async (u) => {
       const vaults = await listVaultsByUser(u.userId);
-      if (vaults.length === 0) return { sizeBytes: null, count: 0, stubs: [] as { vaultId: string; displayName: string }[] };
+      if (vaults.length === 0) return { sizeBytes: null, count: 0, stubs: [] as { vaultId: string; displayName: string; sizeBytes: number | null }[] };
       const sizes = await Promise.all(vaults.map((v) => getVaultFileSize(v.vaultId)));
       const totalSize = sizes.reduce<number>((sum, s) => sum + (s ?? 0), 0);
       return {
@@ -226,6 +236,7 @@ export async function listUsers(): Promise<ListUsersResponse> {
     users: regularUsers.map((u, i) => ({
       userId: u.userId,
       username: u.username,
+      role: u.role,
       status: u.status,
       plan: u.plan,
       createdAt: u.createdAt,
@@ -289,10 +300,11 @@ export async function refreshOtp(
 
 export async function resetUser(
   userId: string,
+  adminUserId: string,
 ): Promise<{ response?: CreateUserResponse; error?: string; statusCode?: number }> {
+  if (userId === adminUserId) return { error: ERRORS.CANNOT_MODIFY_SELF, statusCode: 403 };
   const user = await getUserById(userId);
   if (!user) return { error: ERRORS.NOT_FOUND, statusCode: 404 };
-  if (user.role === 'admin') return { error: ERRORS.FORBIDDEN, statusCode: 403 };
   if (user.status === 'retired') return { error: ERRORS.FORBIDDEN, statusCode: 403 };
 
   const otp = generateOtp();
@@ -367,10 +379,11 @@ export async function deleteNewUser(
 
 export async function lockUser(
   userId: string,
+  adminUserId: string,
 ): Promise<{ response?: { success: true }; error?: string; statusCode?: number }> {
+  if (userId === adminUserId) return { error: ERRORS.CANNOT_MODIFY_SELF, statusCode: 403 };
   const user = await getUserById(userId);
   if (!user) return { error: ERRORS.NOT_FOUND, statusCode: 404 };
-  if (user.role === 'admin') return { error: ERRORS.FORBIDDEN, statusCode: 403 };
   if (user.status === 'locked') return { error: 'User is already locked', statusCode: 400 };
   if (user.status === 'retired') return { error: ERRORS.NOT_FOUND, statusCode: 404 };
 
@@ -380,11 +393,18 @@ export async function lockUser(
 
 export async function unlockUser(
   userId: string,
+  adminUserId: string,
 ): Promise<{ response?: { success: true }; error?: string; statusCode?: number }> {
+  if (userId === adminUserId) return { error: ERRORS.CANNOT_MODIFY_SELF, statusCode: 403 };
   const user = await getUserById(userId);
   if (!user) return { error: ERRORS.NOT_FOUND, statusCode: 404 };
-  if (user.role === 'admin') return { error: ERRORS.FORBIDDEN, statusCode: 403 };
   if (user.status !== 'locked') return { error: 'User is not locked', statusCode: 400 };
+
+  // Admin accounts that are locked due to expiration cannot be unlocked until
+  // their expiration date is extended to the future
+  if (user.role === 'admin' && user.expiresAt && new Date(user.expiresAt) < new Date()) {
+    return { error: 'Cannot unlock an admin account past its expiration date. Update the expiration date first.', statusCode: 400 };
+  }
 
   await updateUser(userId, { status: 'active' });
   return { response: { success: true } };
@@ -392,10 +412,12 @@ export async function unlockUser(
 
 export async function expireUser(
   userId: string,
+  adminUserId: string,
 ): Promise<{ response?: { success: true }; error?: string; statusCode?: number }> {
+  if (userId === adminUserId) return { error: ERRORS.CANNOT_MODIFY_SELF, statusCode: 403 };
   const user = await getUserById(userId);
   if (!user) return { error: ERRORS.NOT_FOUND, statusCode: 404 };
-  if (user.role === 'admin') return { error: ERRORS.FORBIDDEN, statusCode: 403 };
+  if (user.role === 'admin') return { error: 'Admin accounts cannot be expired. Set an expiration date instead; the account will auto-lock.', statusCode: 400 };
   if (user.status === 'retired') return { error: ERRORS.NOT_FOUND, statusCode: 404 };
   if (user.status === 'expired') return { error: 'User is already expired', statusCode: 400 };
 
@@ -405,10 +427,11 @@ export async function expireUser(
 
 export async function retireUser(
   userId: string,
+  adminUserId: string,
 ): Promise<{ response?: { success: true }; error?: string; statusCode?: number }> {
+  if (userId === adminUserId) return { error: ERRORS.CANNOT_MODIFY_SELF, statusCode: 403 };
   const user = await getUserById(userId);
   if (!user) return { error: ERRORS.NOT_FOUND, statusCode: 404 };
-  if (user.role === 'admin') return { error: ERRORS.FORBIDDEN, statusCode: 403 };
   if (user.status === 'retired') return { error: ERRORS.NOT_FOUND, statusCode: 404 };
 
   // Rename username to free the email for reuse
@@ -480,10 +503,12 @@ export async function getStats(): Promise<AdminStats> {
 export async function reactivateUser(
   userId: string,
   expiresAt: string | null,
+  adminUserId: string,
 ): Promise<{ response?: { success: true }; error?: string; statusCode?: number }> {
+  if (userId === adminUserId) return { error: ERRORS.CANNOT_MODIFY_SELF, statusCode: 403 };
   const user = await getUserById(userId);
   if (!user) return { error: ERRORS.NOT_FOUND, statusCode: 404 };
-  if (user.role === 'admin') return { error: ERRORS.FORBIDDEN, statusCode: 403 };
+  if (user.role === 'admin') return { error: 'Admin accounts cannot be reactivated. Unlock the account instead.', statusCode: 400 };
   if (user.status !== 'expired') return { error: 'User is not expired', statusCode: 400 };
 
   await updateUser(userId, { status: 'active', expiresAt });
@@ -492,16 +517,29 @@ export async function reactivateUser(
 
 export async function updateUserProfile(
   request: UpdateUserRequest,
+  adminUserId: string,
 ): Promise<{ response?: { success: true }; error?: string; statusCode?: number }> {
   const user = await getUserById(request.userId);
   if (!user) return { error: ERRORS.NOT_FOUND, statusCode: 404 };
-  if (user.role === 'admin') return { error: ERRORS.FORBIDDEN, statusCode: 403 };
+
+  // Admins cannot change their own plan or expiration date
+  const isSelf = request.userId === adminUserId;
+  if (isSelf && 'plan' in request) return { error: 'Cannot change your own plan', statusCode: 403 };
+  if (isSelf && 'expiresAt' in request) return { error: 'Cannot change your own expiration date', statusCode: 403 };
 
   const updates: Partial<Omit<User, 'userId'>> = {};
   if ('firstName' in request) updates.firstName = request.firstName;
   if ('lastName' in request) updates.lastName = request.lastName;
   if ('displayName' in request) updates.displayName = request.displayName;
-  if ('plan' in request && request.plan) updates.plan = request.plan as UserPlan;
+  if ('plan' in request && request.plan) {
+    updates.plan = request.plan as UserPlan;
+    // Keep role in sync with plan: administrator ↔ admin, free/pro ↔ user
+    if (request.plan === 'administrator' && user.role !== 'admin') {
+      updates.role = 'admin';
+    } else if (request.plan !== 'administrator' && user.role === 'admin') {
+      updates.role = 'user';
+    }
+  }
   if ('expiresAt' in request) updates.expiresAt = request.expiresAt;
 
   if (Object.keys(updates).length > 0) {
@@ -520,7 +558,6 @@ export async function adminEmailUserVault(
 
   const user = await getUserById(userId);
   if (!user) return { error: ERRORS.NOT_FOUND, statusCode: 404 };
-  if (user.role === 'admin') return { error: ERRORS.FORBIDDEN, statusCode: 403 };
   if (!user.username.includes('@')) return { error: ERRORS.NO_EMAIL_ADDRESS, statusCode: 400 };
 
   const vaults = await listVaultsByUser(userId);

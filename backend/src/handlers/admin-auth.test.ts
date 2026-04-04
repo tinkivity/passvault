@@ -153,7 +153,7 @@ describe('POST /admin/login', () => {
 
   it('returns 200 with token on success', async () => {
     mockAdminLogin.mockResolvedValue({
-      response: { token: 'jwt.tok', role: 'admin', username: 'admin', encryptionSalt: 'salt' },
+      response: { token: 'jwt.tok', role: 'admin', username: 'admin', encryptionSalt: 'salt', userId: 'admin-1' },
     });
     const res = await handler(makeEvent(API_PATHS.ADMIN_LOGIN, 'POST', { username: 'admin', password: 'otp' }));
     expect(res.statusCode).toBe(200);

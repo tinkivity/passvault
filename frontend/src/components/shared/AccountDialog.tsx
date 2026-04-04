@@ -17,7 +17,7 @@ interface AccountDialogProps {
 }
 
 export function AccountDialog({ open, onOpenChange }: AccountDialogProps) {
-  const { username, firstName, lastName, displayName, updateProfile, loading } = useAuth();
+  const { username, firstName, lastName, displayName, expiresAt, accountExpired, updateProfile, loading } = useAuth();
 
   const [form, setForm] = useState({
     firstName: firstName ?? '',
@@ -108,6 +108,16 @@ export function AccountDialog({ open, onOpenChange }: AccountDialogProps) {
             <p className="text-xs text-muted-foreground">
               This is also your login email. Changing it takes effect immediately.
             </p>
+          </div>
+          <div className="space-y-1">
+            <Label>Account expiration</Label>
+            {expiresAt ? (
+              <p className={`text-sm ${accountExpired ? 'text-destructive font-medium' : 'text-muted-foreground'}`}>
+                {accountExpired ? 'Expired on ' : 'Expires '}{new Date(expiresAt).toLocaleDateString()}
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">No expiration date set</p>
+            )}
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
           <DialogFooter>

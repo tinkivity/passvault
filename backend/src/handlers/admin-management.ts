@@ -69,52 +69,59 @@ async function handleRefreshOtp(_event: APIGatewayProxyEvent, params: Record<str
   return success(result.response);
 }
 
-async function handleResetUser(_event: APIGatewayProxyEvent, params: Record<string, string>): Promise<APIGatewayProxyResult> {
-  const result = await resetUser(params.userId);
+async function handleResetUser(event: APIGatewayProxyEvent, params: Record<string, string>): Promise<APIGatewayProxyResult> {
+  const { user: admin } = await requireAdminActive(event);
+  const result = await resetUser(params.userId, admin!.userId);
   if (result.error) {
     return error(result.error, result.statusCode || 400);
   }
   return success(result.response);
 }
 
-async function handleLockUser(_event: APIGatewayProxyEvent, params: Record<string, string>): Promise<APIGatewayProxyResult> {
-  const result = await lockUser(params.userId);
+async function handleLockUser(event: APIGatewayProxyEvent, params: Record<string, string>): Promise<APIGatewayProxyResult> {
+  const { user: admin } = await requireAdminActive(event);
+  const result = await lockUser(params.userId, admin!.userId);
   if (result.error) return error(result.error, result.statusCode || 400);
   return success(result.response);
 }
 
-async function handleUnlockUser(_event: APIGatewayProxyEvent, params: Record<string, string>): Promise<APIGatewayProxyResult> {
-  const result = await unlockUser(params.userId);
+async function handleUnlockUser(event: APIGatewayProxyEvent, params: Record<string, string>): Promise<APIGatewayProxyResult> {
+  const { user: admin } = await requireAdminActive(event);
+  const result = await unlockUser(params.userId, admin!.userId);
   if (result.error) return error(result.error, result.statusCode || 400);
   return success(result.response);
 }
 
-async function handleExpireUser(_event: APIGatewayProxyEvent, params: Record<string, string>): Promise<APIGatewayProxyResult> {
-  const result = await expireUser(params.userId);
+async function handleExpireUser(event: APIGatewayProxyEvent, params: Record<string, string>): Promise<APIGatewayProxyResult> {
+  const { user: admin } = await requireAdminActive(event);
+  const result = await expireUser(params.userId, admin!.userId);
   if (result.error) return error(result.error, result.statusCode || 400);
   return success(result.response);
 }
 
-async function handleRetireUser(_event: APIGatewayProxyEvent, params: Record<string, string>): Promise<APIGatewayProxyResult> {
-  const result = await retireUser(params.userId);
+async function handleRetireUser(event: APIGatewayProxyEvent, params: Record<string, string>): Promise<APIGatewayProxyResult> {
+  const { user: admin } = await requireAdminActive(event);
+  const result = await retireUser(params.userId, admin!.userId);
   if (result.error) return error(result.error, result.statusCode || 400);
   return success(result.response);
 }
 
 async function handleReactivateUser(event: APIGatewayProxyEvent, params: Record<string, string>): Promise<APIGatewayProxyResult> {
+  const { user: admin } = await requireAdminActive(event);
   const parsed = parseBody(event);
   if ('parseError' in parsed) return parsed.parseError;
   const { expiresAt } = parsed.body as { expiresAt?: string | null };
 
-  const result = await reactivateUser(params.userId, expiresAt ?? null);
+  const result = await reactivateUser(params.userId, expiresAt ?? null, admin!.userId);
   if (result.error) return error(result.error, result.statusCode || 400);
   return success(result.response);
 }
 
 async function handleUpdateUser(event: APIGatewayProxyEvent, params: Record<string, string>): Promise<APIGatewayProxyResult> {
+  const { user: admin } = await requireAdminActive(event);
   const parsed = parseBody(event);
   if ('parseError' in parsed) return parsed.parseError;
-  const result = await updateUserProfile({ ...(parsed.body as import('@passvault/shared').UpdateUserRequest), userId: params.userId });
+  const result = await updateUserProfile({ ...(parsed.body as unknown as import('@passvault/shared').UpdateUserRequest), userId: params.userId }, admin!.userId);
   if (result.error) return error(result.error, result.statusCode || 400);
   return success(result.response);
 }

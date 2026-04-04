@@ -397,5 +397,47 @@ describe('login — user status checks (dev/beta)', () => {
     expect(result.error).toBeUndefined();
     expect(result.response?.token).toBe('signed.jwt.token');
   });
+
+  it('returns accountExpired flag and expiresAt for expired users', async () => {
+    mockGetUserByUsername.mockResolvedValue(makeUser({ status: 'expired', expiresAt: '2025-01-01' }));
+    mockVerifyPw.mockResolvedValue(true);
+    const result = await login({ username: 'alice', password: 'correct' });
+    expect(result.response?.accountExpired).toBe(true);
+    expect(result.response?.expiresAt).toBe('2025-01-01');
+  });
+
+  it('does not set accountExpired for active users', async () => {
+    mockGetUserByUsername.mockResolvedValue(makeUser({ status: 'active', expiresAt: '2030-12-31' }));
+    mockVerifyPw.mockResolvedValue(true);
+    const result = await login({ username: 'alice', password: 'correct' });
+    expect(result.response?.accountExpired).toBeUndefined();
+    expect(result.response?.expiresAt).toBe('2030-12-31');
+  });
+
+  it('returns null expiresAt for perpetual users', async () => {
+    mockGetUserByUsername.mockResolvedValue(makeUser({ status: 'active' }));
+    mockVerifyPw.mockResolvedValue(true);
+    const result = await login({ username: 'alice', password: 'correct' });
+    expect(result.response?.expiresAt).toBeNull();
+  });
+
+  it('auto-locks admin and returns ACCOUNT_EXPIRED when expiresAt is in the past', async () => {
+    const past = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    mockGetUserByUsername.mockResolvedValue(makeUser({ role: 'admin', status: 'active', expiresAt: past }));
+    mockVerifyPw.mockResolvedValue(true);
+    const result = await login({ username: 'admin', password: 'correct' });
+    expect(result.statusCode).toBe(403);
+    expect(result.error).toBe(ERRORS.ACCOUNT_EXPIRED);
+    expect(mockUpdateUser).toHaveBeenCalledWith('user-1', { status: 'locked' });
+  });
+
+  it('does not auto-lock regular users with past expiresAt', async () => {
+    const past = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    mockGetUserByUsername.mockResolvedValue(makeUser({ role: 'user', status: 'active', expiresAt: past }));
+    mockVerifyPw.mockResolvedValue(true);
+    const result = await login({ username: 'alice', password: 'correct' });
+    expect(result.error).toBeUndefined();
+    expect(result.response?.token).toBeDefined();
+  });
 });
 

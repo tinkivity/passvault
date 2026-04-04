@@ -22,7 +22,8 @@ export function CreateUserForm({ onCreateUser, loading, onDone, onOtpVisibleChan
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [displayName, setDisplayName] = useState('');
-  const [plan, setPlan] = useState<'free' | 'pro'>('free');
+  const [plan, setPlan] = useState<'free' | 'pro' | 'administrator'>('free');
+  const [adminConfirm, setAdminConfirm] = useState(false);
   const [isPerpetual, setIsPerpetual] = useState(false);
   const [expiresAt, setExpiresAt] = useState(defaultExpiresAt());
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +55,7 @@ export function CreateUserForm({ onCreateUser, loading, onDone, onOtpVisibleChan
       setLastName('');
       setDisplayName('');
       setPlan('free');
+      setAdminConfirm(false);
       setIsPerpetual(false);
       setExpiresAt(defaultExpiresAt());
     } catch (err) {
@@ -124,21 +126,28 @@ export function CreateUserForm({ onCreateUser, loading, onDone, onOtpVisibleChan
       <div className="space-y-1">
         <Label>Plan</Label>
         <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setPlan('free')}
-            className={`flex-1 rounded-md border px-3 py-1.5 text-sm transition-colors ${plan === 'free' ? 'border-primary bg-primary/10 text-primary font-medium' : 'border-border text-muted-foreground hover:border-primary/50'}`}
-          >
-            Free
-          </button>
-          <button
-            type="button"
-            onClick={() => setPlan('pro')}
-            className={`flex-1 rounded-md border px-3 py-1.5 text-sm transition-colors ${plan === 'pro' ? 'border-primary bg-primary/10 text-primary font-medium' : 'border-border text-muted-foreground hover:border-primary/50'}`}
-          >
-            Pro
-          </button>
+          {(['free', 'pro', 'administrator'] as const).map(p => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => {
+                if (p === 'administrator' && plan !== 'administrator') {
+                  setAdminConfirm(true);
+                }
+                setPlan(p);
+                if (p === 'administrator') setIsPerpetual(true);
+              }}
+              className={`flex-1 rounded-md border px-3 py-1.5 text-sm transition-colors ${plan === p ? (p === 'administrator' ? 'border-red-500 bg-red-500/10 text-red-600 font-medium' : 'border-primary bg-primary/10 text-primary font-medium') : 'border-border text-muted-foreground hover:border-primary/50'}`}
+            >
+              {p === 'administrator' ? 'Admin' : p.charAt(0).toUpperCase() + p.slice(1)}
+            </button>
+          ))}
         </div>
+        {plan === 'administrator' && adminConfirm && (
+          <p className="text-xs text-destructive mt-1">
+            This will create a full administrator account with access to all admin features.
+          </p>
+        )}
       </div>
 
       <div className="space-y-2">

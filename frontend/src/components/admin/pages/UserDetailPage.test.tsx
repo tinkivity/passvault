@@ -36,6 +36,7 @@ const mockAdmin = {
 const pendingUser: UserSummary = {
   userId: 'u1',
   username: 'bob@example.com',
+  role: 'user',
   status: 'pending_first_login',
   plan: 'free',
   createdAt: '2024-01-15T00:00:00Z',

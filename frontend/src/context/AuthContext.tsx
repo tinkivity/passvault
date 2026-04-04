@@ -3,6 +3,7 @@ import type { UserRole, UserStatus, UserPlan } from '@passvault/shared';
 
 export interface AuthState {
   token: string | null;
+  userId: string | null;
   role: UserRole | null;
   username: string | null;
   firstName: string | null;
@@ -11,6 +12,8 @@ export interface AuthState {
   status: UserStatus | null;
   plan: UserPlan | null;
   loginEventId: string | null;
+  expiresAt: string | null;
+  accountExpired: boolean;
 }
 
 interface AuthContextValue extends AuthState {
@@ -21,6 +24,7 @@ interface AuthContextValue extends AuthState {
 
 const initialState: AuthState = {
   token: null,
+  userId: null,
   role: null,
   username: null,
   firstName: null,
@@ -29,6 +33,8 @@ const initialState: AuthState = {
   status: null,
   plan: null,
   loginEventId: null,
+  expiresAt: null,
+  accountExpired: false,
 };
 
 const SESSION_KEY = 'pv_session';

@@ -248,6 +248,47 @@ describe('adminLogin — account lockout (dev/beta)', () => {
   });
 });
 
+describe('adminLogin — admin expiration auto-lock (dev/beta)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    config.features.passkeyRequired = false;
+  });
+
+  it('auto-locks admin and returns ACCOUNT_EXPIRED when expiresAt is in the past', async () => {
+    const past = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    mockGetUserByUsername.mockResolvedValue(makeAdmin({ status: 'active', expiresAt: past }));
+    mockVerifyPw.mockResolvedValue(true);
+    const result = await adminLogin({ username: 'admin', password: 'correct' });
+    expect(result.statusCode).toBe(403);
+    expect(result.error).toBe(ERRORS.ACCOUNT_EXPIRED);
+    expect(mockUpdateUser).toHaveBeenCalledWith('admin-1', { status: 'locked' });
+  });
+
+  it('allows login when expiresAt is in the future', async () => {
+    const future = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+    mockGetUserByUsername.mockResolvedValue(makeAdmin({ status: 'active', expiresAt: future }));
+    mockVerifyPw.mockResolvedValue(true);
+    const result = await adminLogin({ username: 'admin', password: 'correct' });
+    expect(result.error).toBeUndefined();
+    expect(result.response?.token).toBeDefined();
+  });
+
+  it('allows login when expiresAt is null (perpetual)', async () => {
+    mockGetUserByUsername.mockResolvedValue(makeAdmin({ status: 'active', expiresAt: null }));
+    mockVerifyPw.mockResolvedValue(true);
+    const result = await adminLogin({ username: 'admin', password: 'correct' });
+    expect(result.error).toBeUndefined();
+    expect(result.response?.token).toBeDefined();
+  });
+
+  it('returns ACCOUNT_SUSPENDED for already-locked admin', async () => {
+    mockGetUserByUsername.mockResolvedValue(makeAdmin({ status: 'locked' }));
+    const result = await adminLogin({ username: 'admin', password: 'correct' });
+    expect(result.statusCode).toBe(403);
+    expect(result.error).toBe(ERRORS.ACCOUNT_SUSPENDED);
+  });
+});
+
 describe('adminLogin — input validation (dev/beta)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -374,7 +415,7 @@ describe('listUsers', () => {
       makeAdmin({ userId: 'user-1', username: 'alice', role: 'user' }),
     ]);
     vi.mocked(listVaultsByUser).mockResolvedValue([
-      { vaultId: 'vault-1', userId: 'user-1', displayName: 'Personal Vault', createdAt: '2024-01-01T00:00:00.000Z' },
+      { vaultId: 'vault-1', displayName: 'Personal Vault', createdAt: '2024-01-01T00:00:00.000Z', encryptionSalt: 'salt' },
     ]);
     const result = await listUsers();
     expect(result.users[0].vaultSizeBytes).toBe(1024);
@@ -413,32 +454,39 @@ describe('reactivateUser', () => {
 
   it('returns 404 when user not found', async () => {
     mockGetUserById.mockResolvedValue(null);
-    const result = await reactivateUser('user-1', null);
+    const result = await reactivateUser('user-1', null, 'admin-1');
     expect(result.statusCode).toBe(404);
   });
 
-  it('returns 403 when user is admin', async () => {
+  it('returns 403 when trying to reactivate self', async () => {
     mockGetUserById.mockResolvedValue(makeAdmin({ role: 'admin', status: 'expired' }));
-    const result = await reactivateUser('admin-1', null);
+    const result = await reactivateUser('admin-1', null, 'admin-1');
     expect(result.statusCode).toBe(403);
+  });
+
+  it('returns 400 when trying to reactivate another admin', async () => {
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'admin', status: 'expired', userId: 'admin-2' }));
+    const result = await reactivateUser('admin-2', null, 'admin-1');
+    expect(result.statusCode).toBe(400);
+    expect(result.error).toContain('cannot be reactivated');
   });
 
   it('returns 400 when user is not expired', async () => {
     mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', status: 'active' }));
-    const result = await reactivateUser('user-1', null);
+    const result = await reactivateUser('user-1', null, 'admin-1');
     expect(result.statusCode).toBe(400);
   });
 
   it('reactivates an expired user with a new expiration date', async () => {
     mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', status: 'expired', userId: 'user-1' }));
-    const result = await reactivateUser('user-1', '2027-01-01');
+    const result = await reactivateUser('user-1', '2027-01-01', 'admin-1');
     expect(result.response?.success).toBe(true);
     expect(mockUpdateUser).toHaveBeenCalledWith('user-1', { status: 'active', expiresAt: '2027-01-01' });
   });
 
   it('reactivates with null expiresAt for perpetual users', async () => {
     mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', status: 'expired', userId: 'user-1' }));
-    const result = await reactivateUser('user-1', null);
+    const result = await reactivateUser('user-1', null, 'admin-1');
     expect(result.response?.success).toBe(true);
     expect(mockUpdateUser).toHaveBeenCalledWith('user-1', { status: 'active', expiresAt: null });
   });
@@ -451,14 +499,34 @@ describe('updateUserProfile', () => {
 
   it('returns 404 when user not found', async () => {
     mockGetUserById.mockResolvedValue(null);
-    const result = await updateUserProfile({ userId: 'user-1' });
+    const result = await updateUserProfile({ userId: 'user-1' }, 'admin-1');
     expect(result.statusCode).toBe(404);
   });
 
-  it('returns 403 when user is admin', async () => {
-    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'admin' }));
-    const result = await updateUserProfile({ userId: 'admin-1' });
+  it('allows updating another admin name', async () => {
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'admin', userId: 'admin-2' }));
+    const result = await updateUserProfile({ userId: 'admin-2', firstName: 'Updated' }, 'admin-1');
+    expect(result.response?.success).toBe(true);
+  });
+
+  it('allows admin to update own name', async () => {
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'admin', userId: 'admin-1' }));
+    const result = await updateUserProfile({ userId: 'admin-1', firstName: 'Updated' }, 'admin-1');
+    expect(result.response?.success).toBe(true);
+  });
+
+  it('rejects admin changing own plan', async () => {
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'admin', userId: 'admin-1' }));
+    const result = await updateUserProfile({ userId: 'admin-1', plan: 'free' }, 'admin-1');
     expect(result.statusCode).toBe(403);
+    expect(result.error).toContain('plan');
+  });
+
+  it('rejects admin changing own expiresAt', async () => {
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'admin', userId: 'admin-1' }));
+    const result = await updateUserProfile({ userId: 'admin-1', expiresAt: '2030-01-01' }, 'admin-1');
+    expect(result.statusCode).toBe(403);
+    expect(result.error).toContain('expiration');
   });
 
   it('updates firstName, lastName, displayName', async () => {
@@ -468,7 +536,7 @@ describe('updateUserProfile', () => {
       firstName: 'Alice',
       lastName: 'Johnson',
       displayName: 'AJ',
-    });
+    }, 'admin-1');
     expect(result.response?.success).toBe(true);
     expect(mockUpdateUser).toHaveBeenCalledWith('user-1', expect.objectContaining({
       firstName: 'Alice',
@@ -479,19 +547,38 @@ describe('updateUserProfile', () => {
 
   it('updates plan', async () => {
     mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', userId: 'user-1' }));
-    await updateUserProfile({ userId: 'user-1', plan: 'pro' });
+    await updateUserProfile({ userId: 'user-1', plan: 'pro' }, 'admin-1');
     expect(mockUpdateUser).toHaveBeenCalledWith('user-1', expect.objectContaining({ plan: 'pro' }));
+  });
+
+  it('sets role to admin when upgrading to administrator plan', async () => {
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', userId: 'user-1', plan: 'pro' }));
+    await updateUserProfile({ userId: 'user-1', plan: 'administrator' }, 'admin-1');
+    expect(mockUpdateUser).toHaveBeenCalledWith('user-1', expect.objectContaining({ plan: 'administrator', role: 'admin' }));
+  });
+
+  it('sets role to user when downgrading from administrator plan', async () => {
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'admin', userId: 'admin-2', plan: 'administrator' }));
+    await updateUserProfile({ userId: 'admin-2', plan: 'pro' }, 'admin-1');
+    expect(mockUpdateUser).toHaveBeenCalledWith('admin-2', expect.objectContaining({ plan: 'pro', role: 'user' }));
+  });
+
+  it('does not change role when plan stays the same tier', async () => {
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', userId: 'user-1', plan: 'free' }));
+    await updateUserProfile({ userId: 'user-1', plan: 'pro' }, 'admin-1');
+    const updateCall = mockUpdateUser.mock.calls[0][1];
+    expect(updateCall.role).toBeUndefined();
   });
 
   it('updates expiresAt to null for perpetual users', async () => {
     mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', userId: 'user-1' }));
-    await updateUserProfile({ userId: 'user-1', expiresAt: null });
+    await updateUserProfile({ userId: 'user-1', expiresAt: null }, 'admin-1');
     expect(mockUpdateUser).toHaveBeenCalledWith('user-1', expect.objectContaining({ expiresAt: null }));
   });
 
   it('does not call updateUser when no fields are provided', async () => {
     mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', userId: 'user-1' }));
-    const result = await updateUserProfile({ userId: 'user-1' });
+    const result = await updateUserProfile({ userId: 'user-1' }, 'admin-1');
     expect(result.response?.success).toBe(true);
     expect(mockUpdateUser).not.toHaveBeenCalled();
   });
@@ -521,10 +608,10 @@ describe('adminEmailUserVault', () => {
     expect(result.statusCode).toBe(404);
   });
 
-  it('returns 403 when user is admin', async () => {
-    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'admin' }));
+  it('returns 400 when admin has no email address', async () => {
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'admin', username: 'admin-local' }));
     const result = await adminEmailUserVault('admin-1');
-    expect(result.statusCode).toBe(403);
+    expect(result.statusCode).toBe(400);
   });
 
   it('returns 404 when user has no vaults', async () => {
@@ -615,8 +702,8 @@ describe('getStats', () => {
       makeAdmin({ userId: 'user-2', username: 'bob', role: 'user' }),
     ]);
     vi.mocked(listVaultsByUser)
-      .mockResolvedValueOnce([{ vaultId: 'vault-1', userId: 'user-1', displayName: 'Personal Vault', createdAt: '2024-01-01T00:00:00.000Z' }])
-      .mockResolvedValueOnce([{ vaultId: 'vault-2', userId: 'user-2', displayName: 'Personal Vault', createdAt: '2024-01-01T00:00:00.000Z' }]);
+      .mockResolvedValueOnce([{ vaultId: 'vault-1', displayName: 'Personal Vault', createdAt: '2024-01-01T00:00:00.000Z', encryptionSalt: 'salt' }])
+      .mockResolvedValueOnce([{ vaultId: 'vault-2', displayName: 'Personal Vault', createdAt: '2024-01-01T00:00:00.000Z', encryptionSalt: 'salt' }]);
     mockGetVaultFileSize.mockResolvedValueOnce(1024).mockResolvedValueOnce(512);
     mockGetLoginCountSince.mockResolvedValue(0);
     const result = await getStats();
@@ -663,31 +750,31 @@ describe('lockUser', () => {
 
   it('returns 404 when user not found', async () => {
     mockGetUserById.mockResolvedValue(null);
-    const result = await lockUser('user-1');
+    const result = await lockUser('user-1', 'admin-1');
     expect(result.statusCode).toBe(404);
   });
 
   it('returns 403 when user is admin', async () => {
     mockGetUserById.mockResolvedValue(makeAdmin({ role: 'admin', status: 'active' }));
-    const result = await lockUser('admin-1');
+    const result = await lockUser('admin-1', 'admin-1');
     expect(result.statusCode).toBe(403);
   });
 
   it('returns 400 when user is already locked', async () => {
     mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', status: 'locked' }));
-    const result = await lockUser('user-1');
+    const result = await lockUser('user-1', 'admin-1');
     expect(result.statusCode).toBe(400);
   });
 
   it('returns 404 when user is retired', async () => {
     mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', status: 'retired' }));
-    const result = await lockUser('user-1');
+    const result = await lockUser('user-1', 'admin-1');
     expect(result.statusCode).toBe(404);
   });
 
   it('sets status to locked for an active user', async () => {
     mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', status: 'active', userId: 'user-1' }));
-    const result = await lockUser('user-1');
+    const result = await lockUser('user-1', 'admin-1');
     expect(result.response?.success).toBe(true);
     expect(mockUpdateUser).toHaveBeenCalledWith('user-1', { status: 'locked' });
   });
@@ -700,27 +787,48 @@ describe('unlockUser', () => {
 
   it('returns 404 when user not found', async () => {
     mockGetUserById.mockResolvedValue(null);
-    const result = await unlockUser('user-1');
+    const result = await unlockUser('user-1', 'admin-1');
     expect(result.statusCode).toBe(404);
   });
 
   it('returns 403 when user is admin', async () => {
     mockGetUserById.mockResolvedValue(makeAdmin({ role: 'admin', status: 'locked' }));
-    const result = await unlockUser('admin-1');
+    const result = await unlockUser('admin-1', 'admin-1');
     expect(result.statusCode).toBe(403);
   });
 
   it('returns 400 when user is not locked', async () => {
     mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', status: 'active' }));
-    const result = await unlockUser('user-1');
+    const result = await unlockUser('user-1', 'admin-1');
     expect(result.statusCode).toBe(400);
   });
 
   it('restores status to active', async () => {
     mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', status: 'locked', userId: 'user-1' }));
-    const result = await unlockUser('user-1');
+    const result = await unlockUser('user-1', 'admin-1');
     expect(result.response?.success).toBe(true);
     expect(mockUpdateUser).toHaveBeenCalledWith('user-1', { status: 'active' });
+  });
+
+  it('rejects unlocking an admin past expiration date', async () => {
+    const past = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'admin', status: 'locked', userId: 'admin-2', expiresAt: past }));
+    const result = await unlockUser('admin-2', 'admin-1');
+    expect(result.statusCode).toBe(400);
+    expect(result.error).toContain('expiration date');
+  });
+
+  it('allows unlocking an admin with future expiration date', async () => {
+    const future = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'admin', status: 'locked', userId: 'admin-2', expiresAt: future }));
+    const result = await unlockUser('admin-2', 'admin-1');
+    expect(result.response?.success).toBe(true);
+  });
+
+  it('allows unlocking an admin with null expiresAt', async () => {
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'admin', status: 'locked', userId: 'admin-2', expiresAt: null }));
+    const result = await unlockUser('admin-2', 'admin-1');
+    expect(result.response?.success).toBe(true);
   });
 });
 
@@ -731,31 +839,38 @@ describe('expireUser', () => {
 
   it('returns 404 when user not found', async () => {
     mockGetUserById.mockResolvedValue(null);
-    const result = await expireUser('user-1');
+    const result = await expireUser('user-1', 'admin-1');
     expect(result.statusCode).toBe(404);
   });
 
-  it('returns 403 when user is admin', async () => {
+  it('returns 403 when trying to expire self', async () => {
     mockGetUserById.mockResolvedValue(makeAdmin({ role: 'admin', status: 'active' }));
-    const result = await expireUser('admin-1');
+    const result = await expireUser('admin-1', 'admin-1');
     expect(result.statusCode).toBe(403);
+  });
+
+  it('returns 400 when trying to expire another admin', async () => {
+    mockGetUserById.mockResolvedValue(makeAdmin({ role: 'admin', status: 'active', userId: 'admin-2' }));
+    const result = await expireUser('admin-2', 'admin-1');
+    expect(result.statusCode).toBe(400);
+    expect(result.error).toContain('cannot be expired');
   });
 
   it('returns 404 when user is retired', async () => {
     mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', status: 'retired' }));
-    const result = await expireUser('user-1');
+    const result = await expireUser('user-1', 'admin-1');
     expect(result.statusCode).toBe(404);
   });
 
   it('returns 400 when user is already expired', async () => {
     mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', status: 'expired' }));
-    const result = await expireUser('user-1');
+    const result = await expireUser('user-1', 'admin-1');
     expect(result.statusCode).toBe(400);
   });
 
   it('sets status to expired for an active user', async () => {
     mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', status: 'active', userId: 'user-1' }));
-    const result = await expireUser('user-1');
+    const result = await expireUser('user-1', 'admin-1');
     expect(result.response?.success).toBe(true);
     expect(mockUpdateUser).toHaveBeenCalledWith('user-1', { status: 'expired' });
   });
@@ -768,19 +883,19 @@ describe('retireUser', () => {
 
   it('returns 404 when user not found', async () => {
     mockGetUserById.mockResolvedValue(null);
-    const result = await retireUser('user-1');
+    const result = await retireUser('user-1', 'admin-1');
     expect(result.statusCode).toBe(404);
   });
 
   it('returns 403 when user is admin', async () => {
     mockGetUserById.mockResolvedValue(makeAdmin({ role: 'admin', status: 'active' }));
-    const result = await retireUser('admin-1');
+    const result = await retireUser('admin-1', 'admin-1');
     expect(result.statusCode).toBe(403);
   });
 
   it('returns 404 when user is already retired', async () => {
     mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', status: 'retired' }));
-    const result = await retireUser('user-1');
+    const result = await retireUser('user-1', 'admin-1');
     expect(result.statusCode).toBe(404);
   });
 
@@ -788,7 +903,7 @@ describe('retireUser', () => {
     mockGetUserById.mockResolvedValue(
       makeAdmin({ role: 'user', status: 'active', userId: 'user-1', username: 'bob@example.com' }),
     );
-    const result = await retireUser('user-1');
+    const result = await retireUser('user-1', 'admin-1');
     expect(result.response?.success).toBe(true);
     expect(mockUpdateUser).toHaveBeenCalledWith('user-1', {
       status: 'retired',
@@ -800,7 +915,7 @@ describe('retireUser', () => {
     mockGetUserById.mockResolvedValue(
       makeAdmin({ role: 'user', status: 'active', userId: 'user-1', username: 'alice@example.com' }),
     );
-    await retireUser('user-1');
+    await retireUser('user-1', 'admin-1');
     const [, updates] = mockUpdateUser.mock.calls[0];
     expect((updates as { username: string }).username).not.toBe('alice@example.com');
     expect((updates as { username: string }).username).toContain('alice@example.com');
@@ -855,19 +970,19 @@ describe('resetUser', () => {
 
   it('returns 404 when user not found', async () => {
     mockGetUserById.mockResolvedValue(null);
-    const result = await resetUser('user-1');
+    const result = await resetUser('user-1', 'admin-1');
     expect(result.statusCode).toBe(404);
   });
 
   it('returns 403 when target is admin', async () => {
     mockGetUserById.mockResolvedValue(makeAdmin({ role: 'admin', status: 'active' }));
-    const result = await resetUser('admin-1');
+    const result = await resetUser('admin-1', 'admin-1');
     expect(result.statusCode).toBe(403);
   });
 
   it('returns 403 when target is retired', async () => {
     mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', status: 'retired' }));
-    const result = await resetUser('user-1');
+    const result = await resetUser('user-1', 'admin-1');
     expect(result.statusCode).toBe(403);
   });
 
@@ -877,7 +992,7 @@ describe('resetUser', () => {
       { credentialId: 'cred-1', userId: 'user-1', name: 'Key 1', publicKey: 'pk1', counter: 0, transports: null, aaguid: '', createdAt: '2024-01-01T00:00:00Z' },
       { credentialId: 'cred-2', userId: 'user-1', name: 'Key 2', publicKey: 'pk2', counter: 0, transports: null, aaguid: '', createdAt: '2024-01-01T00:00:00Z' },
     ]);
-    const result = await resetUser('user-1');
+    const result = await resetUser('user-1', 'admin-1');
     expect(result.error).toBeUndefined();
     expect(result.response?.success).toBe(true);
     expect(result.response?.oneTimePassword).toBe('ABCDEFGH12345678');
@@ -895,7 +1010,7 @@ describe('resetUser', () => {
   it('succeeds for locked user', async () => {
     mockGetUserById.mockResolvedValue(makeAdmin({ role: 'user', status: 'locked', userId: 'user-1', username: 'bob@example.com' }));
     mockListPasskeyCredentials.mockResolvedValue([]);
-    const result = await resetUser('user-1');
+    const result = await resetUser('user-1', 'admin-1');
     expect(result.error).toBeUndefined();
     expect(result.response?.success).toBe(true);
     expect(mockUpdateUser).toHaveBeenCalledWith('user-1', expect.objectContaining({

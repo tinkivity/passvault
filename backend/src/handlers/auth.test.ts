@@ -113,7 +113,7 @@ describe('routing', () => {
   });
 
   it('routes POST /auth/login', async () => {
-    mockLogin.mockResolvedValue({ response: { token: 'tok', role: 'user', username: 'alice', encryptionSalt: 'salt' } });
+    mockLogin.mockResolvedValue({ response: { token: 'tok', role: 'user', username: 'alice', encryptionSalt: 'salt', userId: 'user-1' } });
     const res = await handler(makeEvent(API_PATHS.AUTH_LOGIN, 'POST', { username: 'alice', password: 'pass' }));
     expect(mockLogin).toHaveBeenCalled();
     expect(res.statusCode).toBe(200);
@@ -171,7 +171,7 @@ describe('POST /auth/login', () => {
 
   it('returns 200 with token on success', async () => {
     mockLogin.mockResolvedValue({
-      response: { token: 'jwt.token', role: 'user', username: 'alice', encryptionSalt: 'salt' },
+      response: { token: 'jwt.token', role: 'user', username: 'alice', encryptionSalt: 'salt', userId: 'user-1' },
     });
     const res = await handler(makeEvent(API_PATHS.AUTH_LOGIN, 'POST', { username: 'alice', password: 'pass' }));
     expect(res.statusCode).toBe(200);
