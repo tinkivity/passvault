@@ -9,7 +9,13 @@ const HIGH = POW_CONFIG.DIFFICULTY.HIGH;
 let ctx: SitContext;
 
 describe('01 — Admin Authentication', () => {
-  beforeAll(() => { ctx = load(); });
+  beforeAll(() => {
+    ctx = load();
+    console.log('[SIT DEBUG] adminEmail:', ctx.adminEmail);
+    console.log('[SIT DEBUG] adminOtp length:', ctx.adminOtp.length);
+    console.log('[SIT DEBUG] adminToken present:', ctx.adminToken.length > 0);
+    console.log('[SIT DEBUG] baseUrl:', ctx.baseUrl);
+  });
 
   it('logs in with OTP -> requirePasswordChange', async () => {
     const res = await request<{ success: boolean; data: LoginResponse }>('POST', API_PATHS.AUTH_LOGIN, {
