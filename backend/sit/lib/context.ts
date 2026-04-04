@@ -1,8 +1,7 @@
-import { readFileSync, writeFileSync, mkdirSync } from 'fs';
-import { join } from 'path';
-import { tmpdir } from 'os';
+import { readFileSync, writeFileSync } from 'fs';
 
-const CTX_FILE = join(tmpdir(), 'passvault-sit-context.json');
+// Use a fixed path (not os.tmpdir() which varies across platforms)
+const CTX_FILE = '/tmp/passvault-sit-context.json';
 
 export interface SitContext {
   baseUrl: string;
