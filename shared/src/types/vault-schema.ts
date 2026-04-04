@@ -24,7 +24,6 @@ interface VaultItemBase {
   createdAt: string;     // ISO 8601
   updatedAt: string;     // ISO 8601
   warningCodes: WarningCode[];  // stored inside encrypted vault — backend never sees this
-  comment?: string;
 }
 
 export interface NoteItem extends VaultItemBase {

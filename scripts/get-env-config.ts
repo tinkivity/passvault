@@ -8,7 +8,7 @@
  * Output (shell-compatible, suitable for eval or .env.local):
  *   VITE_PASSKEY_REQUIRED=false
  *   VITE_SESSION_TIMEOUT_SECONDS=300
- *   VITE_VAULT_TIMEOUT_SECONDS=60
+ *   VITE_VAULT_TIMEOUT_SECONDS=600
  */
 
 import { getEnvironmentConfig } from '../shared/src/config/environments.js';
