@@ -261,11 +261,11 @@ curl https://YOUR_CLOUDFRONT_URL/api/challenge
 ### 6.4 Admin First Login
 
 1. Navigate to the CloudFront URL (or API Gateway URL for dev)
-2. Go to `/admin/login`
+2. Go to `/login` (unified login for both admin and regular users)
 3. Enter the admin email and the one-time password from `init-admin.ts`
 4. Change password on first login
 5. **Prod only:** Register a passkey (biometric/PIN/security key) on the passkey setup page
-6. Access the admin dashboard
+6. Access the admin dashboard at `/ui/admin/dashboard`
 
 In dev/beta, passkey setup is skipped -- admin goes directly to the dashboard after changing the password.
 
@@ -395,10 +395,10 @@ For full kill switch details, see [../BOTPROTECTION.md](../BOTPROTECTION.md).
 ```bash
 cd cdk
 
-# Dev (no CloudFront, no passkeys, ~$0/month)
+# Dev (no CloudFront, passkeys optional, ~$0/month)
 cdk deploy PassVault-Dev --context env=dev --context adminEmail=you@example.com
 
-# Beta (CloudFront enabled, no passkeys, ~$0/month)
+# Beta (CloudFront enabled, passkeys optional, ~$0/month)
 cdk deploy --all --context env=beta --context domain=example.com --context adminEmail=you@example.com
 
 # Prod (CloudFront, passkeys, monitoring, kill switch, ~$0-2/month)
@@ -426,7 +426,7 @@ cdk destroy --all --context env=prod --context domain=example.com
 
 | Setting | Dev | Beta | Prod |
 |---|---|---|---|
-| Passkeys | Disabled | Disabled | Required |
+| Passkeys | Optional | Optional | Required |
 | PoW | Disabled | Enabled | Enabled |
 | CloudFront | Disabled | Enabled | Enabled |
 | Lambda memory | 256 MB | 256 MB | 512 MB |
