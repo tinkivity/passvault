@@ -68,11 +68,11 @@ Four middleware modules live in `src/middleware/`. The router re-exports adapter
 
 Services in `src/services/` contain business logic, called by handlers.
 
-**auth.ts** -- User login (password verification via Argon2/bcrypt, JWT issuance), password changes (admin-initiated and self-service), profile updates, email token verification, email change flow (`requestEmailChange`, `verifyEmailChange`, `lockSelf`), and logout. Records audit events fire-and-forget.
+**auth.ts** -- User login (password verification via Argon2/bcrypt, JWT issuance), password changes (admin-initiated and self-service), profile updates, email token verification, email change flow (`requestEmailChange`, `verifyEmailChange`, `lockSelf`), and logout. Awaits audit event writes (with `.catch()` to avoid failing the request).
 
 **admin.ts** -- Admin-specific login, user invitation creation (generates OTP, supports `plan: 'administrator'` for multi-admin peer model), user lifecycle management (lock, unlock, expire, retire, reactivate, delete), OTP refresh, stats aggregation, login event listing, audit event listing/config, and admin-initiated vault email. Self-modification prevention: admins cannot change their own plan or expiration. Admin-on-admin lifecycle changes are allowed (peer model).
 
-**vault.ts** -- CRUD operations for encrypted vaults stored in S3 using split format (index + items). Handles listing, creation, renaming, deletion, download, and email delivery of vault data. Exposes `getVaultIndex` and `getVaultItems` for lazy loading. Also manages warning codes, vault size tracking, and notification preferences. Records vault operations as audit events (fire-and-forget).
+**vault.ts** -- CRUD operations for encrypted vaults stored in S3 using split format (index + items). Handles listing, creation, renaming, deletion, download, and email delivery of vault data. Exposes `getVaultIndex` and `getVaultItems` for lazy loading. Also manages warning codes, vault size tracking, and notification preferences. Awaits audit event writes (with `.catch()` to avoid failing the request).
 
 **passkey.ts** -- WebAuthn operations using `@simplewebauthn/server`. Generates challenge JWTs, verifies passkey assertions (login) and attestations (registration), and produces passkey tokens consumed by the login flow.
 
@@ -115,13 +115,13 @@ Endpoints: `POST /api/auth/email-change`, `POST /api/auth/verify-email-change`, 
 
 ## Audit System (v2)
 
-`utils/audit.ts` provides a fire-and-forget, config-aware audit logging utility.
+`utils/audit.ts` provides a config-aware audit logging utility.
 
 **Key behavior:**
-- Reads `AuditConfig` from the `passvault-config-{env}` DynamoDB table (cached in-process after first read)
+- Reads `AuditConfig` from the `passvault-config-{env}` DynamoDB table (cached in-process with 5s TTL)
 - Before writing an event, checks if the event's category is enabled in the config
 - Events are written to `passvault-audit-{env}` with a 90-day TTL
-- All audit writes are fire-and-forget (`recordAuditEvent().catch(...)`) to avoid impacting request latency
+- All audit writes are awaited with `.catch()` — errors are logged but do not fail the request. Awaiting (rather than fire-and-forget) ensures the DynamoDB write completes before Lambda freezes the execution environment.
 
 **4 categories**: `authentication`, `admin_actions`, `vault_operations`, `system` (see shared `AuditCategory` type).
 
@@ -131,7 +131,7 @@ Audit events are recorded in the auth, admin, and vault services after significa
 
 | File | Purpose |
 |---|---|
-| `audit.ts` | Configurable audit logging. Reads `AuditConfig` from the config table (cached in-process); writes `AuditEvent` records fire-and-forget to the audit events table. Events are only written if the corresponding category is enabled. Exposes `getAuditConfig`, `updateAuditConfig`, `recordAuditEvent`, and `listAuditEvents`. |
+| `audit.ts` | Configurable audit logging. Reads `AuditConfig` from the config table (cached in-process, 5s TTL); writes `AuditEvent` records to the audit events table (awaited with `.catch()`). Events are only written if the corresponding category is enabled. Exposes `getAuditConfig`, `updateAuditConfig`, `recordAuditEvent`, and `queryAuditEvents`. |
 | `dynamodb.ts` | DynamoDB document client wrapper. User, passkey-credential, and login-event CRUD, queries by email and credential ID, GSI lookups. |
 | `s3.ts` | S3 client wrapper for vault file storage. Uses split format: `getVaultIndexFile`, `getVaultItemsFile`, `putVaultSplitFiles`, `deleteVaultSplitFiles`. Legacy single-file format supported via `getLegacyVaultFile` and `migrateLegacyVaultFile`. |
 | `jwt.ts` | JWT signing and verification using the secret fetched from SSM Parameter Store. |

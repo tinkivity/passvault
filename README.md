@@ -78,7 +78,7 @@ PassVault is a privacy-focused, serverless password vault where:
 | [frontend/ARCHITECTURE.md](frontend/ARCHITECTURE.md) | Routing, state, encryption flow, PoW, auto-logout |
 | [frontend/TESTING.md](frontend/TESTING.md) | Frontend test inventory and manual UI testing |
 | [frontend/USER_MANUAL.md](frontend/USER_MANUAL.md) | End-user guide |
-| [scripts/README.md](scripts/README.md) | Post-deploy scripts (init-admin, setup, cleanup, etc.) |
+| [scripts/README.md](scripts/README.md) | Operational scripts (post-deploy, post-destroy, sitest, pentest, smoke-test) |
 
 ---
 

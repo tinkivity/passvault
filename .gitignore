@@ -33,6 +33,8 @@ cdk/cdk.context.json
 # Testing
 coverage/
 .nyc_output/
+.pentest-state-*.json
+.sit-state-*.json
 
 # Logs
 logs/

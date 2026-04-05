@@ -69,11 +69,11 @@ src/components/vault/
 
 ## Manual UI Testing
 
-Use `scripts/setup.sh --env dev` to test against a deployed dev stack:
+Use `scripts/post-deploy.sh --env dev` to test against a deployed dev stack:
 
 ```bash
 # Start local dev server pointing at the deployed dev backend
-./scripts/setup.sh --env dev --profile my-profile
+./scripts/post-deploy.sh --env dev --profile my-profile
 ```
 
 The script reads API URL from CloudFormation outputs, writes `.env.local`, starts Vite at `http://localhost:5173`, and cleans up on exit.

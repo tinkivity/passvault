@@ -32,7 +32,7 @@ AWS credentials must be configured. The DynamoDB users table must already exist.
 
 Populates a dev stack with ready-to-use test accounts and sample vault content (writes directly to DynamoDB and S3).
 
-**When to run:** After deploying a dev stack, to get working test accounts without going through the OTP / change-password flow. Called automatically by `setup.sh` on first dev startup.
+**When to run:** After deploying a dev stack, to get working test accounts without going through the OTP / change-password flow. Called automatically by `post-deploy.sh` on first dev startup.
 
 **Safety:** Refuses to run against beta or prod.
 
@@ -53,7 +53,7 @@ Idempotent -- users that already exist are skipped.
 
 ---
 
-## setup.sh
+## post-deploy.sh
 
 Builds and deploys the frontend, or starts a local Vite dev server pointed at a deployed stack.
 
@@ -63,16 +63,16 @@ Builds and deploys the frontend, or starts a local Vite dev server pointed at a 
 
 ```bash
 # Local dev server (writes .env.local, cleans up on exit)
-./scripts/setup.sh --env dev
+./scripts/post-deploy.sh --env dev
 
 # Deploy to beta (S3 + CloudFront invalidation)
-./scripts/setup.sh --env beta
+./scripts/post-deploy.sh --env beta
 
 # Deploy to prod (requires confirmation)
-./scripts/setup.sh --env prod
+./scripts/post-deploy.sh --env prod
 
 # With explicit AWS profile and region
-./scripts/setup.sh --env beta --profile my-profile --region eu-central-1
+./scripts/post-deploy.sh --env beta --profile my-profile --region eu-central-1
 ```
 
 **Options:**
@@ -125,7 +125,83 @@ Exit code 0 means all tests passed; 1 means one or more failed.
 
 ---
 
-## cleanup.sh
+## sitest.sh
+
+Runs system integration tests (SIT) against a deployed stack. Creates a temporary admin, exercises auth, vault, admin, and audit flows, and cleans up all artifacts on exit.
+
+**When to run:** After deploying a stack, to validate end-to-end functionality.
+
+**Usage:**
+
+```bash
+# Run against dev
+./scripts/sitest.sh --env dev
+
+# Keep test data for inspection
+./scripts/sitest.sh --env dev --keep
+
+# Clean up a previous --keep run (auto-discovers state file)
+./scripts/sitest.sh --cleanup --env dev
+
+# Clean up with a specific state file
+./scripts/sitest.sh --cleanup .sit-state-dev-bold-hawk.json
+```
+
+**Options:**
+
+| Flag          | Description                                                     |
+| ------------- | --------------------------------------------------------------- |
+| `--env`       | Target environment: `dev`, `beta` (required; prod blocked)      |
+| `--profile`   | AWS named profile                                               |
+| `--region`    | AWS region (default: `eu-central-1`)                            |
+| `--stack`     | CloudFormation stack name (overrides default from --env)        |
+| `--base-url`  | API base URL override (skips CloudFormation lookup)             |
+| `--keep`      | Keep test data after run (writes a state file for later cleanup)|
+| `--cleanup`   | Skip tests; only clean up data from a previous `--keep` run    |
+
+**Cleanup covers:** users, vaults, S3 vault files, login events, audit events.
+
+---
+
+## pentest.sh
+
+Runs automated penetration tests organized by OWASP categories against a deployed stack. Creates 3 test users (admin, pro, free) with known passwords and cleans up on exit.
+
+**When to run:** Before promoting a stack from dev to beta or beta to prod.
+
+**Usage:**
+
+```bash
+# Run against dev
+./scripts/pentest.sh --env dev
+
+# Keep test data for inspection
+./scripts/pentest.sh --env dev --keep
+
+# Clean up a previous --keep run (auto-discovers state file)
+./scripts/pentest.sh --cleanup --env dev
+
+# Clean up with a specific state file
+./scripts/pentest.sh --cleanup .pentest-state-dev-a1b2c3d4.json
+```
+
+**Options:**
+
+| Flag          | Description                                                     |
+| ------------- | --------------------------------------------------------------- |
+| `--env`       | Target environment: `dev`, `beta` (required; prod blocked)      |
+| `--profile`   | AWS named profile                                               |
+| `--region`    | AWS region (default: `eu-central-1`)                            |
+| `--stack`     | CloudFormation stack name (overrides default from --env)        |
+| `--base-url`  | API base URL override (skips CloudFormation lookup)             |
+| `--keep`      | Keep test data after run (writes a state file for later cleanup)|
+| `--cleanup`   | Skip tests; only clean up data from a previous `--keep` run    |
+
+**Cleanup covers:** users, vaults, S3 vault files, login events, audit events.
+
+---
+
+## post-destroy.sh
 
 Removes AWS resources left behind after `cdk destroy` (DynamoDB tables with RETAIN policy, S3 buckets, orphaned CloudWatch log groups).
 
@@ -134,8 +210,8 @@ Removes AWS resources left behind after `cdk destroy` (DynamoDB tables with RETA
 **Usage:**
 
 ```bash
-./scripts/cleanup.sh --env dev
-./scripts/cleanup.sh --env prod --profile my-profile --region eu-central-1
+./scripts/post-destroy.sh --env dev
+./scripts/post-destroy.sh --env prod --profile my-profile --region eu-central-1
 ```
 
 **Options:**

@@ -203,17 +203,17 @@ AWS_PROFILE=my-profile ENVIRONMENT=prod ADMIN_EMAIL=you@example.com npx tsx scri
 
 The script creates the admin user with `status=pending_first_login`, generates a one-time password, and prints it to the console. The OTP is not stored anywhere -- save it before closing the terminal. If lost, delete the admin item from DynamoDB and re-run the script.
 
-Note: `scripts/setup.sh` runs `init-admin.ts` automatically if the admin account is absent, so manual initialization is not required when using that script.
+Note: `scripts/post-deploy.sh` runs `init-admin.ts` automatically if the admin account is absent, so manual initialization is not required when using that script.
 
 ### 6.2 Build and Deploy Frontend
 
-**Option A: Using `setup.sh` (recommended)**
+**Option A: Using `post-deploy.sh` (recommended)**
 
 ```bash
-./scripts/setup.sh --env prod --profile my-profile
+./scripts/post-deploy.sh --env prod --profile my-profile
 ```
 
-This handles admin initialization, env file generation, build, S3 sync, CloudFront invalidation, and smoke tests in one step. See `./scripts/setup.sh --help` for all options.
+This handles admin initialization, env file generation, build, S3 sync, CloudFront invalidation, and smoke tests in one step. See `./scripts/post-deploy.sh --help` for all options.
 
 **Option B: Manual steps**
 

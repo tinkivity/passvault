@@ -228,7 +228,7 @@ async function handleUpdateAuditConfig(event: APIGatewayProxyEvent): Promise<API
   await updateAuditConfig(config);
 
   const { user: admin } = await requireAdminActive(event);
-  recordAuditEvent({
+  await recordAuditEvent({
     category: 'admin_actions',
     action: 'audit_config_changed',
     userId: admin!.userId,

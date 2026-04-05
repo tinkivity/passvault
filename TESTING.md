@@ -57,9 +57,12 @@ scripts/sitest.sh --env beta
 
 # Keep test data after run (for manual inspection)
 scripts/sitest.sh --env dev --keep
+
+# Clean up a previous --keep run
+scripts/sitest.sh --cleanup --env dev
 ```
 
-**Cannot run on prod.** The script creates a temporary admin account, runs 7 scenario files (~40 tests), and cleans up all artifacts on exit.
+**Cannot run on prod.** The script creates a temporary admin account, runs 7 scenario files (~40 tests), and cleans up all artifacts (users, vaults, S3 files, login events, audit events) on exit. Use `--keep` to preserve test data for inspection, then `--cleanup` to remove it later.
 
 ### SIT Scenarios
 
@@ -87,9 +90,15 @@ scripts/pentest.sh --env dev
 
 # Run against beta
 scripts/pentest.sh --env beta
+
+# Keep test data after run (for manual inspection)
+scripts/pentest.sh --env dev --keep
+
+# Clean up a previous --keep run
+scripts/pentest.sh --cleanup --env dev
 ```
 
-**Cannot run on prod.** Creates 3 test users (admin, pro, free) with known passwords, runs ~64 security tests, and cleans up on exit.
+**Cannot run on prod.** Creates 3 test users (admin, pro, free) with known passwords, runs ~64 security tests, and cleans up all artifacts (users, vaults, S3 files, login events, audit events) on exit. Use `--keep` to preserve test data for inspection, then `--cleanup` to remove it later.
 
 ### Pentest Categories
 

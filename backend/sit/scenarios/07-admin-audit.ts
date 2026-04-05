@@ -87,7 +87,7 @@ export function adminAuditScenarios(ctx: SitContext) {
       });
       expect(indexRes.status).toBe(200);
 
-      // Wait for fire-and-forget write
+      // Wait for audit write to propagate (DynamoDB eventual consistency)
       await new Promise(resolve => setTimeout(resolve, 2000));
 
       const res = await request<{ success: boolean; data: { events: AuditEvent[] } }>(

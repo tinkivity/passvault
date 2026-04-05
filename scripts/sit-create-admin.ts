@@ -98,8 +98,8 @@ async function main() {
     }),
   );
 
-  // Print ONLY the OTP — sitest.sh captures this
-  process.stdout.write(otp);
+  // Print JSON — sitest.sh captures this
+  process.stdout.write(JSON.stringify({ otp, userId }));
 }
 
 main().catch(err => {

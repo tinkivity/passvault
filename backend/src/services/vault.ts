@@ -91,7 +91,7 @@ export async function createVault(
     encryptionSalt,
   };
 
-  recordAuditEvent({
+  await recordAuditEvent({
     category: 'vault_operations',
     action: request.source === 'import' ? 'vault_imported' : 'vault_created',
     userId,
@@ -118,7 +118,7 @@ export async function deleteVault(
   await deleteVaultSplitFiles(vaultId);
   await deleteVaultRecord(vaultId);
 
-  recordAuditEvent({
+  await recordAuditEvent({
     category: 'vault_operations',
     action: 'vault_deleted',
     userId,
@@ -161,7 +161,7 @@ export async function getVaultIndex(userId: string, vaultId: string): Promise<{ 
 
   const indexFile = await getVaultIndexFile(vaultId);
 
-  recordAuditEvent({
+  await recordAuditEvent({
     category: 'vault_operations',
     action: 'vault_opened',
     userId,
@@ -210,7 +210,7 @@ export async function putVault(
 
   const lastModified = await putVaultSplitFiles(vaultId, request.encryptedIndex, request.encryptedItems);
 
-  recordAuditEvent({
+  await recordAuditEvent({
     category: 'vault_operations',
     action: 'vault_saved',
     userId,
@@ -246,7 +246,7 @@ export async function downloadVault(
   ]);
   const lastModified = indexFile?.lastModified || itemsFile?.lastModified || new Date().toISOString();
 
-  recordAuditEvent({
+  await recordAuditEvent({
     category: 'vault_operations',
     action: 'vault_downloaded',
     userId,
@@ -333,7 +333,7 @@ export async function renameVault(
   }
   await updateVaultDisplayName(vaultId, displayName.trim());
 
-  recordAuditEvent({
+  await recordAuditEvent({
     category: 'vault_operations',
     action: 'vault_renamed',
     userId,

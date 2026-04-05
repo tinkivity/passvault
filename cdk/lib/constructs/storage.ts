@@ -115,7 +115,7 @@ export class StorageConstruct extends Construct {
         noncurrentVersionsToRetain: 3,
       });
     }
-    // Explicit tag so cleanup.sh can find this bucket after `cdk destroy`.
+    // Explicit tag so post-destroy.sh can find this bucket after `cdk destroy`.
     // CloudFormation's automatic aws:cloudformation:* tags are removed from
     // retained resources on stack deletion; this custom tag is not.
     cdk.Tags.of(this.filesBucket).add('passvault:env', env);

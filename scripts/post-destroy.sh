@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# cleanup.sh — Remove AWS resources left behind after `cdk destroy`.
+# post-destroy.sh — Remove AWS resources left behind after `cdk destroy`.
 #
 # Usage:
-#   ./scripts/cleanup.sh --env <dev|beta|prod> [--profile <aws-profile>] [--region <region>]
+#   ./scripts/post-destroy.sh --env <dev|beta|prod> [--profile <aws-profile>] [--region <region>]
 #
 # Run this after: cdk destroy PassVault-{Dev|Beta|Prod} --context env={env}
 #

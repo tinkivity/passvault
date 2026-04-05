@@ -48,7 +48,7 @@ cd ..
 ENVIRONMENT=dev ADMIN_EMAIL=you@example.com npx tsx scripts/init-admin.ts
 
 # 7. Start local UI for testing
-./scripts/setup.sh --env dev --profile my-profile
+./scripts/post-deploy.sh --env dev --profile my-profile
 ```
 
 ---
@@ -84,10 +84,15 @@ The frontend reads configuration from `VITE_*` env vars at build time. Set these
 After deploying, run the SIT suite to validate the API end-to-end:
 
 ```bash
+# Run and clean up automatically
 scripts/sitest.sh --env dev
+
+# Keep test data for inspection, clean up later
+scripts/sitest.sh --env dev --keep
+scripts/sitest.sh --cleanup --env dev
 ```
 
-The SIT creates a temporary admin, exercises auth, vault, and admin flows, and cleans up afterwards. See `backend/sit/SCENARIOS.md` for the full scenario list.
+The SIT creates a temporary admin, exercises auth, vault, admin, and audit flows, and cleans up all artifacts (users, vaults, S3 files, events) on exit. Use `--keep` to preserve data for debugging, then `--cleanup` to remove it later. See `backend/sit/SCENARIOS.md` for the full scenario list.
 
 ---
 
@@ -97,6 +102,6 @@ The SIT creates a temporary admin, exercises auth, vault, and admin flows, and c
 |----------|-------------|
 | [cdk/DEPLOYMENT.md](cdk/DEPLOYMENT.md) | Full deployment guide (SSM, CDK context, SES, monitoring) |
 | [cdk/ARCHITECTURE.md](cdk/ARCHITECTURE.md) | CDK constructs, DynamoDB tables, Lambda definitions, API Gateway |
-| [scripts/README.md](scripts/README.md) | Post-deploy scripts (init-admin, seed-dev, cleanup, setup) |
+| [scripts/README.md](scripts/README.md) | Operational scripts (post-deploy, post-destroy, sitest, pentest, smoke-test) |
 | [BOTPROTECTION.md](BOTPROTECTION.md) | Bot defense layers, CloudFront flat-rate plan, kill switch, cost analysis |
 | [COSTS.md](COSTS.md) | Detailed cost projections per user count |

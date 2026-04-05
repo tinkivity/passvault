@@ -3,17 +3,21 @@
  * SIT cleanup helper.
  *
  * Removes the SIT admin and any users they created during the test run.
- * Also cleans up associated vault files and login event records.
+ * Also cleans up associated vault files, login events, and audit events.
  *
  * Required env vars:
  *   ENVIRONMENT      — dev or beta
- *   SIT_ADMIN_EMAIL  — email of the SIT admin to clean up
  *   DYNAMODB_TABLE   — users table name
+ *
+ * At least one of:
+ *   SIT_ADMIN_EMAIL  — email of the SIT admin
+ *   SIT_ADMIN_USER_ID — userId of the SIT admin (fallback if username was renamed)
  */
 
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   DynamoDBDocumentClient,
+  GetCommand,
   QueryCommand,
   DeleteCommand,
   BatchWriteCommand,
@@ -28,13 +32,15 @@ const REGION = config.region;
 
 const USERS_TABLE = process.env.DYNAMODB_TABLE ?? `passvault-users-${ENV}`;
 const VAULTS_TABLE = process.env.VAULTS_TABLE_NAME ?? `passvault-vaults-${ENV}`;
-const FILES_BUCKET = process.env.FILES_BUCKET ?? '';
+const FILES_BUCKET = process.env.FILES_BUCKET || `passvault-files-${ENV}`;
 const LOGIN_EVENTS_TABLE = process.env.LOGIN_EVENTS_TABLE_NAME ?? `passvault-login-events-${ENV}`;
 const AUDIT_EVENTS_TABLE = process.env.AUDIT_EVENTS_TABLE ?? `passvault-audit-${ENV}`;
 
 const SIT_ADMIN_EMAIL = process.env.SIT_ADMIN_EMAIL;
-if (!SIT_ADMIN_EMAIL) {
-  console.error('Error: SIT_ADMIN_EMAIL is required.');
+const SIT_ADMIN_USER_ID = process.env.SIT_ADMIN_USER_ID;
+
+if (!SIT_ADMIN_EMAIL && !SIT_ADMIN_USER_ID) {
+  console.error('Error: at least one of SIT_ADMIN_EMAIL or SIT_ADMIN_USER_ID is required.');
   process.exit(1);
 }
 
@@ -45,7 +51,7 @@ interface CleanupSummary {
   usersDeleted: number;
   vaultsDeleted: number;
   filesDeleted: number;
-  loginEventsDeleted: number;
+  eventsDeleted: number;
 }
 
 async function findUserByUsername(username: string): Promise<{ userId: string } | undefined> {
@@ -64,9 +70,18 @@ async function findUserByUsername(username: string): Promise<{ userId: string } 
   return undefined;
 }
 
+async function userExists(userId: string): Promise<boolean> {
+  const result = await dynamo.send(
+    new GetCommand({
+      TableName: USERS_TABLE,
+      Key: { userId },
+      ProjectionExpression: 'userId',
+    }),
+  );
+  return !!result.Item;
+}
+
 async function findUsersCreatedBy(adminUserId: string): Promise<Array<{ userId: string; username: string }>> {
-  // Scan for users with createdBy = adminUserId
-  // This is acceptable for SIT cleanup — small table, infrequent operation
   const users: Array<{ userId: string; username: string }> = [];
   let lastKey: Record<string, unknown> | undefined;
 
@@ -104,7 +119,6 @@ async function deleteVaultFiles(vaultIds: string[]): Promise<number> {
   if (!FILES_BUCKET || vaultIds.length === 0) return 0;
   let deleted = 0;
   for (const vaultId of vaultIds) {
-    // v2 split format: two files per vault
     for (const suffix of ['-index.enc', '-items.enc']) {
       try {
         await s3.send(
@@ -149,12 +163,10 @@ async function deleteUser(userId: string): Promise<void> {
   );
 }
 
-async function deleteLoginEvents(userIds: string[]): Promise<number> {
+async function deleteEvents(userIds: string[]): Promise<number> {
   if (userIds.length === 0) return 0;
   let deleted = 0;
 
-  // Login events table has no GSI — scan with filter
-  // Also clean audit events table
   for (const table of [LOGIN_EVENTS_TABLE, AUDIT_EVENTS_TABLE]) {
     try {
       let lastKey: Record<string, unknown> | undefined;
@@ -197,33 +209,49 @@ async function deleteLoginEvents(userIds: string[]): Promise<number> {
 async function main() {
   console.log(`\nSIT Cleanup`);
   console.log(`  Environment : ${ENV}`);
-  console.log(`  Admin email : ${SIT_ADMIN_EMAIL}`);
+  if (SIT_ADMIN_EMAIL) console.log(`  Admin email : ${SIT_ADMIN_EMAIL}`);
+  if (SIT_ADMIN_USER_ID) console.log(`  Admin userId: ${SIT_ADMIN_USER_ID}`);
   console.log(`  Users table : ${USERS_TABLE}`);
   console.log(`  Vaults table: ${VAULTS_TABLE}`);
+  console.log(`  Files bucket: ${FILES_BUCKET}`);
   console.log('');
 
   const summary: CleanupSummary = {
     usersDeleted: 0,
     vaultsDeleted: 0,
     filesDeleted: 0,
-    loginEventsDeleted: 0,
+    eventsDeleted: 0,
   };
 
-  // Find the SIT admin
-  const admin = await findUserByUsername(SIT_ADMIN_EMAIL!);
-  if (!admin) {
-    console.log(`  SIT admin "${SIT_ADMIN_EMAIL}" not found — nothing to clean up.`);
+  // Resolve admin userId — try username first, fall back to direct userId
+  let adminUserId = SIT_ADMIN_USER_ID;
+  if (SIT_ADMIN_EMAIL) {
+    const found = await findUserByUsername(SIT_ADMIN_EMAIL);
+    if (found) {
+      adminUserId = found.userId;
+    }
+  }
+
+  if (!adminUserId) {
+    console.log(`  SIT admin "${SIT_ADMIN_EMAIL}" not found and no userId provided — nothing to clean up.`);
     return;
   }
 
-  const adminUserId = admin.userId;
+  // Verify the user actually exists when using userId fallback
+  if (!SIT_ADMIN_EMAIL || !(await findUserByUsername(SIT_ADMIN_EMAIL))) {
+    if (!(await userExists(adminUserId))) {
+      console.log(`  SIT admin userId "${adminUserId}" not found — nothing to clean up.`);
+      return;
+    }
+  }
+
   const allUserIds = [adminUserId];
 
   // Find users created by the SIT admin
   const createdUsers = await findUsersCreatedBy(adminUserId);
   console.log(`  Found ${createdUsers.length} user(s) created by SIT admin.`);
 
-  // Delete vault files and records for each user
+  // Delete vault files and records for each created user
   for (const user of createdUsers) {
     const vaults = await findVaultsByUser(user.userId);
     const vaultIds = vaults.map(v => v.vaultId);
@@ -246,14 +274,14 @@ async function main() {
   await deleteUser(adminUserId);
   summary.usersDeleted++;
 
-  // Clean up login events for all users
-  summary.loginEventsDeleted = await deleteLoginEvents(allUserIds);
+  // Clean up login events and audit events for all users
+  summary.eventsDeleted = await deleteEvents(allUserIds);
 
-  console.log(`  Cleanup summary:`);
+  console.log(`\n  Cleanup summary:`);
   console.log(`    Users deleted        : ${summary.usersDeleted}`);
   console.log(`    Vaults deleted       : ${summary.vaultsDeleted}`);
   console.log(`    Vault files deleted  : ${summary.filesDeleted}`);
-  console.log(`    Events deleted       : ${summary.loginEventsDeleted}`);
+  console.log(`    Events deleted       : ${summary.eventsDeleted}`);
   console.log('');
 }
 

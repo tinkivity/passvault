@@ -11,7 +11,7 @@
  * Usage (standalone):
  *   ENVIRONMENT=dev FILES_BUCKET=passvault-files-dev-xxxx npx tsx scripts/seed-dev.ts
  *
- * Usage (via setup.sh):
+ * Usage (via post-deploy.sh):
  *   Called automatically on first dev startup — FILES_BUCKET is injected from CFN outputs.
  *
  * Idempotent: users that already exist are skipped.

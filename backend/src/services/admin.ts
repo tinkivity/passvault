@@ -95,7 +95,7 @@ export async function adminLogin(request: LoginRequest): Promise<{ response?: Lo
     console.error('Failed to record admin login event:', err);
   });
   // Audit log
-  recordAuditEvent({
+  await recordAuditEvent({
     category: 'authentication',
     action: 'login',
     userId: user.userId,
@@ -187,7 +187,7 @@ export async function createUserInvitation(
   await createUser(user);
 
   // Audit log
-  recordAuditEvent({
+  await recordAuditEvent({
     category: 'admin_actions',
     action: 'user_created',
     userId,
@@ -307,7 +307,7 @@ export async function refreshOtp(
     }
   }
 
-  recordAuditEvent({
+  await recordAuditEvent({
     category: 'admin_actions',
     action: 'user_otp_refreshed',
     userId,
@@ -352,7 +352,7 @@ export async function resetUser(
     lockedUntil: null,
   });
 
-  recordAuditEvent({
+  await recordAuditEvent({
     category: 'admin_actions',
     action: 'user_reset',
     userId,
@@ -410,7 +410,7 @@ export async function deleteNewUser(
   await deleteLegacyVaultFile(userId);
   await deleteUser(userId);
 
-  recordAuditEvent({
+  await recordAuditEvent({
     category: 'admin_actions',
     action: 'user_deleted',
     userId,
@@ -432,7 +432,7 @@ export async function lockUser(
   if (user.status === 'retired') return { error: ERRORS.NOT_FOUND, statusCode: 404 };
 
   await updateUser(userId, { status: 'locked' });
-  recordAuditEvent({
+  await recordAuditEvent({
     category: 'admin_actions',
     action: 'user_locked',
     userId,
@@ -458,7 +458,7 @@ export async function unlockUser(
   }
 
   await updateUser(userId, { status: 'active' });
-  recordAuditEvent({
+  await recordAuditEvent({
     category: 'admin_actions',
     action: 'user_unlocked',
     userId,
@@ -480,7 +480,7 @@ export async function expireUser(
   if (user.status === 'expired') return { error: 'User is already expired', statusCode: 400 };
 
   await updateUser(userId, { status: 'expired' });
-  recordAuditEvent({
+  await recordAuditEvent({
     category: 'admin_actions',
     action: 'user_expired',
     userId,
@@ -502,7 +502,7 @@ export async function retireUser(
   // Rename username to free the email for reuse
   const retiredUsername = `_retired_${userId}_${user.username}`;
   await updateUser(userId, { status: 'retired', username: retiredUsername });
-  recordAuditEvent({
+  await recordAuditEvent({
     category: 'admin_actions',
     action: 'user_retired',
     userId,
@@ -584,7 +584,7 @@ export async function reactivateUser(
   if (user.status !== 'expired') return { error: 'User is not expired', statusCode: 400 };
 
   await updateUser(userId, { status: 'active', expiresAt });
-  recordAuditEvent({
+  await recordAuditEvent({
     category: 'admin_actions',
     action: 'user_reactivated',
     userId,
@@ -623,7 +623,7 @@ export async function updateUserProfile(
 
   if (Object.keys(updates).length > 0) {
     await updateUser(request.userId, updates);
-    recordAuditEvent({
+    await recordAuditEvent({
       category: 'admin_actions',
       action: 'user_updated',
       userId: request.userId,
@@ -658,7 +658,7 @@ export async function adminEmailUserVault(
     if (result.error) return { error: result.error, statusCode: result.statusCode };
   }
 
-  recordAuditEvent({
+  await recordAuditEvent({
     category: 'admin_actions',
     action: 'user_emailed_vault',
     userId,
@@ -681,7 +681,7 @@ async function recordFailedAttempt(userId: string, username: string, currentAtte
     console.error('Failed to record failed admin login event:', err);
   });
   // Audit log
-  recordAuditEvent({
+  await recordAuditEvent({
     category: 'authentication',
     action: 'login_failed',
     userId,

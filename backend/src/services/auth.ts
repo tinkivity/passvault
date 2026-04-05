@@ -51,10 +51,10 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
     passkeyName = tokenResult.passkeyName;
   } else {
     // Username + password login path
-    if (typeof request.username !== 'string' || request.username.length > LIMITS.EMAIL_MAX_LENGTH) {
+    if (typeof request.username !== 'string' || request.username.length === 0 || request.username.length > LIMITS.EMAIL_MAX_LENGTH) {
       return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
     }
-    if (typeof request.password !== 'string' || request.password.length > LIMITS.MAX_PASSWORD_LENGTH) {
+    if (typeof request.password !== 'string' || request.password.length === 0 || request.password.length > LIMITS.MAX_PASSWORD_LENGTH) {
       return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
     }
     user = await getUserByUsername(request.username);
@@ -133,7 +133,7 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
     console.error('Failed to record login event:', err);
   });
   // Audit log
-  recordAuditEvent({
+  await recordAuditEvent({
     category: 'authentication',
     action: 'login',
     userId: user.userId,
@@ -423,7 +423,7 @@ async function recordFailedAttempt(userId: string, username: string, currentAtte
     console.error('Failed to record failed login event:', err);
   });
   // Audit log
-  recordAuditEvent({
+  await recordAuditEvent({
     category: 'authentication',
     action: 'login_failed',
     userId,

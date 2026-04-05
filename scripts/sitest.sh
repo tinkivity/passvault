@@ -3,15 +3,18 @@
 #
 # Usage:
 #   ./scripts/sitest.sh --env <dev|beta> [options]
+#   ./scripts/sitest.sh --cleanup [state-file] --env <dev|beta> [--profile <name>]
 #
 # Options:
-#   --env <env>       Environment (required; dev or beta ONLY)
-#   --profile <name>  AWS named profile
-#   --region <region> AWS region (default: eu-central-1)
-#   --stack <name>    CloudFormation stack name override
-#   --base-url <url>  API base URL override (skips CloudFormation lookup)
-#   --keep            Keep SIT admin after tests (default: cleanup)
-#   -h, --help        Show usage
+#   --env <env>            Environment (required; dev or beta ONLY)
+#   --profile <name>       AWS named profile
+#   --region <region>      AWS region (default: eu-central-1)
+#   --stack <name>         CloudFormation stack name override
+#   --base-url <url>       API base URL override (skips CloudFormation lookup)
+#   --keep                 Keep SIT data after tests (default: cleanup)
+#   --cleanup [state-file] Skip tests; only clean up data from a previous --keep run.
+#                          If no file given, auto-discovers by --env.
+#   -h, --help             Show usage
 
 set -euo pipefail
 
@@ -22,32 +25,142 @@ REGION="eu-central-1"
 STACK=""
 BASE_URL=""
 KEEP=false
+CLEANUP=false
+CLEANUP_FILE=""
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+USAGE="Usage: $0 --env <dev|beta> [--profile <name>] [--region <region>] [--stack <name>] [--base-url <url>] [--keep]
+       $0 --cleanup [state-file] --env <dev|beta> [--profile <name>] [--region <region>]"
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --env)      ENV="$2";      shift 2 ;;
-    --profile)  PROFILE="$2";  shift 2 ;;
-    --region)   REGION="$2";   shift 2 ;;
-    --stack)    STACK="$2";    shift 2 ;;
-    --base-url) BASE_URL="$2"; shift 2 ;;
-    --keep)     KEEP=true;     shift   ;;
+    --env)      ENV="$2";          shift 2 ;;
+    --profile)  PROFILE="$2";      shift 2 ;;
+    --region)   REGION="$2";       shift 2 ;;
+    --stack)    STACK="$2";        shift 2 ;;
+    --base-url) BASE_URL="$2";     shift 2 ;;
+    --keep)     KEEP=true;         shift   ;;
+    --cleanup)
+      CLEANUP=true
+      if [[ $# -ge 2 && "$2" != --* ]]; then
+        CLEANUP_FILE="$2"
+        shift 2
+      else
+        shift
+      fi
+      ;;
     -h|--help)
-      echo "Usage: $0 --env <dev|beta> [--profile <name>] [--region <region>] [--stack <name>] [--base-url <url>] [--keep]"
+      echo "$USAGE"
       exit 0
       ;;
     *)
       echo "Unknown option: $1" >&2
-      echo "Usage: $0 --env <dev|beta> [--profile <name>] [--region <region>] [--stack <name>] [--base-url <url>] [--keep]" >&2
+      echo "$USAGE" >&2
       exit 1
       ;;
   esac
 done
 
+if [[ "$KEEP" == "true" && "$CLEANUP" == "true" ]]; then
+  echo "Error: --keep and --cleanup are mutually exclusive." >&2
+  echo "$USAGE" >&2
+  exit 1
+fi
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+section() {
+  echo ""
+  echo "── $1 "
+}
+
+# ── Export AWS_PROFILE ────────────────────────────────────────────────────────
+if [[ -n "$PROFILE" ]]; then
+  export AWS_PROFILE="$PROFILE"
+fi
+
+# ── Cleanup-only mode ────────────────────────────────────────────────────────
+if [[ "$CLEANUP" == "true" ]]; then
+
+  # If no explicit file given, auto-discover by env
+  if [[ -z "$CLEANUP_FILE" ]]; then
+    if [[ -z "$ENV" ]]; then
+      echo "Error: --cleanup without a state file requires --env." >&2
+      echo "$USAGE" >&2
+      exit 1
+    fi
+
+    shopt -s nullglob
+    MATCHES=( "$REPO_ROOT"/.sit-state-"${ENV}"-*.json )
+    shopt -u nullglob
+
+    if [[ ${#MATCHES[@]} -eq 0 ]]; then
+      echo "No SIT state files found for env '$ENV'. Nothing to clean up."
+      exit 0
+    elif [[ ${#MATCHES[@]} -gt 1 ]]; then
+      echo "Multiple SIT state files found for env '$ENV':" >&2
+      for f in "${MATCHES[@]}"; do
+        echo "  $(basename "$f")" >&2
+      done
+      echo "" >&2
+      echo "Specify which one to clean up:" >&2
+      echo "  $0 --cleanup <state-file> --env $ENV" >&2
+      exit 1
+    fi
+
+    CLEANUP_FILE="${MATCHES[0]}"
+    echo "Auto-discovered state file: $(basename "$CLEANUP_FILE")"
+  fi
+
+  if [[ ! -f "$CLEANUP_FILE" ]]; then
+    echo "Error: state file not found: $CLEANUP_FILE" >&2
+    exit 1
+  fi
+
+  # Read state file
+  STATE_ENV=$(jq -r '.env' "$CLEANUP_FILE")
+  STATE_REGION=$(jq -r '.region // empty' "$CLEANUP_FILE")
+  [[ -n "$STATE_REGION" ]] && REGION="$STATE_REGION"
+
+  echo ""
+  echo "PassVault SIT Cleanup"
+  echo "  State file  : $(basename "$CLEANUP_FILE")"
+  echo "  Environment : $STATE_ENV"
+  echo "  Region      : $REGION"
+  [[ -n "$PROFILE" ]] && echo "  AWS profile : $PROFILE"
+  echo ""
+
+  # Verify AWS access
+  section "AWS credentials"
+  if ! aws sts get-caller-identity --region "$REGION" &>/dev/null; then
+    echo "  No AWS access — cannot reach AWS STS."
+    [[ -n "$PROFILE" ]] \
+      && echo "    aws sso login --profile $PROFILE" \
+      || echo "    aws sso login"
+    exit 1
+  fi
+  echo "  AWS credentials valid."
+
+  section "Cleanup"
+  ENVIRONMENT="$STATE_ENV" \
+  SIT_ADMIN_EMAIL=$(jq -r '.adminEmail' "$CLEANUP_FILE") \
+  SIT_ADMIN_USER_ID=$(jq -r '.adminUserId' "$CLEANUP_FILE") \
+  DYNAMODB_TABLE=$(jq -r '.usersTable' "$CLEANUP_FILE") \
+  VAULTS_TABLE_NAME=$(jq -r '.vaultsTable' "$CLEANUP_FILE") \
+  LOGIN_EVENTS_TABLE_NAME=$(jq -r '.loginEventsTable' "$CLEANUP_FILE") \
+  FILES_BUCKET=$(jq -r '.filesBucket' "$CLEANUP_FILE") \
+    npx tsx "$REPO_ROOT/scripts/sit-cleanup.ts"
+
+  rm -f "$CLEANUP_FILE"
+  echo "  State file removed: $(basename "$CLEANUP_FILE")"
+  echo ""
+  exit 0
+fi
+
+# ── Normal mode: require --env ───────────────────────────────────────────────
 if [[ -z "$ENV" ]]; then
   echo "Error: --env is required." >&2
-  echo "Usage: $0 --env <dev|beta> [--profile <name>] [--region <region>] [--stack <name>] [--base-url <url>] [--keep]" >&2
+  echo "$USAGE" >&2
   exit 1
 fi
 
@@ -69,17 +182,6 @@ esac
 STACK_ENV="$(echo "$ENV" | tr '[:lower:]' '[:upper:]' | cut -c1)$(echo "$ENV" | cut -c2-)"
 [[ -z "$STACK" ]] && STACK="PassVault-${STACK_ENV}"
 
-# ── Export AWS_PROFILE ────────────────────────────────────────────────────────
-if [[ -n "$PROFILE" ]]; then
-  export AWS_PROFILE="$PROFILE"
-fi
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
-section() {
-  echo ""
-  echo "── $1 "
-}
-
 # ── Banner ────────────────────────────────────────────────────────────────────
 echo ""
 echo "PassVault System Integration Tests"
@@ -88,7 +190,7 @@ echo "  Stack       : $STACK"
 echo "  Region      : $REGION"
 [[ -n "$PROFILE" ]] && echo "  AWS profile : $PROFILE"
 [[ -n "$BASE_URL" ]] && echo "  Base URL    : $BASE_URL (override)"
-echo "  Keep admin  : $KEEP"
+echo "  Keep data   : $KEEP"
 echo ""
 
 # ── AWS access check ─────────────────────────────────────────────────────────
@@ -125,6 +227,11 @@ if [[ -z "$TABLE" || "$TABLE" == "None" ]]; then
   exit 1
 fi
 
+FILES_BUCKET=$(_cfn_output FilesBucketName) || FILES_BUCKET=""
+if [[ "$FILES_BUCKET" == "None" ]]; then
+  FILES_BUCKET=""
+fi
+
 if [[ -z "$BASE_URL" ]]; then
   API_URL=$(_cfn_output ApiUrl) || {
     echo "Error: could not read ApiUrl from stack $STACK." >&2
@@ -142,6 +249,7 @@ fi
 
 echo "  API URL     : $API_URL"
 echo "  Users table : $TABLE"
+[[ -n "$FILES_BUCKET" ]] && echo "  Files bucket: $FILES_BUCKET"
 
 # ── Generate SIT admin name ──────────────────────────────────────────────────
 section "SIT admin setup"
@@ -154,39 +262,74 @@ SIT_EMAIL="sit-${SIT_NAME}@passvault-test.local"
 echo "  SIT admin   : $SIT_EMAIL"
 
 # ── Create SIT admin ──────────────────────────────────────────────────────────
-SIT_OTP=$(ENVIRONMENT="$ENV" ADMIN_EMAIL="$SIT_EMAIL" DYNAMODB_TABLE="$TABLE" \
+SIT_JSON=$(ENVIRONMENT="$ENV" ADMIN_EMAIL="$SIT_EMAIL" DYNAMODB_TABLE="$TABLE" \
   npx tsx "$REPO_ROOT/scripts/sit-create-admin.ts" 2>/dev/null)
-# Trim any whitespace/newlines that might contaminate the OTP
-SIT_OTP=$(echo -n "$SIT_OTP" | tr -d '[:space:]')
 
-if [[ -z "$SIT_OTP" ]]; then
+if [[ -z "$SIT_JSON" ]]; then
+  echo "  ERROR: Failed to create SIT admin."
+  exit 1
+fi
+
+SIT_OTP=$(echo "$SIT_JSON" | jq -r '.otp')
+SIT_USER_ID=$(echo "$SIT_JSON" | jq -r '.userId')
+
+if [[ -z "$SIT_OTP" || "$SIT_OTP" == "null" ]]; then
   echo "  ERROR: Failed to capture OTP from sit-create-admin.ts"
   exit 1
 fi
 
-echo "  SIT admin created (OTP: ${#SIT_OTP} chars)."
+echo "  SIT admin created (OTP: ${#SIT_OTP} chars, userId: ${SIT_USER_ID:0:8}...)."
 
 # ── Cleanup state ─────────────────────────────────────────────────────────────
 TEST_EXIT_CODE=0
 
-cleanup() {
+run_cleanup() {
+  ENVIRONMENT="$ENV" \
+  SIT_ADMIN_EMAIL="$SIT_EMAIL" \
+  SIT_ADMIN_USER_ID="$SIT_USER_ID" \
+  DYNAMODB_TABLE="$TABLE" \
+  VAULTS_TABLE_NAME="passvault-vaults-${ENV}" \
+  LOGIN_EVENTS_TABLE_NAME="passvault-login-events-${ENV}" \
+  FILES_BUCKET="$FILES_BUCKET" \
+    npx tsx "$REPO_ROOT/scripts/sit-cleanup.ts" || echo "  Warning: cleanup failed."
+}
+
+write_state_file() {
+  STATE_FILE="$REPO_ROOT/.sit-state-${ENV}-${SIT_NAME}.json"
+  cat > "$STATE_FILE" <<EOJSON
+{
+  "env": "$ENV",
+  "region": "$REGION",
+  "usersTable": "$TABLE",
+  "vaultsTable": "passvault-vaults-${ENV}",
+  "loginEventsTable": "passvault-login-events-${ENV}",
+  "filesBucket": "${FILES_BUCKET}",
+  "adminEmail": "$SIT_EMAIL",
+  "adminUserId": "$SIT_USER_ID"
+}
+EOJSON
+}
+
+on_exit() {
   if [[ "$KEEP" == "true" ]]; then
+    write_state_file
+    local rel_state="${STATE_FILE#"$REPO_ROOT"/}"
     echo ""
-    echo "  --keep specified: SIT admin $SIT_EMAIL left in place."
+    echo "  --keep specified: SIT users, vaults, and audit events left in place."
+    echo "  State file  : $rel_state"
+    echo "  To clean up later, run:"
+    echo ""
+    echo "    ./scripts/sitest.sh --cleanup --env $ENV"
+    [[ -n "$PROFILE" ]] && echo "      (add --profile $PROFILE if needed)"
     echo ""
   else
     echo ""
     echo "── Cleanup "
-    ENVIRONMENT="$ENV" \
-    SIT_ADMIN_EMAIL="$SIT_EMAIL" \
-    DYNAMODB_TABLE="$TABLE" \
-    VAULTS_TABLE_NAME="passvault-vaults-${ENV}" \
-    LOGIN_EVENTS_TABLE_NAME="passvault-login-events-${ENV}" \
-      npx tsx "$REPO_ROOT/scripts/sit-cleanup.ts" || echo "  Warning: cleanup failed."
+    run_cleanup
   fi
 }
 
-trap cleanup EXIT
+trap on_exit EXIT
 
 # ── Run tests ─────────────────────────────────────────────────────────────────
 section "Running tests"

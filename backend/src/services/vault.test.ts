@@ -24,6 +24,10 @@ vi.mock('../utils/ses.js', () => ({
   sendEmailWithAttachment: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('../utils/audit.js', () => ({
+  recordAuditEvent: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { getVault, getVaultIndex, getVaultItems, putVault, downloadVault, sendVaultEmail, createVault, deleteVault } from './vault.js';
 import { getVaultIndexFile, getVaultItemsFile, putVaultSplitFiles } from '../utils/s3.js';
 import { getUserById, getVaultRecord, listVaultsByUser, createVaultRecord } from '../utils/dynamodb.js';
