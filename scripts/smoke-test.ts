@@ -255,14 +255,16 @@ async function main() {
   console.log('');
   console.log(bold('Rejection tests'));
 
-  await test('POST /api/admin/login with wrong password → 401', async () => {
+  await test('POST /api/admin/login with wrong credentials → 401', async () => {
     const r = await apiRequest(baseUrl, API_PATHS.ADMIN_LOGIN, {
       method: 'POST',
       body: { username: 'admin', password: 'wrong-password-x' },
       powDifficulty: pow(POW_CONFIG.DIFFICULTY.HIGH),
     });
     assert(r.status === 401, `expected 401, got ${r.status}`);
-    assert(r.error === ERRORS.INVALID_CREDENTIALS, `expected "${ERRORS.INVALID_CREDENTIALS}", got "${r.error}"`);
+    // passkeyRequired envs reject with INVALID_PASSKEY (missing token); others with INVALID_CREDENTIALS
+    const validErrors = [ERRORS.INVALID_CREDENTIALS, ERRORS.INVALID_PASSKEY];
+    assert(validErrors.includes(r.error!), `expected one of ${validErrors.join('/')}, got "${r.error}"`);
   });
 
   await test('POST /api/auth/login with wrong password → 401', async () => {

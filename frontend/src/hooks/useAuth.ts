@@ -1,11 +1,18 @@
 import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { ChangePasswordRequest, SelfChangePasswordRequest, PasskeyVerifyResponse, UpdateProfileRequest } from '@passvault/shared';
+import type { ChangePasswordRequest, SelfChangePasswordRequest, PasskeyVerifyResponse, UpdateProfileRequest, LoginResponse, UserStatus } from '@passvault/shared';
 import { useAuthContext } from '../context/AuthContext.js';
 import { useEncryptionContext } from '../context/EncryptionContext.js';
 import { api } from '../services/api.js';
 import { authenticateWithPasskey } from '../services/passkey.js';
 import { createHoneypot, getHoneypotFields } from '../services/honeypot.js';
+
+function deriveStatus(res: LoginResponse): UserStatus {
+  if (res.requirePasswordChange) return 'pending_first_login';
+  if (res.requirePasskeySetup) return 'pending_passkey_setup';
+  if (res.accountExpired) return 'expired';
+  return 'active';
+}
 
 export function useAuth() {
   const { token, userId, role, username, firstName, lastName, displayName, status, plan, loginEventId, expiresAt, accountExpired, setAuth, clearAuth, patchAuth } = useAuthContext();
@@ -61,7 +68,7 @@ export function useAuth() {
         firstName: res.firstName ?? null,
         lastName: res.lastName ?? null,
         displayName: res.displayName ?? null,
-        status: res.requirePasswordChange ? 'pending_first_login' : (res.accountExpired ? 'expired' : 'active'),
+        status: deriveStatus(res),
         plan: res.plan ?? null,
         loginEventId: res.loginEventId ?? null,
         expiresAt: res.expiresAt ?? null,
@@ -95,7 +102,7 @@ export function useAuth() {
         firstName: res.firstName ?? null,
         lastName: res.lastName ?? null,
         displayName: res.displayName ?? null,
-        status: res.requirePasswordChange ? 'pending_first_login' : (res.accountExpired ? 'expired' : 'active'),
+        status: deriveStatus(res),
         plan: res.plan ?? null,
         loginEventId: res.loginEventId ?? null,
         expiresAt: res.expiresAt ?? null,
@@ -179,6 +186,61 @@ export function useAuth() {
     }
   }, [token]);
 
+  // Admin two-step login, step 2a: passkey challenge → browser dialog → verify → passkeyToken
+  const startAdminPasskeyVerification = useCallback(async (): Promise<PasskeyVerifyResponse> => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { challengeJwt } = await api.getAdminPasskeyChallenge();
+      const honeypot = createHoneypot();
+      const assertion = await authenticateWithPasskey(challengeJwt);
+      return await api.verifyAdminPasskey(
+        { challengeJwt, assertion },
+        getHoneypotFields(honeypot),
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Passkey authentication failed';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Admin two-step login, step 2b: POST /api/admin/login with passkeyToken + password
+  const completeAdminLogin = useCallback(async (passkeyToken: string, password: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const honeypot = createHoneypot();
+      const res = await api.adminLogin({ passkeyToken, password }, getHoneypotFields(honeypot));
+
+      setAuth({
+        token: res.token,
+        userId: res.userId,
+        role: res.role,
+        username: res.username,
+        firstName: res.firstName ?? null,
+        lastName: res.lastName ?? null,
+        displayName: res.displayName ?? null,
+        status: deriveStatus(res),
+        plan: res.plan ?? null,
+        loginEventId: res.loginEventId ?? null,
+        expiresAt: res.expiresAt ?? null,
+        accountExpired: res.accountExpired ?? false,
+      });
+
+      applyLanguagePreference(res.preferredLanguage);
+      return res;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Login failed';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [setAuth, applyLanguagePreference]);
+
   const logout = useCallback(() => {
     if (token && loginEventId) {
       api.logout(loginEventId, token).catch(() => { /* best-effort */ });
@@ -203,10 +265,13 @@ export function useAuth() {
     plan,
     loading,
     error,
-    // prod passkey flow
+    // user passkey flow
     startPasskeyLogin,
     completeLogin,
-    // dev/beta direct flow
+    // admin two-step flow (beta/prod)
+    startAdminPasskeyVerification,
+    completeAdminLogin,
+    // direct flow
     login,
     // shared
     changePassword,

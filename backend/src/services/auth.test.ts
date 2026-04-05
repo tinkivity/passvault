@@ -193,6 +193,37 @@ describe('login — user with passkey registered', () => {
     expect(result.error).toBe(ERRORS.INVALID_PASSKEY);
     expect(result.statusCode).toBe(401);
   });
+
+  it('allows admin password login even with passkeys registered', async () => {
+    config.features.passkeyRequired = true;
+    mockGetUserByUsername.mockResolvedValue(makeUser({ role: 'admin', status: 'active' }));
+    mockListPasskeyCredentials.mockResolvedValue([{ credentialId: 'cred-1', userId: 'user-1', name: 'My Key', publicKey: 'pubkey', counter: 0, transports: null, aaguid: 'aaguid', createdAt: '2024-01-01T00:00:00Z' }]);
+    mockVerifyPw.mockResolvedValue(true);
+    const result = await login({ username: 'alice', password: 'correct' });
+    expect(result.error).toBeUndefined();
+    expect(result.response?.requirePasskeyVerification).toBe(true);
+  });
+
+  it('does not set requirePasskeyVerification for admin without passkeys', async () => {
+    config.features.passkeyRequired = true;
+    mockGetUserByUsername.mockResolvedValue(makeUser({ role: 'admin', status: 'active' }));
+    mockListPasskeyCredentials.mockResolvedValue([]);
+    mockVerifyPw.mockResolvedValue(true);
+    const result = await login({ username: 'alice', password: 'correct' });
+    expect(result.error).toBeUndefined();
+    expect(result.response?.requirePasskeyVerification).toBeUndefined();
+  });
+
+  it('does not set requirePasskeyVerification for onboarding admin', async () => {
+    config.features.passkeyRequired = true;
+    mockGetUserByUsername.mockResolvedValue(makeUser({ role: 'admin', status: 'pending_first_login' }));
+    mockListPasskeyCredentials.mockResolvedValue([]);
+    mockVerifyPw.mockResolvedValue(true);
+    const result = await login({ username: 'alice', password: 'correct' });
+    expect(result.error).toBeUndefined();
+    expect(result.response?.requirePasskeyVerification).toBeUndefined();
+    expect(result.response?.requirePasswordChange).toBe(true);
+  });
 });
 
 // ── login() — lockout + input validation ──────────────────────────────────────

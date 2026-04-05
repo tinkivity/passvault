@@ -230,7 +230,7 @@ Feature flags from `EnvironmentConfig.features` control which constructs are ins
 |---|---|---|---|---|
 | `cloudFrontEnabled` | false | true | true | Creates FrontendConstruct (CloudFront + S3 origin) |
 | `killSwitchEnabled` | false | true | true | Creates KillSwitchConstruct (SNS + Lambda + EventBridge) |
-| `passkeyRequired` | false | false | true | Passes `PASSKEY_RP_ID` and `PASSKEY_ORIGIN` env vars to auth Lambdas |
+| `passkeyRequired` | false | true | true | Passes `PASSKEY_RP_ID` and `PASSKEY_ORIGIN` env vars to auth Lambdas |
 
 Other environment-driven differences:
 - **Reserved concurrency**: prod only

@@ -29,7 +29,7 @@ This manual explains how to decrypt your PassVault encrypted file **independentl
 
 **From the PassVault Application:**
 
-1. Log in to PassVault (passkey + password in prod; password only in dev/beta)
+1. Log in to PassVault (passkey + password in beta/prod; password only in dev)
 2. Navigate to any vault and open the vault menu
 3. Click the **"Download Encrypted Backup"** button
 4. Save the file as `passvault-backup.json`

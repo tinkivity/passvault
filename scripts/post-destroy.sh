@@ -95,8 +95,12 @@ if [[ "$stack_status" != "DOES_NOT_EXIST" ]]; then
   echo "   Destroy it first:"
   echo "     cd cdk && cdk destroy $STACK_NAME --context env=$ENV"
   echo ""
-  read -rp "Continue anyway? [y/N] " _ans
-  [[ "$_ans" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 0; }
+  if [[ "$ENV" == "dev" ]]; then
+    echo "  [auto-confirmed for dev]"
+  else
+    read -rp "Continue anyway? [y/N] " _ans
+    [[ "$_ans" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 0; }
+  fi
   echo ""
 fi
 
@@ -117,6 +121,11 @@ fi
 DELETED=()
 
 confirm() {
+  # Dev is safe to auto-confirm — no production data at risk
+  if [[ "$ENV" == "dev" ]]; then
+    echo "  $1 [auto-confirmed for dev]"
+    return 0
+  fi
   local ans
   read -rp "  $1 [y/N] " ans
   [[ "$ans" =~ ^[Yy]$ ]]

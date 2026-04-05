@@ -115,8 +115,8 @@ All `cdk` commands accept context variables via `--context key=value`.
 | `env` | Yes | All | Deployment environment: `dev`, `beta`, or `prod`. Names the stack `PassVault-Dev`, `PassVault-Beta`, or `PassVault-Prod`. |
 | `adminEmail` | Yes | All | Initial admin username. Also subscribes to the SNS alert topic (beta/prod). |
 | `domain` | No | beta, prod | Root domain of an existing Route 53 hosted zone (e.g. `example.com`). Creates a `CertificateStack` in us-east-1 and configures CloudFront with a custom subdomain. |
-| `passkeyRpId` | Prod only | prod | WebAuthn relying party ID (e.g. `vault.example.com`). Also settable via `PASSKEY_RP_ID` env var. |
-| `passkeyOrigin` | Prod only | prod | WebAuthn relying party origin (e.g. `https://vault.example.com`). Also settable via `PASSKEY_ORIGIN` env var. |
+| `passkeyRpId` | beta, prod | beta, prod | WebAuthn relying party ID (e.g. `vault.example.com`). Also settable via `PASSKEY_RP_ID` env var. |
+| `passkeyOrigin` | beta, prod | beta, prod | WebAuthn relying party origin (e.g. `https://vault.example.com`). Also settable via `PASSKEY_ORIGIN` env var. |
 
 ### Examples
 
@@ -169,13 +169,16 @@ Use `--all` so CDK handles the dependency order automatically:
 
 ```bash
 # Beta
-cdk deploy --all --context env=beta --context domain=example.com --context adminEmail=you@example.com
+cdk deploy --all --context env=beta --context domain=example.com --context adminEmail=you@example.com \
+  --context passkeyRpId=beta.pv.example.com --context passkeyOrigin=https://beta.pv.example.com
 
 # Prod
 cdk deploy --all \
   --context env=prod \
   --context domain=example.com \
   --context adminEmail=you@example.com \
+  --context passkeyRpId=vault.example.com \
+  --context passkeyOrigin=https://vault.example.com \
   --require-approval broadening
 ```
 
@@ -264,10 +267,12 @@ curl https://YOUR_CLOUDFRONT_URL/api/challenge
 2. Go to `/login` (unified login for both admin and regular users)
 3. Enter the admin email and the one-time password from `init-admin.ts`
 4. Change password on first login
-5. **Prod only:** Register a passkey (biometric/PIN/security key) on the passkey setup page
+5. **Beta/Prod:** Register a passkey (biometric/PIN/security key) on the passkey setup page
 6. Access the admin dashboard at `/ui/admin/dashboard`
 
-In dev/beta, passkey setup is skipped -- admin goes directly to the dashboard after changing the password.
+In dev, passkey setup is skipped -- admin goes directly to the dashboard after changing the password.
+
+In beta/prod, admin login is a two-step process: enter username + password first, then verify with a passkey in a second dialog.
 
 ---
 
@@ -398,8 +403,9 @@ cd cdk
 # Dev (no CloudFront, passkeys optional, ~$0/month)
 cdk deploy PassVault-Dev --context env=dev --context adminEmail=you@example.com
 
-# Beta (CloudFront enabled, passkeys optional, ~$0/month)
-cdk deploy --all --context env=beta --context domain=example.com --context adminEmail=you@example.com
+# Beta (CloudFront enabled, passkeys required for admin, ~$0/month)
+cdk deploy --all --context env=beta --context domain=example.com --context adminEmail=you@example.com \
+  --context passkeyRpId=beta.pv.example.com --context passkeyOrigin=https://beta.pv.example.com
 
 # Prod (CloudFront, passkeys, monitoring, kill switch, ~$0-2/month)
 cdk deploy --all \
@@ -426,7 +432,7 @@ cdk destroy --all --context env=prod --context domain=example.com
 
 | Setting | Dev | Beta | Prod |
 |---|---|---|---|
-| Passkeys | Optional | Optional | Required |
+| Passkeys | Optional | Required (admin) | Required |
 | PoW | Disabled | Enabled | Enabled |
 | CloudFront | Disabled | Enabled | Enabled |
 | Lambda memory | 256 MB | 256 MB | 512 MB |

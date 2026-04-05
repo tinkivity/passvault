@@ -10,7 +10,7 @@ See also: [SPECIFICATION.md](SPECIFICATION.md) for the full system specification
 |--------|-----|-----------|-----------|-------------|
 | `pending_email_verification` | Users (prod only) | No | No | Account created; awaiting email verification link click. Token expires after 7 days. |
 | `pending_first_login` | All | Yes (OTP only) | No | Account exists with one-time password. Must change password on first login. |
-| `pending_passkey_setup` | Admins (prod only) | Yes | No | Password set; must register a WebAuthn passkey before gaining full access. |
+| `pending_passkey_setup` | Admins (beta/prod) | Yes | No | Password set; must register a WebAuthn passkey before gaining full access. |
 | `active` | All | Yes | Yes | Fully onboarded. Normal operation. |
 | `locked` | All | No | No | Account suspended. Returns `ACCOUNT_SUSPENDED` (403) on login attempt. |
 | `expired` | Users only | Yes | No (read-only) | Can view vaults but cannot create, update, or delete items. Shown an expiration dialog on login. |

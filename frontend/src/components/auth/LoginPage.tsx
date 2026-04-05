@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Loader2, KeyRound } from 'lucide-react';
+import { Loader2, KeyRound, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth.js';
 import { Layout, ErrorMessage } from '../layout/Layout.js';
 import { Button } from '@/components/ui/button';
@@ -27,10 +27,14 @@ function postLoginPath(role: string, requirePasswordChange?: boolean): string {
 export function LoginPage() {
   const navigate = useNavigate();
   const { t } = useTranslation('auth');
-  const { login, startPasskeyLogin, completeLogin, loading, error } = useAuth();
+  const { login, startPasskeyLogin, completeLogin, startAdminPasskeyVerification, completeAdminLogin, loading, error } = useAuth();
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+
+  // Admin two-step state
+  const [adminPasskeyStep, setAdminPasskeyStep] = useState(false);
+  const [savedPassword, setSavedPassword] = useState('');
 
   const handlePasskeyClick = async () => {
     try {
@@ -47,12 +51,68 @@ export function LoginPage() {
     e.preventDefault();
     try {
       const res = await login(username, password);
+      if (res.requirePasskeyVerification) {
+        // Admin two-step: password verified, now need passkey
+        setSavedPassword(password);
+        setPassword('');
+        setAdminPasskeyStep(true);
+        return;
+      }
       navigate(postLoginPath(res.role, res.requirePasswordChange));
     } catch {
       // error already set by useAuth
     }
   };
 
+  const handleAdminPasskeyVerification = async () => {
+    try {
+      const verifyRes = await startAdminPasskeyVerification();
+      const loginRes = await completeAdminLogin(verifyRes.passkeyToken, savedPassword);
+      setSavedPassword('');
+      navigate(postLoginPath(loginRes.role, loginRes.requirePasswordChange));
+    } catch {
+      // error already set by useAuth
+    }
+  };
+
+  const handleCancelPasskeyStep = () => {
+    setAdminPasskeyStep(false);
+    setSavedPassword('');
+  };
+
+  // Step 2: Admin passkey verification
+  if (adminPasskeyStep) {
+    return (
+      <Layout>
+        <div className="w-full max-w-sm">
+          <Card>
+            <CardHeader className="text-center">
+              <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+                <ShieldCheck className="h-6 w-6 text-primary" />
+              </div>
+              <CardTitle className="text-xl">{t('verifyIdentity')}</CardTitle>
+              <CardDescription>{t('completeSignInPasskey')}</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <ErrorMessage message={error} />
+              <Button className="w-full" onClick={handleAdminPasskeyVerification} disabled={loading}>
+                {loading ? (
+                  <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('common:pleaseWait')}</>
+                ) : (
+                  <><KeyRound className="h-3.5 w-3.5" /> {t('verifyWithPasskey')}</>
+                )}
+              </Button>
+              <Button variant="ghost" className="w-full" onClick={handleCancelPasskeyStep} disabled={loading}>
+                {t('common:cancel')}
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </Layout>
+    );
+  }
+
+  // Step 1: Normal login
   return (
     <Layout>
       <div className="w-full max-w-sm">

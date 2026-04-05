@@ -131,7 +131,7 @@ Before promoting from dev to beta to prod:
 - [ ] Admin login and first-password-change flow works end-to-end
 - [ ] User creation, login, vault item CRUD works
 - [ ] Multi-vault: free users limited to 1, pro users to 10
-- [ ] (Prod only) Passkey registration and login work correctly
+- [ ] (Beta/Prod) Passkey registration and two-step admin login work correctly
 - [ ] OTP expiry enforced; Refresh OTP issues working replacement
 - [ ] User lifecycle: lock/unlock/expire/retire work correctly
 - [ ] Warning codes: duplicate password and breach detection work

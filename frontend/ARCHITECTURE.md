@@ -172,7 +172,7 @@ config.timeouts.vaultTimeout // VITE_VAULT_TIMEOUT_SECONDS
 ```
 VITE_API_BASE_URL=           # empty for prod/beta (CloudFront proxies); set to http://... for local dev
 VITE_ENVIRONMENT=dev         # dev | beta | prod
-VITE_PASSKEY_REQUIRED=false  # true only in prod
+VITE_PASSKEY_REQUIRED=false  # true in beta and prod
 VITE_SESSION_TIMEOUT_SECONDS=300
 VITE_VAULT_TIMEOUT_SECONDS=60
 ```
@@ -184,7 +184,7 @@ VITE_VAULT_TIMEOUT_SECONDS=60
 - **PoW** — every API request requires solving a proof-of-work challenge (difficulty LOW/MEDIUM/HIGH). Solved in a Web Worker (`services/pow-solver.ts`) to avoid blocking the UI.
 - **Honeypot** — the login form includes a hidden field (`email_confirm`) that bots fill in but real users don't.
 - **E2E encryption** — vault content is encrypted with AES-256-GCM. Key derivation uses Argon2id (`services/crypto.ts`). The derived key never leaves the browser.
-- **Passkeys (WebAuthn)** — required in prod (`VITE_PASSKEY_REQUIRED=true`). Skipped in dev/beta. Users can register multiple passkeys (max 10); admins can register up to 2.
+- **Passkeys (WebAuthn)** — required in beta/prod (`VITE_PASSKEY_REQUIRED=true`). Skipped in dev. Users can register multiple passkeys (max 10); admins can register up to 2. Admin login in beta/prod is a two-step flow: username + password first, then passkey verification in a second dialog.
 - **Never log passwords** — activity logs record that a change occurred, never the password value.
 - **Auto-logout** — `useAutoLogout` hook triggers logout after inactivity (configurable per role via `config.timeouts`).
 
@@ -199,7 +199,7 @@ The dialog contains two sections:
 1. **Password change** -- standard current/new password form. This section is disabled for users who have registered passkeys, since password-based login is superseded by passkey authentication.
 2. **Passkey management** -- lists the user's registered passkeys (name, provider, registration date) with the ability to register new passkeys (with a user-provided name) and revoke existing ones. Duplicate providers (same aaguid) are prevented.
 
-`PasskeySetupPage` (onboarding flow) now includes a name input field for the passkey being registered and an optional skip button in dev/beta environments.
+`PasskeySetupPage` (onboarding flow) now includes a name input field for the passkey being registered and an optional skip button in dev environments.
 
 ---
 

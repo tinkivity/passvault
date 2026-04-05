@@ -114,7 +114,13 @@ export async function adminLogin(request: LoginRequest): Promise<{ response?: Lo
     userId: user.userId,
     role: user.role,
     username: user.username,
+    plan: user.plan,
     loginEventId,
+    firstName: user.firstName ?? null,
+    lastName: user.lastName ?? null,
+    displayName: user.displayName ?? null,
+    expiresAt: user.expiresAt ?? null,
+    preferredLanguage: user.preferredLanguage,
   };
 
   if (user.status === 'pending_first_login') {

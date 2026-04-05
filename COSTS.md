@@ -652,7 +652,7 @@ aws budgets create-budget \
 ✅ **Enable CloudFront compression** — 60-80% data transfer savings (already configured in CDK)
 ✅ **Use S3 + CloudFront hosting** — leverages AWS free tier maximally
 ✅ **Monitor costs monthly** — set up CloudWatch alarms at $20/month threshold
-✅ **Use dev/beta stacks for development** — passkeys disabled by default, ~$0/month
+✅ **Use dev stack for development** — passkeys optional, ~$0/month
 ✅ **Start with default settings** — optimize only if costs exceed $20/month
 
 ### Cost-Effectiveness

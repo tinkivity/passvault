@@ -33,6 +33,7 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
   let passkeyLogin = false;
   let passkeyCredentialId: string | undefined;
   let passkeyName: string | undefined;
+  let userPasskeyCreds: unknown[] | undefined;
 
   if (request.passkeyToken) {
     // Passkey login path: passkeyToken identifies the user
@@ -61,9 +62,10 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
     if (!user) {
       return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
     }
-    // If user has passkeys registered, they must use passkey login
-    const creds = await listPasskeyCredentials(user.userId);
-    if (creds.length > 0) {
+    // If a regular user has passkeys registered, they must use passkey login.
+    // Admins are exempt: they log in with password first, then verify passkey in a second step.
+    userPasskeyCreds = await listPasskeyCredentials(user.userId);
+    if (userPasskeyCreds.length > 0 && user.role !== 'admin') {
       return { error: ERRORS.INVALID_PASSKEY, statusCode: 401 };
     }
   }
@@ -164,8 +166,26 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
   if (user.status === 'pending_first_login') {
     response.requirePasswordChange = true;
   }
+  if (user.status === 'pending_passkey_setup' && config.features.passkeyRequired) {
+    response.requirePasskeySetup = true;
+  }
   if (user.status === 'expired') {
     response.accountExpired = true;
+  }
+
+  // Active admins with passkeys on passkeyRequired envs: signal the frontend
+  // to prompt for passkey verification as a second step.
+  // Admins still onboarding (pending_first_login, pending_passkey_setup) skip this.
+  if (
+    user.role === 'admin' &&
+    config.features.passkeyRequired &&
+    user.status === 'active' &&
+    !passkeyLogin
+  ) {
+    const adminCreds = userPasskeyCreds ?? await listPasskeyCredentials(user.userId);
+    if (adminCreds.length > 0) {
+      response.requirePasskeyVerification = true;
+    }
   }
 
   return { response };
@@ -192,7 +212,7 @@ export async function changePassword(
 
   const newHash = await hashPassword(request.newPassword);
 
-  // Admin in prod: must set up passkey after first password change
+  // Admin in beta/prod: must set up passkey after first password change
   const nextStatus = (role === 'admin' && config.features.passkeyRequired) ? 'pending_passkey_setup' : 'active';
 
   const isFirstLogin = user?.status === 'pending_first_login';
@@ -204,7 +224,7 @@ export async function changePassword(
     otpExpiresAt: null,
   });
 
-  // Offer passkey setup after first password change (users go to optional setup; admin in prod goes to mandatory setup)
+  // Offer passkey setup after first password change (users go to optional setup; admin in beta/prod goes to mandatory setup)
   const offerPasskeySetup = isFirstLogin ? true : undefined;
   return { response: { success: true, offerPasskeySetup } };
 }

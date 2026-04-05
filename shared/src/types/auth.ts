@@ -14,6 +14,7 @@ export interface LoginResponse {
   plan?: import('./user.js').UserPlan;
   requirePasswordChange?: boolean;
   requirePasskeySetup?: boolean;
+  requirePasskeyVerification?: boolean;
   accountExpired?: boolean;
   loginEventId?: string;
   firstName?: string | null;

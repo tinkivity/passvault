@@ -25,9 +25,9 @@ PassVault is an invitation-only, personal password manager and secure vault with
   - Credential is stored server-side (public key only)
   - Admin account status changes from "pending_passkey_setup" to "active"
 - **Admin Authentication**: After initial setup, admin authenticates with:
-  - Passkey (step 1 — identifies the admin and pre-fills username)
-  - Password (step 2 — derives the encryption key)
-  - > **Environment Note**: In dev and beta environments where passkeys are disabled, the status transitions directly from "pending_first_login" to "active" after password change. The passkey setup step is skipped entirely. Login requires only username + password.
+  - Username + password (step 1 — verifies credentials)
+  - Passkey (step 2 — shown in a second dialog after step 1 succeeds)
+  - > **Environment Note**: In dev, the status transitions directly from "pending_first_login" to "active" after password change. The passkey setup step is skipped entirely and login requires only username + password. In beta/prod, admins must complete passkey setup during onboarding and use two-step login thereafter.
 - **Create User Invitation**: Admin creates new users by:
   - Specifying the user's email address (used as the username / login identity); optionally setting `firstName`, `lastName`, `displayName`, `plan` (`free` or `pro`, default `free`), and `expiresAt` (ISO date or null for lifetime)
   - System generates a secure one-time password (OTP) with a per-environment expiry time
@@ -71,7 +71,7 @@ PassVault is an invitation-only, personal password manager and secure vault with
 - **Normal Login**: After initial setup, users authenticate with:
   - Passkey (step 1 — identifies the user and pre-fills username)
   - Password (step 2 — derives the encryption key)
-  - > **Environment Note**: In dev and beta environments where passkeys are disabled, the status transitions directly from "pending_first_login" to "active" after password change. The passkey setup step is skipped entirely. Login requires only username + password.
+  - > **Environment Note**: In dev, the status transitions directly from "pending_first_login" to "active" after password change. The passkey setup step is skipped entirely and login requires only username + password. In beta/prod, users complete passkey setup during onboarding.
 - **Session Management**: Maintain authenticated state during user session
 - **Logout**: Users can end their session
 
@@ -301,7 +301,8 @@ For a detailed bot attack cost analysis including worst-case calculations and de
   - Step 1: "Sign in with passkey" button — triggers browser WebAuthn dialog, pre-fills username
   - Step 2: Password field (username pre-filled and read-only)
   - Login button
-  - > **Dev/beta**: Single-step form — username + password fields, no passkey prompt
+  - > **Dev**: Single-step form — username + password fields, no passkey prompt
+  - > **Beta/Prod admin login**: Step 1 is username + password on the login page. On success, a second dialog prompts for passkey verification before completing login.
 - **First-Time Password Change**: Displayed immediately after first login with OTP
   - Welcome message
   - Password policy requirements display
@@ -309,7 +310,7 @@ For a detailed bot attack cost analysis including worst-case calculations and de
   - Confirm password field
   - Real-time password policy validation feedback
   - Submit button
-- **Passkey Setup Page**: Displayed immediately after password change (prod only)
+- **Passkey Setup Page**: Displayed immediately after password change (beta/prod)
   - "Register passkey" button triggers browser WebAuthn dialog (biometric / PIN prompt)
   - Explains that the passkey will be required to sign in going forward
   - Cannot proceed to vault until passkey is registered
@@ -528,13 +529,10 @@ Protection Layers:
   - Returns a short-lived passkey token (5 min) encoding the userId; used with POST /admin/login
 
 - **POST /api/admin/login** (PoW HIGH + honeypot)
-  - Request (prod): `{ "passkeyToken": "string", "password": "string" }` — passkeyToken identifies the admin
-  - Request (dev/beta): `{ "username": "string", "password": "string" }` — direct username+password
-  - Response:
-    - First-time login: `{ "token": "string", "role": "admin", "requirePasswordChange": true, "encryptionSalt": "string (base64)", "loginEventId": "string (UUID)" }`
-    - After password change (prod): `{ "token": "string", "role": "admin", "requirePasskeySetup": true, "encryptionSalt": "string (base64)", "loginEventId": "string (UUID)" }`
-    - Active login: `{ "token": "string", "role": "admin", "encryptionSalt": "string (base64)", "loginEventId": "string (UUID)" }`
-  - Returns JWT token with admin role and encryption salt for key derivation
+  - Request (beta/prod): `{ "passkeyToken": "string", "password": "string" }` — passkeyToken identifies the admin
+  - Request (dev): `{ "username": "string", "password": "string" }` — direct username+password
+  - Response: `{ "token": "string", "role": "admin", "username": "string", "userId": "string", "plan": "string", "loginEventId": "string (UUID)", "firstName"?: "string", "lastName"?: "string", "displayName"?: "string", "expiresAt"?: "string", "preferredLanguage"?: "string", "requirePasswordChange"?: true, "requirePasskeySetup"?: true }`
+  - Returns JWT token with admin role; includes full user profile fields
   - Flags if password change or passkey setup is required
   - `loginEventId` uniquely identifies this login event; sent with `POST /api/auth/logout` to record session duration
 
@@ -542,7 +540,7 @@ Protection Layers:
   - Request: `{ "newPassword": "string" }`
   - Response: `{ "success": true }` or error with policy violations
   - Validates new password against security policy
-  - Updates admin password; sets status to "pending_passkey_setup" (prod) or "active" (dev/beta)
+  - Updates admin password; sets status to "pending_passkey_setup" (beta/prod) or "active" (dev)
 
 - **GET /api/admin/passkey/register/challenge** (Requires admin auth, status must be "pending_passkey_setup")
   - Response: `{ "challengeJwt": "string" }`
@@ -561,7 +559,7 @@ Protection Layers:
   - Response: `{ "success": true }`
   - Revokes (deletes) a specific passkey credential; the admin must retain at least one passkey in prod
 
-> **Passkey endpoints (dev/beta)**: When `passkeyRequired=false`, the passkey challenge/verify/register endpoints are still deployed but will not be exercised by the UI. POST /admin/login accepts `username` + `password` directly.
+> **Passkey endpoints (dev)**: When `passkeyRequired=false`, the passkey challenge/verify/register endpoints are still deployed but will not be exercised by the UI. POST /admin/login accepts `username` + `password` directly.
 
 - **POST /api/admin/users** (Requires admin auth, blocked if admin status is not "active")
   - Request: `{ "username": "string", "firstName"?: "string", "lastName"?: "string", "displayName"?: "string", "plan"?: "free" | "pro", "expiresAt"?: "string | null" }` — username must be a valid email address
@@ -661,12 +659,12 @@ Protection Layers:
   - Returns 200 with `{ "alreadyVerified": true }` if status is already past `pending_email_verification`
 
 - **POST /api/auth/login** (PoW MEDIUM + honeypot)
-  - Request (prod): `{ "passkeyToken": "string", "password": "string" }` — passkeyToken from verify step
-  - Request (dev/beta): `{ "username": "string", "password": "string" }` — direct
-  - Response:
-    - First-time login (with OTP): `{ "token": "string", "requirePasswordChange": true, "username": "string", "encryptionSalt": "string (base64)", "plan": "free" | "pro", "loginEventId": "string (UUID)" }`
-    - After password change (prod): `{ "token": "string", "requirePasskeySetup": true, "username": "string", "encryptionSalt": "string (base64)", "plan": "free" | "pro", "loginEventId": "string (UUID)" }`
-    - Active login: `{ "token": "string", "username": "string", "encryptionSalt": "string (base64)", "plan": "free" | "pro", "loginEventId": "string (UUID)" }`
+  - Request (user passkey login): `{ "passkeyToken": "string" }` — passkeyToken from verify step; no password needed
+  - Request (password login): `{ "username": "string", "password": "string" }` — used by admins (all envs) and users without passkeys
+  - Response: `{ "token": "string", "role": "string", "username": "string", "userId": "string", "plan"?: "string", "loginEventId"?: "string (UUID)", "firstName"?: "string", "lastName"?: "string", "displayName"?: "string", "expiresAt"?: "string", "preferredLanguage"?: "string", "requirePasswordChange"?: true, "requirePasskeySetup"?: true, "requirePasskeyVerification"?: true, "accountExpired"?: true }`
+  - `requirePasswordChange`: admin/user must change OTP password before proceeding
+  - `requirePasskeySetup`: admin (beta/prod) must register a passkey before proceeding
+  - `requirePasskeyVerification`: admin (beta/prod) must complete passkey verification as a second login step (via admin passkey endpoints, then POST /api/admin/login)
   - Returns JWT token with user ID and role, plus encryption salt for key derivation and `plan` for vault limit enforcement
   - `loginEventId` uniquely identifies this login event; sent with `POST /api/auth/logout` to record session duration
   - Returns 403 `ACCOUNT_SUSPENDED` if `status === 'locked'`
@@ -677,7 +675,7 @@ Protection Layers:
   - Request: `{ "newPassword": "string" }`
   - Response: `{ "success": true }` or error with policy violations
   - Validates new password against security policy
-  - Updates user password; sets status to "pending_passkey_setup" (prod) or "active" (dev/beta)
+  - Updates user password; sets status to "pending_passkey_setup" (beta/prod) or "active" (dev)
 
 - **GET /api/auth/passkey/register/challenge** (Requires user auth, status must be "pending_passkey_setup")
   - Response: `{ "challengeJwt": "string" }`
@@ -696,7 +694,7 @@ Protection Layers:
   - Response: `{ "success": true }`
   - Revokes (deletes) a specific passkey credential; the user must retain at least one passkey in prod
 
-> **Passkey endpoints (dev/beta)**: When `passkeyRequired=false`, the passkey challenge/verify/register endpoints are still deployed but will not be exercised by the UI. POST /auth/login accepts `username` + `password` directly.
+> **Passkey endpoints (dev)**: When `passkeyRequired=false`, the passkey challenge/verify/register endpoints are still deployed but will not be exercised by the UI. POST /auth/login accepts `username` + `password` directly.
 
 - **POST /api/auth/logout** (Requires user or admin auth)
   - Request: `{ "eventId": "string" }` — the `loginEventId` returned by the login response

@@ -242,6 +242,33 @@ export class ApiClient {
 
   // ---- Admin Auth ------------------------------------------------------
 
+  async adminLogin(req: LoginRequest, honeypot: Record<string, string>): Promise<LoginResponse> {
+    return this.request<LoginResponse>(API_PATHS.ADMIN_LOGIN, {
+      method: 'POST',
+      body: req,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+      honeypotFields: honeypot,
+    });
+  }
+
+  async getAdminPasskeyChallenge(): Promise<PasskeyChallengeResponse> {
+    return this.request<PasskeyChallengeResponse>(API_PATHS.ADMIN_PASSKEY_CHALLENGE, {
+      method: 'GET',
+    });
+  }
+
+  async verifyAdminPasskey(
+    req: PasskeyVerifyRequest,
+    honeypot: Record<string, string>,
+  ): Promise<PasskeyVerifyResponse> {
+    return this.request<PasskeyVerifyResponse>(API_PATHS.ADMIN_PASSKEY_VERIFY, {
+      method: 'POST',
+      body: req,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+      honeypotFields: honeypot,
+    });
+  }
+
   async adminChangePassword(
     req: ChangePasswordRequest,
     token: string,

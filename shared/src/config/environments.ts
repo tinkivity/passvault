@@ -30,7 +30,7 @@ export const betaConfig: EnvironmentConfig = {
   region: 'eu-central-1',
   subdomain: 'beta.pv',
   features: {
-    passkeyRequired: false,
+    passkeyRequired: true,
     powEnabled: true,
     honeypotEnabled: true,
     cloudFrontEnabled: true,
