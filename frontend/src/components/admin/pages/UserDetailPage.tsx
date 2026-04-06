@@ -1,13 +1,19 @@
 import { useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import type { UpdateUserRequest, UserPlan, UserSummary, UserStatus, UserVaultStub } from '@passvault/shared';
+import type { UpdateUserRequest, UserPlan, UserSummary, UserStatus, UserVaultStub, PreferredLanguage, NotificationPrefs } from '@passvault/shared';
 import { useAuth } from '../../../hooks/useAuth.js';
 import { useAdmin } from '../../../hooks/useAdmin.js';
 import { OtpDisplay } from '../OtpDisplay.js';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+} from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -19,6 +25,23 @@ import { config } from '../../../config.js';
 import { ROUTES } from '../../../routes.js';
 
 const isDev = config.isDev;
+
+const LANGUAGE_LABELS: Record<PreferredLanguage, string> = {
+  auto: 'Auto (English)',
+  en: 'English',
+  de: 'Deutsch',
+  fr: 'Fran\u00e7ais',
+  ru: '\u0420\u0443\u0441\u0441\u043a\u0438\u0439',
+};
+
+// Labels use i18n keys from the admin namespace — see display code below
+// This map is only used as a fallback when translation is unavailable
+const BACKUP_I18N_KEYS: Record<string, string> = {
+  weekly: 'weeklyBackup',
+  monthly: 'monthlyBackup',
+  quarterly: 'quarterlyBackup',
+  none: 'common:off',
+};
 
 const statusLabelKey: Record<UserStatus, string> = {
   pending_email_verification: 'statusPendingEmailVerification',
@@ -82,6 +105,8 @@ export function UserDetailPage() {
   const [editPlan, setEditPlan] = useState<UserPlan>('free');
   const [editIsPerpetual, setEditIsPerpetual] = useState(false);
   const [editExpiresAt, setEditExpiresAt] = useState('');
+  const [editLanguage, setEditLanguage] = useState<PreferredLanguage>('auto');
+  const [editVaultBackup, setEditVaultBackup] = useState<NotificationPrefs['vaultBackup']>('none');
   const [editError, setEditError] = useState<string | null>(null);
   const [downgradeWarning, setDowngradeWarning] = useState(false);
 
@@ -95,6 +120,8 @@ export function UserDetailPage() {
     setEditPlan(user.plan);
     setEditIsPerpetual(user.expiresAt === null || user.expiresAt === undefined);
     setEditExpiresAt(user.expiresAt ? user.expiresAt.slice(0, 10) : '');
+    setEditLanguage(user.preferredLanguage ?? 'auto');
+    setEditVaultBackup(user.notificationPrefs?.vaultBackup ?? 'none');
     setEditError(null);
     setDowngradeWarning(false);
     setEditing(true);
@@ -111,6 +138,8 @@ export function UserDetailPage() {
         displayName: editDisplayName.trim() || null,
         ...(!isSelf && { plan: editPlan }),
         ...(!isSelf && { expiresAt: editIsPerpetual ? null : (editExpiresAt || null) }),
+        preferredLanguage: editLanguage,
+        notificationPrefs: { vaultBackup: editVaultBackup },
       };
       await admin.updateUser(req);
       setUser(u => u ? {
@@ -120,6 +149,8 @@ export function UserDetailPage() {
         displayName: req.displayName,
         plan: req.plan ?? u.plan,
         expiresAt: req.expiresAt,
+        preferredLanguage: req.preferredLanguage,
+        notificationPrefs: req.notificationPrefs,
       } : u);
       setEditing(false);
     } catch (err) {
@@ -237,6 +268,12 @@ export function UserDetailPage() {
               ? new Date(user.lastLoginAt).toISOString().slice(0, 10)
               : '—'}
           </dd>
+          <dt className="text-muted-foreground">{t('language')}</dt>
+          <dd>{LANGUAGE_LABELS[user.preferredLanguage ?? 'auto']}</dd>
+          <dt className="text-muted-foreground">{t('vaultBackup')}</dt>
+          <dd>{user.notificationPrefs?.vaultBackup ? t(BACKUP_I18N_KEYS[user.notificationPrefs.vaultBackup] ?? 'common:off') : t('notConfigured')}</dd>
+          <dt className="text-muted-foreground">{t('lastBackupSent')}</dt>
+          <dd>{user.lastBackupSentAt ? new Date(user.lastBackupSentAt).toISOString().slice(0, 10) : t('common:never')}</dd>
           <dt className="text-muted-foreground">{t('common:userId')}</dt>
           <dd className="font-mono text-xs text-muted-foreground break-all">{user.userId}</dd>
         </dl>
@@ -327,6 +364,38 @@ export function UserDetailPage() {
               </label>
               </div>
             )}
+
+            <div className="space-y-1">
+              <Label htmlFor="edit-language">{t('language')}</Label>
+              <select
+                id="edit-language"
+                value={editLanguage}
+                onChange={e => setEditLanguage(e.target.value as PreferredLanguage)}
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              >
+                {(Object.entries(LANGUAGE_LABELS) as [PreferredLanguage, string][]).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <Label>{t('vaultBackup')}</Label>
+              <Select
+                value={editVaultBackup}
+                onValueChange={v => setEditVaultBackup(v as NotificationPrefs['vaultBackup'])}
+              >
+                <SelectTrigger>
+                  <span>{t(BACKUP_I18N_KEYS[editVaultBackup] ?? 'off')}</span>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">{t('common:off')}</SelectItem>
+                  <SelectItem value="weekly">{t('weeklyBackup')}</SelectItem>
+                  <SelectItem value="monthly">{t('monthlyBackup')}</SelectItem>
+                  <SelectItem value="quarterly">{t('quarterlyBackup')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
             {editError && <p className="text-sm text-destructive">{editError}</p>}
 

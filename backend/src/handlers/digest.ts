@@ -9,16 +9,21 @@
  * duplicate sends within the same frequency window.
  */
 
+import { gzipSync } from 'zlib';
 import { listAllUsers, listVaultsByUser, updateUser } from '../utils/dynamodb.js';
 import { sendEmailWithAttachment } from '../utils/ses.js';
+import { renderEmail } from '../utils/email-templates.js';
+import { resolveLanguage } from '../utils/language.js';
+import { signUnsubscribeToken } from '../utils/jwt.js';
 import { getVaultIndexFile, getVaultItemsFile } from '../utils/s3.js';
 import type { User } from '@passvault/shared';
 
 function windowMs(freq: string): number {
   switch (freq) {
-    case 'weekly':  return 7 * 24 * 60 * 60 * 1000;
-    case 'monthly': return 30 * 24 * 60 * 60 * 1000;
-    default:        return Infinity;
+    case 'weekly':    return 7 * 24 * 60 * 60 * 1000;
+    case 'monthly':   return 30 * 24 * 60 * 60 * 1000;
+    case 'quarterly': return 90 * 24 * 60 * 60 * 1000;
+    default:          return Infinity;
   }
 }
 
@@ -49,13 +54,36 @@ async function processVaultBackup(user: User, now: Date): Promise<void> {
 
   const date = now.toISOString().slice(0, 10);
   const safeName = vault.displayName.replace(/[^a-zA-Z0-9_-]/g, '_');
-  const filename = `passvault-${safeName}-${date}.json`;
+  const filename = `passvault-${safeName}-${date}.json.gz`;
+
+  // Gzip-compress the vault backup
+  const compressed = gzipSync(Buffer.from(content, 'utf-8'));
+
+  // Generate a 72-hour unsubscribe token
+  const frontendUrl = process.env.FRONTEND_URL || '';
+  let unsubscribeUrl = `${frontendUrl}/ui`;
+  try {
+    const unsubToken = await signUnsubscribeToken(user.userId);
+    unsubscribeUrl = `${frontendUrl}/unsubscribe?token=${unsubToken}`;
+  } catch (err) {
+    console.error('Failed to generate unsubscribe token:', err);
+  }
+
+  const lang = resolveLanguage(user.preferredLanguage);
+  const { html, plainText } = await renderEmail('vault-backup', lang, {
+    userName: user.username,
+    vaultName: vault.displayName,
+    backupDate: date,
+    unsubscribeUrl,
+    currentFrequency: freq,
+  });
 
   await sendEmailWithAttachment(
     user.username,
     `PassVault: Vault backup — ${vault.displayName} (${date})`,
-    `Hello,\n\nPlease find your encrypted vault backup attached.\n\nThis file is encrypted with your master password and is safe to store.\n\n— The PassVault Team`,
-    { filename, content, contentType: 'application/json' },
+    plainText,
+    { filename, content: compressed.toString('binary'), contentType: 'application/gzip' },
+    html,
   );
   await updateUser(user.userId, { lastBackupSentAt: now.toISOString() });
 }

@@ -33,7 +33,8 @@ export const handler = (event: APIGatewayProxyEvent) => router.dispatch(event);
 async function handleLogin(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
   const parsed = parseBody(event);
   if ('parseError' in parsed) return parsed.parseError;
-  const result = await adminLogin(parsed.body as unknown as import('@passvault/shared').LoginRequest);
+  const acceptLanguage = event.headers?.['Accept-Language'] ?? event.headers?.['accept-language'];
+  const result = await adminLogin(parsed.body as unknown as import('@passvault/shared').LoginRequest, acceptLanguage);
 
   if (result.error) {
     return error(result.error, result.statusCode || 401);

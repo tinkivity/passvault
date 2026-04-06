@@ -34,6 +34,8 @@ import type {
   AuditCategory,
   AuditQueryParams,
   AuditQueryResponse,
+  EmailTemplateListResponse,
+  EmailTemplateImportResult,
 } from '@passvault/shared';
 import { API_PATHS, POW_CONFIG } from '@passvault/shared';
 import { solveChallenge } from './pow-solver.js';
@@ -419,6 +421,57 @@ export class ApiClient {
   async getLoginEvents(token: string): Promise<ListLoginEventsResponse> {
     return this.request<ListLoginEventsResponse>(API_PATHS.ADMIN_LOGIN_EVENTS, {
       method: 'GET',
+      token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+    });
+  }
+
+  // ---- Email Templates --------------------------------------------------
+
+  async listEmailTemplates(token: string): Promise<EmailTemplateListResponse> {
+    return this.request<EmailTemplateListResponse>(API_PATHS.ADMIN_EMAIL_TEMPLATES, {
+      method: 'GET',
+      token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+    });
+  }
+
+  async getEmailTemplate(type: string, language: string, token: string): Promise<{ html: string }> {
+    const path = API_PATHS.ADMIN_EMAIL_TEMPLATE
+      .replace('{type}', encodeURIComponent(type))
+      .replace('{language}', encodeURIComponent(language));
+    return this.request<{ html: string }>(path, {
+      method: 'GET',
+      token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+    });
+  }
+
+  async putEmailTemplate(type: string, language: string, html: string, token: string): Promise<void> {
+    const path = API_PATHS.ADMIN_EMAIL_TEMPLATE
+      .replace('{type}', encodeURIComponent(type))
+      .replace('{language}', encodeURIComponent(language));
+    return this.request(path, {
+      method: 'PUT',
+      body: { html },
+      token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+    });
+  }
+
+  async exportEmailTemplates(modifiedOnly: boolean, token: string): Promise<{ filename: string; data: string }> {
+    const url = `${API_PATHS.ADMIN_EMAIL_TEMPLATES_EXPORT}?modifiedOnly=${modifiedOnly}`;
+    return this.request<{ filename: string; data: string }>(url, {
+      method: 'GET',
+      token,
+      powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
+    });
+  }
+
+  async importEmailTemplates(data: string, token: string): Promise<EmailTemplateImportResult> {
+    return this.request<EmailTemplateImportResult>(API_PATHS.ADMIN_EMAIL_TEMPLATES_IMPORT, {
+      method: 'POST',
+      body: { data },
       token,
       powDifficulty: POW_CONFIG.DIFFICULTY.HIGH,
     });

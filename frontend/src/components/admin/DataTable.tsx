@@ -26,7 +26,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from '@/components/ui/select';
 
 interface DataTableProps<TData, TValue> {
@@ -164,7 +163,7 @@ export function DataTable<TData, TValue>({
                 onValueChange={v => table.setPageSize(Number(v))}
               >
                 <SelectTrigger className="h-7 w-16 text-xs">
-                  <SelectValue />
+                  <span>{pageSize}</span>
                 </SelectTrigger>
                 <SelectContent>
                   {PAGE_SIZE_OPTIONS.map(size => (

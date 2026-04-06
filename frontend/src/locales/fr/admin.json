@@ -72,6 +72,7 @@
   "dailyBackup": "Sauvegarde quotidienne",
   "weeklyBackup": "Sauvegarde hebdomadaire",
   "monthlyBackup": "Sauvegarde mensuelle",
+  "quarterlyBackup": "Sauvegarde trimestrielle",
   "failedToLoadPrefs": "\u00c9chec du chargement des pr\u00e9f\u00e9rences",
   "failedToSavePrefs": "\u00c9chec de l'enregistrement des pr\u00e9f\u00e9rences",
   "auditCategories": "Cat\u00e9gories d'audit",

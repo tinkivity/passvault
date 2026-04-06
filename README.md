@@ -4,7 +4,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![AWS](https://img.shields.io/badge/AWS-Serverless-orange.svg)](https://aws.amazon.com/)
-[![Security](https://img.shields.io/badge/Security-Post--Quantum-green.svg)](SPECIFICATION.md)
+[![Security](https://img.shields.io/badge/Security-Post--Quantum-green.svg)](docs/SPECIFICATION.md)
 
 ---
 
@@ -58,13 +58,13 @@ PassVault is a privacy-focused, serverless password vault where:
 
 | Document | Description |
 |----------|-------------|
-| [SPECIFICATION.md](SPECIFICATION.md) | Requirements, API design, data model, security |
-| [USER-STATE-MODEL.md](USER-STATE-MODEL.md) | Account states, transitions, admin expiration rules |
-| [DEPLOYMENT.md](DEPLOYMENT.md) | Quick start and deployment overview |
-| [TESTING.md](TESTING.md) | Test commands, pre-deployment checklist |
-| [RECOVERY.md](RECOVERY.md) | Offline vault recovery manual |
-| [COSTS.md](COSTS.md) | Cost analysis and projections |
-| [BOTPROTECTION.md](BOTPROTECTION.md) | Bot defense layers, kill switch, cost analysis |
+| [SPECIFICATION.md](docs/SPECIFICATION.md) | Requirements, API design, data model, security |
+| [USER-STATE-MODEL.md](docs/USER-STATE-MODEL.md) | Account states, transitions, admin expiration rules |
+| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Quick start and deployment overview |
+| [TESTING.md](docs/TESTING.md) | Test commands, pre-deployment checklist |
+| [RECOVERY.md](docs/RECOVERY.md) | Offline vault recovery manual |
+| [COSTS.md](docs/COSTS.md) | Cost analysis and projections |
+| [BOTPROTECTION.md](docs/BOTPROTECTION.md) | Bot defense layers, kill switch, cost analysis |
 
 ### Per-package
 
@@ -106,7 +106,7 @@ Lambda Functions (PoW + honeypot validation)
 4. Honeypot form fields (blocks naive bots)
 5. Concurrency kill switch (auto-fires after 3 min sustained traffic)
 
-See [BOTPROTECTION.md](BOTPROTECTION.md) for full defense details and worst-case cost analysis.
+See [BOTPROTECTION.md](docs/BOTPROTECTION.md) for full defense details and worst-case cost analysis.
 
 ---
 
@@ -152,7 +152,7 @@ cdk deploy --all
 # Follow post-deployment steps in DEPLOYMENT.md
 ```
 
-For complete deployment instructions, see **[DEPLOYMENT.md](DEPLOYMENT.md)**.
+For complete deployment instructions, see **[DEPLOYMENT.md](docs/DEPLOYMENT.md)**.
 
 ---
 
@@ -177,7 +177,7 @@ For complete deployment instructions, see **[DEPLOYMENT.md](DEPLOYMENT.md)**.
 - Bitwarden Teams: $400/month for 100 users
 - **PassVault: $1.83/month for 100 users** (99.8% savings)
 
-See **[COSTS.md](COSTS.md)** for detailed analysis.
+See **[COSTS.md](docs/COSTS.md)** for detailed analysis.
 
 ---
 
@@ -196,7 +196,7 @@ See **[COSTS.md](COSTS.md)** for detailed analysis.
 - **Honeypot traps:** Hidden form fields block naive form-filling bots
 - **Concurrency kill switch:** Fires after 3 consecutive minutes at throttle limit; auto-recovers in 4 hours
 
-See [BOTPROTECTION.md](BOTPROTECTION.md) for the full threat model and worst-case cost analysis.
+See [BOTPROTECTION.md](docs/BOTPROTECTION.md) for the full threat model and worst-case cost analysis.
 
 ### Recovery
 - Download complete encrypted backup with metadata
@@ -273,12 +273,12 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## 🔗 Links
 
-- **Specification:** [SPECIFICATION.md](SPECIFICATION.md)
-- **Deployment:** [DEPLOYMENT.md](DEPLOYMENT.md) | [cdk/DEPLOYMENT.md](cdk/DEPLOYMENT.md)
-- **Testing:** [TESTING.md](TESTING.md) | [backend/TESTING.md](backend/TESTING.md) | [frontend/TESTING.md](frontend/TESTING.md)
-- **Recovery:** [RECOVERY.md](RECOVERY.md)
-- **Costs:** [COSTS.md](COSTS.md)
-- **Bot Protection:** [BOTPROTECTION.md](BOTPROTECTION.md)
+- **Specification:** [SPECIFICATION.md](docs/SPECIFICATION.md)
+- **Deployment:** [DEPLOYMENT.md](docs/DEPLOYMENT.md) | [cdk/DEPLOYMENT.md](cdk/DEPLOYMENT.md)
+- **Testing:** [TESTING.md](docs/TESTING.md) | [backend/TESTING.md](backend/TESTING.md) | [frontend/TESTING.md](frontend/TESTING.md)
+- **Recovery:** [RECOVERY.md](docs/RECOVERY.md)
+- **Costs:** [COSTS.md](docs/COSTS.md)
+- **Bot Protection:** [BOTPROTECTION.md](docs/BOTPROTECTION.md)
 - **Issues:** GitHub Issues
 
 ---

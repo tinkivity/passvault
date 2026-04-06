@@ -1,5 +1,5 @@
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
-import { API_PATHS, POW_CONFIG, ERRORS } from '@passvault/shared';
+import { API_PATHS, POW_CONFIG, ERRORS, EMAIL_TEMPLATE_CONFIG } from '@passvault/shared';
 import { success, error } from '../utils/response.js';
 import { requireAdminActive } from '../middleware/auth.js';
 import { Router, pow, adminActive } from '../utils/router.js';
@@ -9,6 +9,7 @@ import {
   UpdateUserSchema,
   ReactivateUserSchema,
   EmailVaultSchema,
+  ImportTemplatesSchema,
 } from './admin-management.schemas.js';
 import { createUserInvitation, listUsers, refreshOtp, resetUser, deleteNewUser, lockUser, unlockUser, expireUser, retireUser, reactivateUser, updateUserProfile, getStats, listLoginEvents, adminEmailUserVault } from '../services/admin.js';
 import { downloadVault, listVaults } from '../services/vault.js';
@@ -16,6 +17,8 @@ import { parseBody } from '../utils/request.js';
 import type { AuditCategory, AuditAction, AuditConfig } from '@passvault/shared';
 import { recordAuditEvent } from '../utils/audit.js';
 import { getAuditConfig, updateAuditConfig, queryAuditEvents } from '../utils/audit.js';
+import { listTemplates, getTemplate, putTemplate, isValidTemplateType, isValidLanguage, exportTemplates, importTemplates } from '../utils/template-s3.js';
+import { clearTemplateCache } from '../utils/email-templates.js';
 
 const HIGH = POW_CONFIG.DIFFICULTY.HIGH;
 
@@ -38,6 +41,12 @@ router.get   (API_PATHS.ADMIN_LOGIN_EVENTS,      [pow(HIGH), adminActive()],    
 router.get   (API_PATHS.ADMIN_AUDIT_EVENTS,     [pow(HIGH), adminActive()],                                 handleGetAuditEvents);
 router.get   (API_PATHS.ADMIN_AUDIT_CONFIG,      [pow(HIGH), adminActive()],                                 handleGetAuditConfig);
 router.put   (API_PATHS.ADMIN_AUDIT_CONFIG,      [pow(HIGH), adminActive()],                                 handleUpdateAuditConfig);
+router.get   (API_PATHS.ADMIN_EMAIL_TEMPLATES,   [pow(HIGH), adminActive()],                                 handleListTemplates);
+router.get   (API_PATHS.ADMIN_EMAIL_TEMPLATES_EXPORT,  [pow(HIGH), adminActive()],                           handleExportTemplates);
+router.post  (API_PATHS.ADMIN_EMAIL_TEMPLATES_IMPORT,  [pow(HIGH), adminActive(), validate(ImportTemplatesSchema)], handleImportTemplates);
+router.get   (API_PATHS.ADMIN_EMAIL_TEMPLATES_VERSION, [pow(HIGH), adminActive()],                           handleGetVersion);
+router.get   (API_PATHS.ADMIN_EMAIL_TEMPLATE,    [pow(HIGH), adminActive()],                                 handleGetTemplate);
+router.put   (API_PATHS.ADMIN_EMAIL_TEMPLATE,    [pow(HIGH), adminActive()],                                 handlePutTemplate);
 
 export const handler = (event: APIGatewayProxyEvent) => router.dispatch(event);
 
@@ -237,4 +246,104 @@ async function handleUpdateAuditConfig(event: APIGatewayProxyEvent): Promise<API
   }).catch(err => console.error('Failed to record audit event:', err));
 
   return success(config);
+}
+
+// ── Email template management ────────────────────────────────────────────────
+
+async function handleListTemplates(): Promise<APIGatewayProxyResult> {
+  const templates = await listTemplates();
+  return success({ templates });
+}
+
+async function handleGetTemplate(_event: APIGatewayProxyEvent, params: Record<string, string>): Promise<APIGatewayProxyResult> {
+  const { type, language } = params;
+  if (!isValidTemplateType(type)) return error('Invalid template type', 400);
+  if (!isValidLanguage(language)) return error('Invalid language', 400);
+
+  const html = await getTemplate(type, language);
+  if (!html) return error('Template not found', 404);
+
+  return success({ html });
+}
+
+async function handlePutTemplate(event: APIGatewayProxyEvent, params: Record<string, string>): Promise<APIGatewayProxyResult> {
+  const { type, language } = params;
+  if (!isValidTemplateType(type)) return error('Invalid template type', 400);
+  if (!isValidLanguage(language)) return error('Invalid language', 400);
+
+  const parsed = parseBody(event);
+  if ('parseError' in parsed) return parsed.parseError;
+  const { html } = parsed.body as { html?: string };
+
+  if (!html || typeof html !== 'string' || html.trim().length === 0) {
+    return error('Template HTML is required', 400);
+  }
+  if (html.length > EMAIL_TEMPLATE_CONFIG.MAX_TEMPLATE_SIZE_BYTES) {
+    return error(`Template exceeds maximum size of ${EMAIL_TEMPLATE_CONFIG.MAX_TEMPLATE_SIZE_BYTES} bytes`, 400);
+  }
+
+  await putTemplate(type, language, html);
+  clearTemplateCache();
+
+  const { user: admin } = await requireAdminActive(event);
+  await recordAuditEvent({
+    category: 'admin_actions',
+    action: 'email_template_updated',
+    userId: admin!.userId,
+    performedBy: admin!.userId,
+    details: { type, language },
+  }).catch(err => console.error('Failed to record audit event:', err));
+
+  return success({ success: true });
+}
+
+async function handleExportTemplates(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  const modifiedOnly = (event.queryStringParameters?.modifiedOnly ?? 'true') !== 'false';
+
+  const result = await exportTemplates(modifiedOnly);
+
+  const { user: admin } = await requireAdminActive(event);
+  await recordAuditEvent({
+    category: 'admin_actions',
+    action: 'email_templates_exported',
+    userId: admin!.userId,
+    performedBy: admin!.userId,
+    details: { modifiedOnly: String(modifiedOnly) },
+  }).catch(err => console.error('Failed to record audit event:', err));
+
+  return success(result);
+}
+
+async function handleImportTemplates(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  const parsed = parseBody(event);
+  if ('parseError' in parsed) return parsed.parseError;
+  const { data } = parsed.body as { data: string };
+
+  const result = await importTemplates(data);
+
+  // If nothing was imported and there are errors, it's a bad request (invalid zip, etc.)
+  if (result.imported === 0 && result.errors.length > 0) {
+    return error(result.errors.join('; '), 400);
+  }
+
+  clearTemplateCache();
+
+  const { user: admin } = await requireAdminActive(event);
+  await recordAuditEvent({
+    category: 'admin_actions',
+    action: 'email_templates_imported',
+    userId: admin!.userId,
+    performedBy: admin!.userId,
+    details: {
+      imported: String(result.imported),
+      warnings: String(result.warnings.length),
+      errors: String(result.errors.length),
+    },
+  }).catch(err => console.error('Failed to record audit event:', err));
+
+  return success(result);
+}
+
+async function handleGetVersion(): Promise<APIGatewayProxyResult> {
+  return success({ version: EMAIL_TEMPLATE_CONFIG.TEMPLATE_VERSION });
 }

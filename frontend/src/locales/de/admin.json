@@ -72,6 +72,7 @@
   "dailyBackup": "T\u00e4gliches Backup",
   "weeklyBackup": "W\u00f6chentliches Backup",
   "monthlyBackup": "Monatliches Backup",
+  "quarterlyBackup": "Vierteljährliches Backup",
   "failedToLoadPrefs": "Benachrichtigungseinstellungen konnten nicht geladen werden",
   "failedToSavePrefs": "Einstellungen konnten nicht gespeichert werden",
   "auditCategories": "Audit-Kategorien",

@@ -1,4 +1,4 @@
-import type { UserRole, UserStatus, UserPlan } from './user.js';
+import type { UserRole, UserStatus, UserPlan, PreferredLanguage, NotificationPrefs } from './user.js';
 
 export interface CreateUserRequest {
   username: string;  // must be valid email address
@@ -7,6 +7,7 @@ export interface CreateUserRequest {
   displayName?: string;
   plan?: UserPlan;
   expiresAt?: string | null;  // ISO 8601 date; null = lifetime/perpetual
+  preferredLanguage?: PreferredLanguage;
 }
 
 export interface UpdateUserRequest {
@@ -16,6 +17,8 @@ export interface UpdateUserRequest {
   displayName?: string | null;
   plan?: UserPlan;
   expiresAt?: string | null;
+  preferredLanguage?: PreferredLanguage;
+  notificationPrefs?: NotificationPrefs | null;
 }
 
 export interface CreateUserResponse {
@@ -46,6 +49,9 @@ export interface UserSummary {
   lastName?: string | null;
   displayName?: string | null;
   expiresAt?: string | null;
+  preferredLanguage?: PreferredLanguage;
+  notificationPrefs?: NotificationPrefs | null;
+  lastBackupSentAt?: string | null;
 }
 
 export interface ListUsersResponse {

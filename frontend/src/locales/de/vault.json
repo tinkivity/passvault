@@ -105,5 +105,11 @@
   "categoryCreditCards": "Kreditkarten",
   "categoryIdentities": "Ausweise",
   "categoryWifiNetworks": "WLAN-Netzwerke",
-  "categoryPrivateKeys": "Private Schlüssel"
+  "categoryPrivateKeys": "Private Schlüssel",
+  "warning_duplicate_password": "Doppeltes Passwort",
+  "warning_duplicate_password_desc": "Dieses Passwort wird von einem anderen Eintrag in Ihrem Tresor verwendet.",
+  "warning_too_simple_password": "Passwort zu einfach",
+  "warning_too_simple_password_desc": "Dieses Passwort erfüllt nicht die Mindestsicherheitsanforderungen.",
+  "warning_breached_password": "Kompromittiertes Passwort",
+  "warning_breached_password_desc": "Dieses Passwort ist in einem bekannten Datenleck aufgetaucht."
 }

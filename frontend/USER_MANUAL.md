@@ -520,4 +520,36 @@ Click the **↺** button in the top-right of the page to reload the event list f
 
 ---
 
+### 3.7 Email Templates
+
+Navigate to **Email > Templates** in the sidebar to manage email templates.
+
+The template list shows all configured templates organized by type and language. Templates that have been customized from the system defaults display an **edited** badge next to their name.
+
+#### Viewing and Editing
+
+Click any template to view its HTML source. Click **Edit** to modify it, then **Save** to upload the changes. Use the **Preview** button to render the template with sample data before saving.
+
+#### Exporting Templates
+
+Click the **Export** button above the template list to download templates as a `.zip` file.
+
+- The **Modified only** checkbox (checked by default) includes only templates that differ from the system defaults. Uncheck it to export all templates.
+- The zip contains HTML files organized by language and type (`en/invitation.html`, `de/vault-backup.html`, etc.) along with a `_export.json` manifest.
+- Use exports to back up your customizations before a system upgrade, or to transfer templates between environments.
+
+#### Importing Templates
+
+Click the **Import** button above the template list and select a `.zip` file (in the same format as the export).
+
+After uploading, the system validates each template and shows a summary:
+
+- **Imported**: number of templates successfully updated
+- **Warnings**: informational issues that did not block the import (e.g. version mismatch between the zip and the current system, or unrecognized `{{placeholder}}` variables in a template)
+- **Errors**: files that were skipped (e.g. unrecognized template type or language)
+
+Review warnings carefully -- an unknown placeholder like `{{myCustomVar}}` will be replaced with an empty string at send time.
+
+---
+
 *End of User Manual*

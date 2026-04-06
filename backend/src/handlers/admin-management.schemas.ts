@@ -1,6 +1,10 @@
 import { z } from 'zod';
 
 const UserPlanSchema = z.enum(['free', 'pro', 'administrator']);
+const PreferredLanguageSchema = z.enum(['en', 'de', 'fr', 'ru', 'auto']);
+const NotificationPrefsSchema = z.object({
+  vaultBackup: z.enum(['weekly', 'monthly', 'quarterly', 'none']),
+});
 
 export const CreateUserSchema = z.object({
   username: z.string().email(),
@@ -9,6 +13,7 @@ export const CreateUserSchema = z.object({
   displayName: z.string().optional(),
   plan: UserPlanSchema.optional(),
   expiresAt: z.string().nullable().optional(),
+  preferredLanguage: PreferredLanguageSchema.optional(),
 });
 
 export const UpdateUserSchema = z.object({
@@ -17,6 +22,8 @@ export const UpdateUserSchema = z.object({
   displayName: z.string().nullable().optional(),
   plan: UserPlanSchema.optional(),
   expiresAt: z.string().nullable().optional(),
+  preferredLanguage: PreferredLanguageSchema.optional(),
+  notificationPrefs: NotificationPrefsSchema.nullable().optional(),
 });
 
 export const ReactivateUserSchema = z.object({
@@ -25,4 +32,8 @@ export const ReactivateUserSchema = z.object({
 
 export const EmailVaultSchema = z.object({
   vaultId: z.string().optional(),
+});
+
+export const ImportTemplatesSchema = z.object({
+  data: z.string().min(1),
 });

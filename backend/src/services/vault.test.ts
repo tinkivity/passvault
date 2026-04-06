@@ -28,6 +28,14 @@ vi.mock('../utils/audit.js', () => ({
   recordAuditEvent: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('../utils/email-templates.js', () => ({
+  renderEmail: vi.fn().mockResolvedValue({ html: '<p>html</p>', plainText: 'plain text' }),
+}));
+
+vi.mock('../utils/language.js', () => ({
+  resolveLanguage: vi.fn().mockReturnValue('en'),
+}));
+
 import { getVault, getVaultIndex, getVaultItems, putVault, downloadVault, sendVaultEmail, createVault, deleteVault } from './vault.js';
 import { getVaultIndexFile, getVaultItemsFile, putVaultSplitFiles } from '../utils/s3.js';
 import { getUserById, getVaultRecord, listVaultsByUser, createVaultRecord } from '../utils/dynamodb.js';
@@ -286,10 +294,11 @@ describe('sendVaultEmail', () => {
       expect.stringContaining('vault'),
       expect.any(String),
       expect.objectContaining({
-        filename: expect.stringMatching(/^passvault-alice@example\.com-\d{4}-\d{2}-\d{2}\.vault$/),
-        contentType: 'application/octet-stream',
+        filename: expect.stringMatching(/^passvault-alice@example\.com-\d{4}-\d{2}-\d{2}\.vault\.gz$/),
+        contentType: 'application/gzip',
         content: expect.any(String),
       }),
+      expect.any(String), // html body
     );
   });
 });

@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { NavLink, useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Vault, Plus, MoreHorizontal, Download, Upload, Mail, Pencil, Lock, LayoutDashboard, Users, ScrollText, UserPlus, Trash2 } from 'lucide-react';
+import { Vault, Plus, MoreHorizontal, Download, Upload, Mail, Pencil, Lock, LayoutDashboard, Users, ScrollText, UserPlus, Trash2, MailOpen } from 'lucide-react';
 import type { VaultDownloadResponse } from '@passvault/shared';
 import { ImportVaultDialog } from './ImportVaultDialog.js';
 import type { VaultSummary } from '@passvault/shared';
@@ -401,6 +401,12 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
                     <SidebarMenuButton render={<NavLink to={ROUTES.UI.ADMIN.AUDIT} />} tooltip={t('common:auditLog')}>
                       <ScrollText className="h-4 w-4 shrink-0" />
                       <span>{t('common:auditLog')}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton render={<NavLink to={ROUTES.UI.ADMIN.EMAIL_TEMPLATES} />} tooltip={t('common:emailTemplates')}>
+                      <MailOpen className="h-4 w-4 shrink-0" />
+                      <span>{t('common:emailTemplates')}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 </SidebarMenu>

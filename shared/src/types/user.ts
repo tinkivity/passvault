@@ -1,6 +1,6 @@
 export type UserRole = 'admin' | 'user';
 
-export type VaultBackupFrequency = 'weekly' | 'monthly';
+export type VaultBackupFrequency = 'weekly' | 'monthly' | 'quarterly';
 
 export interface NotificationPrefs {
   vaultBackup: VaultBackupFrequency | 'none';

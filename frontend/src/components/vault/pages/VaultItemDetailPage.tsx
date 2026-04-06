@@ -65,7 +65,7 @@ function DlRow({ label, children }: { label: string; children: React.ReactNode }
   return (
     <>
       <dt className="text-sm text-muted-foreground font-medium">{label}</dt>
-      <dd className="text-sm">{children}</dd>
+      <dd className="text-sm min-w-0">{children}</dd>
     </>
   );
 }
@@ -383,7 +383,7 @@ export function VaultItemDetailPage() {
   }
 
   return (
-    <div className="max-w-lg space-y-4">
+    <div className="max-w-3xl space-y-4">
       <div className="flex items-center gap-2">
         <Button variant="outline" size="sm" onClick={() => navigate(`/ui/${vaultId}/items`, { state: { vault } })}>
           {t('common:back')}

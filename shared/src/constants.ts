@@ -15,6 +15,7 @@ export const API_PATHS = {
   AUTH_EMAIL_CHANGE: '/api/auth/email-change',
   AUTH_VERIFY_EMAIL_CHANGE: '/api/auth/verify-email-change',
   AUTH_LOCK_SELF: '/api/auth/lock-self',
+  AUTH_UNSUBSCRIBE: '/api/auth/unsubscribe',
   AUTH_PASSKEYS: '/api/auth/passkeys',
   AUTH_PASSKEY_REVOKE: '/api/auth/passkeys/{credentialId}',
   ADMIN_LOGIN: '/api/admin/login',
@@ -40,6 +41,11 @@ export const API_PATHS = {
   ADMIN_LOGIN_EVENTS: '/api/admin/login-events',
   ADMIN_AUDIT_EVENTS: '/api/admin/audit-events',
   ADMIN_AUDIT_CONFIG: '/api/admin/audit-config',
+  ADMIN_EMAIL_TEMPLATES: '/api/admin/email-templates',
+  ADMIN_EMAIL_TEMPLATE: '/api/admin/email-templates/{type}/{language}',
+  ADMIN_EMAIL_TEMPLATES_EXPORT: '/api/admin/email-templates/export',
+  ADMIN_EMAIL_TEMPLATES_IMPORT: '/api/admin/email-templates/import',
+  ADMIN_EMAIL_TEMPLATES_VERSION: '/api/admin/email-templates/version',
   VAULTS: '/api/vaults',
   VAULT: '/api/vaults/{vaultId}',
   VAULT_INDEX: '/api/vaults/{vaultId}/index',
@@ -113,6 +119,34 @@ export const ERRORS = {
   EMAIL_CHANGE_TOKEN_INVALID: 'Invalid or expired email change token',
   EMAIL_CHANGE_LOCK_TOKEN_INVALID: 'Invalid or expired lock token',
   EMAIL_CHANGE_PENDING: 'An email change is already pending',
+} as const;
+
+// Email template configuration
+export const EMAIL_TEMPLATE_CONFIG = {
+  SUPPORTED_LANGUAGES: ['en', 'de', 'fr', 'ru'] as const,
+  DEFAULT_LANGUAGE: 'en',
+  TEMPLATE_VERSION: '1.0.0',
+  TEMPLATE_TYPES: [
+    'invitation', 'otp-refresh', 'account-reset',
+    'email-verification', 'email-change-verify', 'email-change-notify',
+    'vault-export', 'vault-backup',
+  ] as const,
+  CACHE_TTL_MS: 5 * 60 * 1000, // 5 minutes
+  MAX_TEMPLATE_SIZE_BYTES: 512_000, // 500 KB
+} as const;
+
+// Known template variables per type (for placeholder validation on import)
+export const COMMON_TEMPLATE_VARIABLES = ['appName', 'appUrl', 'logoUrl', 'recoveryGuideUrl', 'year'] as const;
+
+export const TEMPLATE_VARIABLES: Record<string, readonly string[]> = {
+  'invitation': ['userName', 'otpCode', 'otpExpiryMinutes', 'verifyUrl', 'linkExpiryDays'],
+  'otp-refresh': ['userName', 'otpCode', 'otpExpiryMinutes'],
+  'account-reset': ['userName', 'otpCode'],
+  'email-verification': ['verifyUrl', 'linkExpiryHours'],
+  'email-change-verify': ['verifyUrl', 'linkExpiryHours'],
+  'email-change-notify': ['newEmail', 'lockUrl', 'linkExpiryHours'],
+  'vault-export': ['userName', 'exportDate', 'filename'],
+  'vault-backup': ['userName', 'vaultName', 'backupDate', 'unsubscribeUrl', 'currentFrequency'],
 } as const;
 
 // Limits

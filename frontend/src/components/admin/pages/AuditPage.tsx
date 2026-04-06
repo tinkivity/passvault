@@ -19,7 +19,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from '@/components/ui/select';
 import { DateRangeFilter } from '../DateRangeFilter.js';
 import { DataTable } from '../DataTable.js';
@@ -479,7 +478,7 @@ export function AuditPage() {
                 onValueChange={v => setPageSize(Number(v))}
               >
                 <SelectTrigger className="h-8 w-[70px]">
-                  <SelectValue />
+                  <span>{pageSize}</span>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="25">25</SelectItem>
