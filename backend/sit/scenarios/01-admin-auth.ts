@@ -22,7 +22,7 @@ export function adminAuthScenarios(ctx: SitContext) {
     });
 
     it('changes password', async () => {
-      ctx.adminPassword = 'SitTest2025!Secure';
+      ctx.adminPassword = process.env.SIT_ADMIN_PASSWORD || `SitAuto${Date.now()}!Pw`;
 
       const res = await request<{ success: boolean; data: ChangePasswordResponse }>('POST', API_PATHS.AUTH_CHANGE_PASSWORD, {
         body: { newPassword: ctx.adminPassword },

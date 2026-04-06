@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>PassVault Performance Report</title>
+<style>
+  body { font-family: system-ui,-apple-system,sans-serif; background: #f5f5f7; margin: 0; padding: 2rem; color: #1d1d1f; }
+  h1 { font-size: 1.5rem; font-weight: 600; }
+  h2 { font-size: 1.15rem; font-weight: 600; margin-top: 2rem; }
+  .chart { max-width: 800px; margin: 1.5rem 0; }
+  table { border-collapse: collapse; width: 100%; max-width: 900px; margin: 1rem 0; font-size: 0.85rem; }
+  th, td { padding: 0.5rem 0.75rem; text-align: right; border-bottom: 1px solid #d2d2d7; }
+  th { text-align: right; font-weight: 600; background: #e8e8ed; }
+  td:first-child, th:first-child { text-align: left; }
+  .meta { font-size: 0.8rem; color: #86868b; margin-top: 2rem; }
+</style>
+</head>
+<body>
+<h1>PassVault Performance Report</h1>
+<p class="meta">Generated: 2026-04-06T15:41:05.856Z | Baselines v1.0.0</p>
+
+<h2>Endpoint Response Times</h2>
+<div class="chart"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400" font-family="system-ui,-apple-system,sans-serif">
+  <rect width="800" height="400" fill="#f5f5f7" rx="8"/>
+  <text x="400" y="24" text-anchor="middle" font-size="14" font-weight="600" fill="#1d1d1f">Endpoint Response Times (p95)</text>
+  <rect x="160" y="131.33333333333331" width="481.11304347826086" height="28" fill="#0071e3" rx="3"/><line x1="646.9565217391305" y1="129.33333333333331" x2="646.9565217391305" y2="161.33333333333331" stroke="#d2d2d7" stroke-width="2" stroke-dasharray="4,3"/><text x="152" y="149.33333333333331" text-anchor="end" font-size="12" fill="#1d1d1f">health</text><text x="647.1130434782608" y="149.33333333333331" font-size="11" fill="#0071e3">494ms</text><rect x="160" y="250.66666666666666" width="181.1478260869565" height="28" fill="#0071e3" rx="3"/><line x1="646.9565217391305" y1="248.66666666666666" x2="646.9565217391305" y2="280.66666666666663" stroke="#d2d2d7" stroke-width="2" stroke-dasharray="4,3"/><text x="152" y="268.66666666666663" text-anchor="end" font-size="12" fill="#1d1d1f">challenge</text><text x="347.1478260869565" y="268.66666666666663" font-size="11" fill="#0071e3">186ms</text>
+  <text x="720" y="392" text-anchor="end" font-size="10" fill="#86868b">Dashed line = baseline threshold</text>
+</svg></div>
+
+<h2>Response Time Distribution</h2>
+<div class="chart"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 160" font-family="system-ui,-apple-system,sans-serif">
+  <rect width="800" height="160" fill="#f5f5f7" rx="8"/>
+  <text x="400" y="24" text-anchor="middle" font-size="14" font-weight="600" fill="#1d1d1f">Response Time Distribution (Box Plot)</text>
+  <line x1="233.6474052263526" y1="65" x2="687.2727272727271" y2="65" stroke="#0071e3" stroke-width="1.5"/><rect x="324.3724696356275" y="55" width="362.9002576370996" height="20" fill="#0071e3" opacity="0.3" stroke="#0071e3" stroke-width="1.5" rx="2"/><line x1="687.2727272727271" y1="52" x2="687.2727272727271" y2="78" stroke="#ff3b30" stroke-width="1.5"/><line x1="233.6474052263526" y1="59" x2="233.6474052263526" y2="71" stroke="#0071e3" stroke-width="1.5"/><line x1="687.2727272727271" y1="59" x2="687.2727272727271" y2="71" stroke="#0071e3" stroke-width="1.5"/><text x="152" y="69" text-anchor="end" font-size="12" fill="#1d1d1f">health</text><line x1="287.0150901729849" y1="115" x2="358.5277880014722" y2="115" stroke="#0071e3" stroke-width="1.5"/><rect x="324.3724696356275" y="105" width="34.155318365844664" height="20" fill="#0071e3" opacity="0.3" stroke="#0071e3" stroke-width="1.5" rx="2"/><line x1="358.5277880014722" y1="102" x2="358.5277880014722" y2="128" stroke="#ff3b30" stroke-width="1.5"/><line x1="287.0150901729849" y1="109" x2="287.0150901729849" y2="121" stroke="#0071e3" stroke-width="1.5"/><line x1="358.5277880014722" y1="109" x2="358.5277880014722" y2="121" stroke="#0071e3" stroke-width="1.5"/><text x="152" y="119" text-anchor="end" font-size="12" fill="#1d1d1f">challenge</text>
+  <text x="740" y="152" text-anchor="end" font-size="10" fill="#86868b">Box: p50-p95 | Red tick: p99 | Whiskers: min-max</text>
+</svg></div>
+
+<h2>Detailed Results (ms)</h2>
+<table>
+<thead><tr><th>Endpoint</th><th>Min</th><th>p50</th><th>p95</th><th>p99</th><th>Max</th><th>Baseline</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td>health</td><td>69</td><td>154</td><td>494</td><td>494</td><td>494</td><td>500</td><td><span style="color:#34c759">PASS</span></td></tr>
+<tr><td>challenge</td><td>119</td><td>154</td><td>186</td><td>186</td><td>186</td><td>500</td><td><span style="color:#34c759">PASS</span></td></tr>
+</tbody>
+</table>
+
+
+
+</body>
+</html>

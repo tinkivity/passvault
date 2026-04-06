@@ -20,6 +20,18 @@ PassVault deploys to AWS using CDK. Three environments are supported: **dev**, *
 
 ---
 
+## Qualification Gate
+
+Before promoting changes to beta or prod, run the qualification pipeline against a fresh dev deployment:
+
+```bash
+./scripts/qualify.sh --profile <your-profile>
+```
+
+This automates: build, unit tests, CDK deploy, SIT, pentest, E2E browser tests, and performance benchmarks. See [QUALIFICATION.md](QUALIFICATION.md) for details.
+
+---
+
 ## Quick Start (Dev)
 
 ```bash
