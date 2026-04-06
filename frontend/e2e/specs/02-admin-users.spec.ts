@@ -102,8 +102,8 @@ test.describe.serial('Admin — User Management', () => {
       // Save
       await adminPage.getByRole('button', { name: /Save/i }).click();
 
-      // Should not show an error
-      await expect(adminPage.locator('.text-destructive')).not.toBeVisible({ timeout: 5000 });
+      // Should not show an error alert
+      await expect(adminPage.locator('[role="alert"]')).not.toBeVisible({ timeout: 5000 });
     }
   });
 
