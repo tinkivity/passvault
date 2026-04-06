@@ -261,7 +261,7 @@ Stored in `backend/perf/baselines.json`. Tests fail if p95 exceeds the threshold
 | challenge | 500ms | Lightweight crypto nonce |
 | auth_login | 3500ms | bcrypt 12 rounds (pure JS) on Lambda — intentionally slow |
 | vault_list | 800ms | DynamoDB query |
-| vault_get_index | 800ms | DynamoDB + S3 |
+| vault_get_index | 1200ms | DynamoDB + S3 (includes cold start) |
 | vault_put | 1500ms | DynamoDB + S3 write |
 | admin_users | 2000ms | DynamoDB scan |
 | admin_stats | 2000ms | Aggregation across tables |

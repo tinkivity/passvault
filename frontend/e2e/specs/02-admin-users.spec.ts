@@ -52,11 +52,14 @@ test.describe.serial('Admin — User Management', () => {
       adminPage.getByRole('heading', { name: /One-Time Password/i }),
     ).toBeVisible({ timeout: 15000 });
 
-    // Copy OTP (enables Done button), then close the dialog
-    const copyBtn = adminPage.locator('button[aria-label*="opy"], button:has(svg)').filter({ has: adminPage.locator('svg') }).first();
-    await copyBtn.click({ timeout: 5000 }).catch(() => {});
-    // Close dialog — force click in case Done is still disabled
-    await adminPage.getByRole('button', { name: /Done|Close|OK/i }).click({ force: true, timeout: 5000 });
+    // Grant clipboard permissions so the copy button works in headless Chromium
+    await adminPage.context().grantPermissions(['clipboard-write', 'clipboard-read']);
+
+    // Click the copy button (enables the Done button)
+    await adminPage.getByRole('button', { name: /copy/i }).click({ timeout: 5000 });
+
+    // Close dialog via Done
+    await adminPage.getByRole('button', { name: /Done/i }).click({ timeout: 5000 });
   });
 
   test('view user detail — info displayed', async ({ adminPage }) => {

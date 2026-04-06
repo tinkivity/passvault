@@ -5,7 +5,7 @@
     "challenge": { "p95": 500 },
     "auth_login": { "p95": 3500 },
     "vault_list": { "p95": 800 },
-    "vault_get_index": { "p95": 800 },
+    "vault_get_index": { "p95": 1200 },
     "vault_put": { "p95": 1500 },
     "admin_users": { "p95": 2000 },
     "admin_stats": { "p95": 2000 },
