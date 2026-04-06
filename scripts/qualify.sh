@@ -194,7 +194,7 @@ if [[ "$CLEANUP" == "true" ]]; then
 
   # CDK destroy
   section "CDK destroy"
-  (cd "$REPO_ROOT/cdk" && npx cdk destroy "$STACK" --context env=dev --force \
+  (cd "$REPO_ROOT/cdk" && npx cdk destroy "$STACK" --context env=dev --context adminEmail=qualify@passvault-test.local --force \
     ${PROFILE:+--profile "$PROFILE"}) || echo "  Warning: CDK destroy failed."
 
   # Post-destroy
@@ -371,7 +371,7 @@ else
   set_step DURATION deploy "$(( SECONDS - STEP_START ))"
   echo "  Deploy failed — attempting destroy + cleanup."
 
-  (cd "$REPO_ROOT/cdk" && npx cdk destroy "$STACK" --context env=dev --force \
+  (cd "$REPO_ROOT/cdk" && npx cdk destroy "$STACK" --context env=dev --context adminEmail=qualify@passvault-test.local --force \
     ${PROFILE:+--profile "$PROFILE"}) 2>/dev/null || true
   "$REPO_ROOT/scripts/post-destroy.sh" --env dev \
     ${PROFILE:+--profile "$PROFILE"} --region "$REGION" 2>/dev/null || true
@@ -605,7 +605,7 @@ if [[ "$ANY_FAIL" == "false" ]]; then
   fi
 
   # CDK destroy
-  (cd "$REPO_ROOT/cdk" && npx cdk destroy "$STACK" --context env=dev --force \
+  (cd "$REPO_ROOT/cdk" && npx cdk destroy "$STACK" --context env=dev --context adminEmail=qualify@passvault-test.local --force \
     ${PROFILE:+--profile "$PROFILE"}) || echo "  Warning: CDK destroy failed."
 
   # Post-destroy
