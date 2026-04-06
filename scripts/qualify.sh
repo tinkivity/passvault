@@ -143,6 +143,8 @@ if [[ "$CLEANUP" == "true" ]]; then
 
   SIT_STATE=$(jq -r '.sitStateFile // empty' "$CLEANUP_FILE")
   PENTEST_STATE=$(jq -r '.pentestStateFile // empty' "$CLEANUP_FILE")
+  E2E_STATE=$(jq -r '.e2eStateFile // empty' "$CLEANUP_FILE")
+  PERF_STATE=$(jq -r '.perfStateFile // empty' "$CLEANUP_FILE")
 
   echo ""
   echo "PassVault Dev Qualification — Cleanup"
@@ -176,6 +178,20 @@ if [[ "$CLEANUP" == "true" ]]; then
       ${PROFILE:+--profile "$PROFILE"} --region "$REGION" || echo "  Warning: Pentest cleanup failed."
   fi
 
+  # E2E cleanup
+  if [[ -n "$E2E_STATE" && -f "$REPO_ROOT/$E2E_STATE" ]]; then
+    section "E2E cleanup"
+    "$REPO_ROOT/scripts/e2etest.sh" --cleanup "$REPO_ROOT/$E2E_STATE" --env dev \
+      ${PROFILE:+--profile "$PROFILE"} --region "$REGION" || echo "  Warning: E2E cleanup failed."
+  fi
+
+  # Perf cleanup
+  if [[ -n "$PERF_STATE" && -f "$REPO_ROOT/$PERF_STATE" ]]; then
+    section "Perf cleanup"
+    "$REPO_ROOT/scripts/perftest.sh" --cleanup "$REPO_ROOT/$PERF_STATE" --env dev \
+      ${PROFILE:+--profile "$PROFILE"} --region "$REGION" || echo "  Warning: Perf cleanup failed."
+  fi
+
   # CDK destroy
   section "CDK destroy"
   (cd "$REPO_ROOT/cdk" && npx cdk destroy "$STACK" --context env=dev --force \
@@ -190,6 +206,8 @@ if [[ "$CLEANUP" == "true" ]]; then
   rm -f "$CLEANUP_FILE"
   [[ -n "$SIT_STATE" ]] && rm -f "$REPO_ROOT/$SIT_STATE"
   [[ -n "$PENTEST_STATE" ]] && rm -f "$REPO_ROOT/$PENTEST_STATE"
+  [[ -n "$E2E_STATE" ]] && rm -f "$REPO_ROOT/$E2E_STATE"
+  [[ -n "$PERF_STATE" ]] && rm -f "$REPO_ROOT/$PERF_STATE"
   echo ""
   echo "  State files removed. Cleanup complete."
   echo ""
@@ -221,6 +239,8 @@ set_step() { eval "STEP_${1}_${2}=\"${3}\""; }
 API_URL=""
 SIT_STATE_FILE=""
 PENTEST_STATE_FILE=""
+E2E_STATE_FILE=""
+PERF_STATE_FILE=""
 
 # ── Step 0: Preflight ────────────────────────────────────────────────────────
 section "Step 0 — Preflight"
@@ -396,6 +416,8 @@ write_state() {
   },
   "sitStateFile": "$SIT_STATE_FILE",
   "pentestStateFile": "$PENTEST_STATE_FILE",
+  "e2eStateFile": "$E2E_STATE_FILE",
+  "perfStateFile": "$PERF_STATE_FILE",
   "result": "$result",
   "completedAt": "$completed"
 }
@@ -410,11 +432,6 @@ write_state "running"
 SUB_ARGS=""
 [[ -n "$PROFILE" ]] && SUB_ARGS="$SUB_ARGS --profile $PROFILE"
 SUB_ARGS="$SUB_ARGS --region $REGION"
-
-# Generate a random password for SIT admin (passed to SIT and perf via env var).
-# This avoids hardcoding credentials — the password is ephemeral and never stored.
-SIT_ADMIN_PASSWORD="Qual$(openssl rand -hex 12)!Pw"
-export SIT_ADMIN_PASSWORD
 
 # Step 4: SIT
 section "Step 4 — System Integration Tests"
@@ -464,10 +481,9 @@ fi
 
 echo "  Pentest: $(get_step STATUS pentest) ($(fmt_duration $(get_step DURATION pentest)))"
 
-# Step 6: E2E
+# Step 6: E2E (delegates to e2etest.sh which handles admin setup, build, preview, and cleanup)
 section "Step 6 — E2E Tests"
 STEP_START=$SECONDS
-VITE_PID=""
 
 if [[ ! -f "$REPO_ROOT/frontend/playwright.config.ts" && ! -f "$REPO_ROOT/frontend/playwright.config.js" ]]; then
   echo "  Warning: No Playwright config found — skipping E2E tests."
@@ -478,52 +494,27 @@ elif ! (cd "$REPO_ROOT/frontend" && npx playwright --version &>/dev/null); then
   set_step STATUS e2e "skip"
   set_step EXIT e2e "0"
 else
-  # Start Vite dev server in background (frontend needs a local server in dev)
-  echo "  Writing frontend/.env.local for dev..."
-  cat > "$REPO_ROOT/frontend/.env.local" <<ENVEOF
-VITE_ENVIRONMENT=dev
-VITE_API_BASE_URL=$API_URL
-ENVEOF
-
-  echo "  Starting Vite dev server..."
-  (cd "$REPO_ROOT/frontend" && npx vite --port 5173 &>/dev/null) &
-  VITE_PID=$!
-
-  # Wait for Vite to be ready
-  for i in $(seq 1 30); do
-    if curl -s http://localhost:5173 &>/dev/null; then
-      echo "  Vite dev server ready at http://localhost:5173"
-      break
-    fi
-    sleep 1
-  done
-
-  if ! curl -s http://localhost:5173 &>/dev/null; then
-    echo "  Warning: Vite dev server failed to start — skipping E2E tests."
-    kill "$VITE_PID" 2>/dev/null || true
-    VITE_PID=""
-    set_step STATUS e2e "skip"
+  if "$REPO_ROOT/scripts/e2etest.sh" --env dev --keep --base-url "$API_URL" $SUB_ARGS; then
+    set_step STATUS e2e "pass"
     set_step EXIT e2e "0"
   else
-    if (cd "$REPO_ROOT/frontend" && E2E_BASE_URL="http://localhost:5173" npx playwright test); then
-      set_step STATUS e2e "pass"
-      set_step EXIT e2e "0"
-    else
-      set_step STATUS e2e "fail"
-      set_step EXIT e2e "$?"
-    fi
+    set_step STATUS e2e "fail"
+    set_step EXIT e2e "$?"
+  fi
 
-    # Stop Vite
-    kill "$VITE_PID" 2>/dev/null || true
-    VITE_PID=""
-    rm -f "$REPO_ROOT/frontend/.env.local"
+  # Discover E2E state file
+  shopt -s nullglob
+  E2E_FILES=( "$REPO_ROOT"/.e2e-state-dev-*.json )
+  shopt -u nullglob
+  if [[ ${#E2E_FILES[@]} -gt 0 ]]; then
+    E2E_STATE_FILE="$(basename "${E2E_FILES[${#E2E_FILES[@]}-1]}")"
   fi
 fi
 
 set_step DURATION e2e "$(( SECONDS - STEP_START ))"
 echo "  E2E: $(get_step STATUS e2e) ($(fmt_duration $(get_step DURATION e2e)))"
 
-# Step 7: Perf
+# Step 7: Perf (delegates to perftest.sh which handles admin/user setup, scenarios, and cleanup)
 section "Step 7 — Performance Tests"
 STEP_START=$SECONDS
 
@@ -532,12 +523,20 @@ if [[ ! -f "$REPO_ROOT/backend/perf/vitest.config.ts" ]]; then
   set_step STATUS perf "skip"
   set_step EXIT perf "0"
 else
-  if (cd "$REPO_ROOT/backend" && SIT_BASE_URL="$API_URL" SIT_ENV=dev SIT_ADMIN_PASSWORD="$SIT_ADMIN_PASSWORD" npx vitest run --config perf/vitest.config.ts); then
+  if "$REPO_ROOT/scripts/perftest.sh" --env dev --keep --base-url "$API_URL" $SUB_ARGS; then
     set_step STATUS perf "pass"
     set_step EXIT perf "0"
   else
     set_step STATUS perf "fail"
     set_step EXIT perf "$?"
+  fi
+
+  # Discover perf state file
+  shopt -s nullglob
+  PERF_FILES=( "$REPO_ROOT"/.perf-state-dev-*.json )
+  shopt -u nullglob
+  if [[ ${#PERF_FILES[@]} -gt 0 ]]; then
+    PERF_STATE_FILE="$(basename "${PERF_FILES[${#PERF_FILES[@]}-1]}")"
   fi
 fi
 
@@ -593,6 +592,18 @@ if [[ "$ANY_FAIL" == "false" ]]; then
       ${PROFILE:+--profile "$PROFILE"} --region "$REGION" || echo "  Warning: Pentest cleanup failed."
   fi
 
+  # E2E cleanup
+  if [[ -n "$E2E_STATE_FILE" && -f "$REPO_ROOT/$E2E_STATE_FILE" ]]; then
+    "$REPO_ROOT/scripts/e2etest.sh" --cleanup "$REPO_ROOT/$E2E_STATE_FILE" --env dev \
+      ${PROFILE:+--profile "$PROFILE"} --region "$REGION" || echo "  Warning: E2E cleanup failed."
+  fi
+
+  # Perf cleanup
+  if [[ -n "$PERF_STATE_FILE" && -f "$REPO_ROOT/$PERF_STATE_FILE" ]]; then
+    "$REPO_ROOT/scripts/perftest.sh" --cleanup "$REPO_ROOT/$PERF_STATE_FILE" --env dev \
+      ${PROFILE:+--profile "$PROFILE"} --region "$REGION" || echo "  Warning: Perf cleanup failed."
+  fi
+
   # CDK destroy
   (cd "$REPO_ROOT/cdk" && npx cdk destroy "$STACK" --context env=dev --force \
     ${PROFILE:+--profile "$PROFILE"}) || echo "  Warning: CDK destroy failed."
@@ -605,6 +616,8 @@ if [[ "$ANY_FAIL" == "false" ]]; then
   rm -f "$STATE_FILE"
   [[ -n "$SIT_STATE_FILE" ]] && rm -f "$REPO_ROOT/$SIT_STATE_FILE"
   [[ -n "$PENTEST_STATE_FILE" ]] && rm -f "$REPO_ROOT/$PENTEST_STATE_FILE"
+  [[ -n "$E2E_STATE_FILE" ]] && rm -f "$REPO_ROOT/$E2E_STATE_FILE"
+  [[ -n "$PERF_STATE_FILE" ]] && rm -f "$REPO_ROOT/$PERF_STATE_FILE"
 
   echo ""
   echo -e "${BOLD}═══════════════════════════════════════════════${RESET}"
@@ -646,6 +659,8 @@ else
   echo "  State: $REL_STATE"
   [[ -n "$SIT_STATE_FILE" ]] && echo "  SIT state: $SIT_STATE_FILE"
   [[ -n "$PENTEST_STATE_FILE" ]] && echo "  Pentest state: $PENTEST_STATE_FILE"
+  [[ -n "$E2E_STATE_FILE" ]] && echo "  E2E state: $E2E_STATE_FILE"
+  [[ -n "$PERF_STATE_FILE" ]] && echo "  Perf state: $PERF_STATE_FILE"
   echo ""
   echo "  To clean up after fixing:"
   echo "    ./scripts/qualify.sh --cleanup"

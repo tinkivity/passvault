@@ -31,6 +31,7 @@ The qualification pipeline is an automated full-stack verification for the dev e
 |----------|----------|---------|-------------|
 | `--profile <name>` | No | (none) | AWS named profile for all AWS operations |
 | `--region <region>` | No | `eu-central-1` | AWS region |
+| `--resume` | No | (none) | Skip build/test/deploy; run SIT/pentest/E2E/perf against existing stack |
 | `--cleanup [file]` | No | (none) | Cleanup-only mode (see below) |
 | `-h, --help` | No | | Show usage |
 
@@ -98,27 +99,26 @@ Uses `scripts/pentest.sh --env dev --keep` internally.
 
 ### Step 6: E2E (Browser Tests)
 
-Runs Playwright browser tests in headless Chromium:
-- Login/logout flows
-- Admin user management
-- Email template preview/upload
-- Vault unlock and item CRUD
-- Notification preferences
-- Language switching
+Uses `scripts/e2etest.sh --env dev --keep --base-url <api-url>` internally. The script handles the full lifecycle:
+- Creates a temporary admin user and onboards it (OTP login + password change)
+- Builds the frontend and starts a local `vite preview` server
+- Runs Playwright browser tests (auth, admin users, templates, language switching)
+- Writes a state file (`.e2e-state-dev-*.json`) for later cleanup
 
-**On failure:** Continues to next step. Stack preserved for debugging.
+**On failure:** Continues to next step. Stack and E2E state preserved for debugging.
 **If Playwright not installed:** Skips with warning.
 
 ### Step 7: Performance Tests
 
-Runs API performance benchmarks:
-- Per-endpoint response time (p50/p95/p99) vs. baselines
-- Concurrent user simulation (5 parallel users)
-- Payload size scaling (1KB to 1MB vaults)
+Uses `scripts/perftest.sh --env dev --keep --base-url <api-url>` internally. The script handles the full lifecycle:
+- Creates a temporary admin user + test user
+- Onboards both users and creates a vault with seed data
+- Runs response time benchmarks (10 endpoints), concurrent access (5 streams), payload scaling (1KB–1MB)
+- Writes a state file (`.perf-state-dev-*.json`) for later cleanup
 
-Generates 3 report formats: terminal ASCII chart, HTML report, markdown+SVG.
+Generates 3 report formats: terminal ASCII chart, self-contained HTML (`backend/perf/perf-report.html`), markdown+SVG (`docs/perf/report.md`).
 
-**On failure:** Continues to evaluation. Stack preserved for debugging.
+**On failure:** Continues to evaluation. Stack and perf state preserved for debugging.
 **If perf config not found:** Skips with warning.
 
 ### Step 8: Evaluate
@@ -164,9 +164,10 @@ Checks all step results:
 ─────────────────────────────────────────────
   Stack PassVault-Dev left deployed for debugging.
   State: .qualify-state-dev-20260406-120000.json
-
-  E2E report: frontend/e2e-report/index.html
-  Perf report: backend/perf/perf-report.html
+  SIT state: .sit-state-dev-bold-hawk.json
+  Pentest state: .pentest-state-dev-a1b2c3d4.json
+  E2E state: .e2e-state-dev-swift-raven.json
+  Perf state: .perf-state-dev-rapid-tiger.json
 
   To clean up after fixing:
     ./scripts/qualify.sh --cleanup
@@ -220,17 +221,19 @@ After fixing issues and verifying locally:
 Cleanup performs:
 1. SIT test data cleanup (removes test users, vaults, events)
 2. Pentest test data cleanup
-3. `cdk destroy PassVault-Dev`
-4. Post-destroy cleanup (retained DynamoDB tables, S3 buckets, log groups)
-5. Removes all state files
+3. E2E test data cleanup (removes E2E admin user and created users)
+4. Perf test data cleanup (removes perf admin, test user, vaults, events)
+5. `cdk destroy PassVault-Dev`
+6. Post-destroy cleanup (retained DynamoDB tables, S3 buckets, log groups)
+7. Removes all state files (qualify, SIT, pentest, E2E, perf)
 
 ## State File
 
 The qualification creates `.qualify-state-dev-{timestamp}.json` in the repo root. This file tracks:
 - Which steps passed/failed and their durations
-- Paths to SIT and pentest state files (for cleanup)
+- Paths to sub-script state files: `sitStateFile`, `pentestStateFile`, `e2eStateFile`, `perfStateFile`
 - API URL, stack name, region, profile
-- Report file paths
+- Overall result (`PASS` / `FAIL` / `running`)
 
 The state file is gitignored and deleted automatically on successful cleanup.
 
