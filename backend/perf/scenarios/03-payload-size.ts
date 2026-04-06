@@ -41,15 +41,18 @@ export function payloadScenarios(ctx: PerfContext) {
       const baselineMs = baselines.payload[spec.baselineKey];
 
       it(`${spec.name} ${spec.roundTrip ? 'round-trip' : 'PUT'} <= ${baselineMs}ms`, async () => {
-        const payload = generatePayload(spec.sizeBytes);
         const vaultPath = API_PATHS.VAULT.replace('{vaultId}', ctx.vaultId);
+
+        // Split payload across both fields so total body ≈ sizeBytes
+        // (vault service enforces encryptedIndex + encryptedItems <= 1MB)
+        const halfPayload = generatePayload(Math.floor(spec.sizeBytes / 2));
 
         const result = await benchmark(
           spec.roundTrip ? `${spec.name}_roundtrip` : `${spec.name}_put`,
           async () => {
             // PUT the payload
             const putRes = await request('PUT', vaultPath, {
-              body: { encryptedIndex: payload, encryptedItems: payload },
+              body: { encryptedIndex: halfPayload, encryptedItems: halfPayload },
               token: ctx.testUserToken,
               powDifficulty: pow(HIGH),
             });
@@ -79,7 +82,8 @@ export function payloadScenarios(ctx: PerfContext) {
     }
 
     it('1.1MB PUT is rejected with 400', async () => {
-      const oversizedPayload = generatePayload(1.1 * 1_024 * 1_024);
+      // Total of encryptedIndex + encryptedItems must exceed LIMITS.MAX_FILE_SIZE_BYTES (1MB)
+      const oversizedPayload = generatePayload(600 * 1_024); // 600KB per field = 1.2MB total
       const vaultPath = API_PATHS.VAULT.replace('{vaultId}', ctx.vaultId);
 
       const res = await request('PUT', vaultPath, {

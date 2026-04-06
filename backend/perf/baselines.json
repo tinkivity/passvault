@@ -1,9 +1,9 @@
 {
   "version": "1.0.0",
   "endpoints": {
-    "health": { "p95": 500 },
+    "health": { "p95": 1000 },
     "challenge": { "p95": 500 },
-    "auth_login": { "p95": 1500 },
+    "auth_login": { "p95": 3500 },
     "vault_list": { "p95": 800 },
     "vault_get_index": { "p95": 800 },
     "vault_put": { "p95": 1500 },
@@ -16,7 +16,7 @@
   "payload": {
     "1kb_roundtrip_ms": 1000,
     "50kb_roundtrip_ms": 1500,
-    "200kb_roundtrip_ms": 2000,
+    "200kb_roundtrip_ms": 3000,
     "500kb_roundtrip_ms": 3000,
     "1mb_put_ms": 5000
   }

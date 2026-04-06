@@ -123,43 +123,91 @@ See [backend/pentest/REPORT.md](backend/pentest/REPORT.md) for the findings temp
 
 ## E2E Browser Tests (Playwright)
 
-Playwright tests verify user-facing flows in a headless Chromium browser against a deployed dev stack.
+Playwright tests verify user-facing flows in a headless Chromium browser against a deployed dev or beta stack. The `e2etest.sh` script handles the full lifecycle: creates a temporary admin user, onboards it (OTP login + password change), builds the frontend, starts a local preview server, runs the tests, and cleans up on exit.
+
+### Running E2E tests
 
 ```bash
-# Run all E2E tests
-cd frontend && E2E_BASE_URL=https://<api-url> npx playwright test
+# Recommended: use the wrapper script (handles admin setup + cleanup)
+./scripts/e2etest.sh --env dev --profile AndreasDevAccess
 
-# Run with UI mode (interactive debugging)
-cd frontend && E2E_BASE_URL=https://<api-url> npx playwright test --ui
+# Keep test user for debugging failures
+./scripts/e2etest.sh --env dev --profile AndreasDevAccess --keep
 
-# View the last HTML report
-cd frontend && npx playwright show-report e2e-report
+# Clean up after a --keep run
+./scripts/e2etest.sh --cleanup --env dev --profile AndreasDevAccess
+
+# Interactive debugging with Playwright UI
+./scripts/e2etest.sh --env dev --profile AndreasDevAccess --ui
+
+# Headed mode (visible browser)
+./scripts/e2etest.sh --env dev --profile AndreasDevAccess --headed
 ```
 
-**Environment variables:**
-- `E2E_BASE_URL` — API Gateway URL (set automatically by `qualify.sh`)
-- `E2E_ADMIN_EMAIL` — Admin email (from SIT setup)
-- `E2E_ADMIN_PASSWORD` — Admin password (from SIT setup)
+### How authentication works in E2E
 
-### E2E Specs
+The auth fixture (`frontend/e2e/fixtures/auth.fixture.ts`) authenticates via **direct API call** and injects the session into `sessionStorage`, bypassing browser form submission. This avoids race conditions with `vite preview` where native form POST can fire before React attaches event handlers.
 
-| Spec | Tests | What it covers |
-|------|-------|---------------|
-| 01-auth | 6 | Login, invalid creds, logout, route guards |
-| 02-admin-users | 6 | Dashboard, create/edit/lock/delete users |
-| 03-admin-templates | 5 | Template cards, preview, download, upload, edited badge |
-| 04-vault-unlock | 3 | Password entry, wrong password, successful unlock |
-| 05-vault-items | 3 | Create/search/delete items |
-| 06-notifications | 3 | Backup frequency dialog, quarterly option |
-| 07-language | 2 | Switch to German, switch back to English |
+**Environment variables** (set automatically by `e2etest.sh`):
+
+| Variable | Description |
+|----------|-------------|
+| `E2E_BASE_URL` | Frontend URL (`http://localhost:5173`) |
+| `E2E_API_BASE_URL` | API Gateway URL (used by the auth fixture for direct API login) |
+| `E2E_ADMIN_EMAIL` | E2E admin email (auto-generated) |
+| `E2E_ADMIN_PASSWORD` | E2E admin password (auto-generated) |
+
+### E2E specs
+
+| Spec | Tests | Status | What it covers |
+|------|-------|--------|---------------|
+| 01-auth | 6 | Active | Login (API-based), logout (header icon), invalid creds, route guards |
+| 02-admin-users | 6 | Active | Dashboard, users table, create user + OTP dialog, view/edit/delete user |
+| 03-admin-templates | 5 | Active | Template cards, language tabs, preview, download, upload + edited badge |
+| 04-vault-unlock | 3 | Fixme | Password entry, wrong password, successful unlock (needs vault fixture) |
+| 05-vault-items | 3 | Fixme | Create/search/delete items (needs vault fixture) |
+| 06-notifications | 3 | Fixme | Notification prefs (only available for `role=user`, not admin) |
+| 07-language | 2 | Active | Switch to German via globe icon, switch back to English |
+
+**Current results:** 19 passed, 9 skipped (fixme), 0 failed.
+
+### Example output
+
+```
+Running 28 tests using 1 worker
+
+  ✓   1 01-auth.spec.ts › shows login page by default (315ms)
+  ✓   2 01-auth.spec.ts › error on invalid credentials (933ms)
+  ✓   3 01-auth.spec.ts › login with valid admin credentials (3.4s)
+  ✓   4 01-auth.spec.ts › logout redirects to login (3.3s)
+  ✓   5 01-auth.spec.ts › unauthenticated /ui redirects to login (295ms)
+  ✓   6 01-auth.spec.ts › unauthenticated /ui/admin redirects to login (277ms)
+  ✓   7 02-admin-users.spec.ts › navigate to dashboard (3.4s)
+  ✓   8 02-admin-users.spec.ts › navigate to users — table visible (3.3s)
+  ✓   9 02-admin-users.spec.ts › create user — OTP dialog appears (25.6s)
+  ✓  10 02-admin-users.spec.ts › view user detail (4.9s)
+  ✓  11 02-admin-users.spec.ts › edit user — save succeeds (4.6s)
+  ✓  12 02-admin-users.spec.ts › delete user — removed (8.0s)
+  ✓  13 03-admin-templates.spec.ts › navigate to email templates (3.3s)
+  ...
+  ✓  27 07-language.spec.ts › switch to German (5.0s)
+  ✓  28 07-language.spec.ts › switch back to English (4.4s)
+
+  9 skipped
+  19 passed (1.6m)
+```
 
 ### What's NOT tested via E2E
-- **Passkeys**: WebAuthn requires hardware/platform authenticator — not automatable
+
+- **Passkeys**: WebAuthn requires hardware/platform authenticator — not automatable in headless Chromium
+- **Vault operations**: Need vault fixture with encryption keys (04-vault-unlock, 05-vault-items are fixme)
+- **Notifications**: Only available for `role=user`; current fixture creates admin users
 - **Email delivery**: SES is AWS-internal
 - **CloudFront**: Dev doesn't use CloudFront
 - **Kill switch / digest**: EventBridge-triggered, not browser-triggerable
 
 ### Debugging E2E failures
+
 - **Screenshots**: Captured on failure in `frontend/e2e-results/`
 - **Video**: Retained on failure in `frontend/e2e-results/`
 - **Traces**: View with `npx playwright show-trace frontend/e2e-results/<test>/trace.zip`
@@ -169,62 +217,113 @@ cd frontend && npx playwright show-report e2e-report
 
 ## Performance Tests
 
-Performance tests measure API response times, concurrent user handling, and payload scaling against checked-in baselines.
+Performance tests measure API response times, concurrent user handling, and payload scaling against checked-in baselines. Each endpoint is called 10 times (5 for large payloads) and the p95 is compared against the baseline threshold.
 
-`scripts/perftest.sh` automates the full workflow: creates a temporary admin, onboards it (OTP login + password change), runs perf scenarios, and cleans up on exit.
+`scripts/perftest.sh` automates the full workflow: creates a temporary admin + test user, onboards both, creates a vault with seed data, runs perf scenarios, and cleans up on exit.
+
+### Running perf tests
 
 ```bash
 # Run against dev (recommended)
-scripts/perftest.sh --env dev
+./scripts/perftest.sh --env dev --profile AndreasDevAccess
 
 # Run against beta
-scripts/perftest.sh --env beta
+./scripts/perftest.sh --env beta --profile AndreasDevAccess
 
 # Keep test data after run (for manual inspection)
-scripts/perftest.sh --env dev --keep
+./scripts/perftest.sh --env dev --profile AndreasDevAccess --keep
 
 # Clean up a previous --keep run
-scripts/perftest.sh --cleanup --env dev
+./scripts/perftest.sh --cleanup --env dev --profile AndreasDevAccess
 
-# Manual run (without the wrapper script)
-cd backend && SIT_BASE_URL=https://<api-url> SIT_ENV=dev SIT_ADMIN_EMAIL=... SIT_ADMIN_OTP=... SIT_ADMIN_PASSWORD=... npx vitest run --config perf/vitest.config.ts
-
-# View results
+# View the HTML report with charts
 open backend/perf/perf-report.html
 ```
 
-**Cannot run on prod.** The script creates a temporary admin account, onboards it, runs 19 perf tests, and cleans up all artifacts (users, vaults, S3 files, login events, audit events) on exit. Use `--keep` to preserve test data for inspection, then `--cleanup` to remove it later.
+**Cannot run on prod.** Creates temporary users, runs 22 tests (4 setup + 10 response time + 1 concurrent + 7 payload), and cleans up all artifacts on exit.
 
-### Performance Scenarios
+### Performance scenarios
 
 | Scenario | Tests | What it measures |
 |----------|-------|-----------------|
-| 01 Response Times | 10 | p50/p95/p99 latency per endpoint (health, auth, vault, admin) |
-| 02 Concurrent Users | 3 | 5 parallel users, no 429s, per-user completion time |
-| 03 Payload Size | 6 | Vault PUT+GET with 1KB to 1MB payloads |
+| 00 Setup | 4 | Admin login, create test user, onboard user, create vault with seed data |
+| 01 Response Times | 10 | p50/p95/p99 latency per endpoint (10 iterations each) |
+| 02 Concurrent Access | 1 | 5 parallel vault read streams, no 429s |
+| 03 Payload Size | 7 | Vault PUT+GET with 1KB–500KB round-trips, 1MB PUT, 1.1MB rejection, data restore |
 
 ### Baselines
 
-Stored in `backend/perf/baselines.json`. Key thresholds (p95):
+Stored in `backend/perf/baselines.json`. Tests fail if p95 exceeds the threshold.
 
-| Endpoint | Baseline |
-|----------|----------|
-| health | 200ms |
-| auth login | 1500ms |
-| vault list | 800ms |
-| admin users | 2000ms |
-| admin export | 5000ms |
+| Endpoint | Baseline (p95) | Notes |
+|----------|---------------|-------|
+| health | 1000ms | Includes Lambda cold start |
+| challenge | 500ms | Lightweight crypto nonce |
+| auth_login | 3500ms | bcrypt 12 rounds (pure JS) on Lambda — intentionally slow |
+| vault_list | 800ms | DynamoDB query |
+| vault_get_index | 800ms | DynamoDB + S3 |
+| vault_put | 1500ms | DynamoDB + S3 write |
+| admin_users | 2000ms | DynamoDB scan |
+| admin_stats | 2000ms | Aggregation across tables |
+| admin_templates | 3000ms | S3 list + read operations |
+| admin_export | 5000ms | Zip all templates from S3 |
+
+Payload baselines: 1KB=1000ms, 50KB=1500ms, 200KB=3000ms, 500KB=3000ms, 1MB PUT=5000ms.
+
+### Example output
+
+```
+  Endpoint Response Times (p95)
+------------------------------------------------------------------------
+  health              451ms   (bl: 1000ms) [#######         |] PASS
+  challenge           175ms    (bl: 500ms) [###     |] PASS
+  auth_login         3072ms   (bl: 3500ms) [#################################################|] PASS
+  vault_list          409ms    (bl: 800ms) [#######      |] PASS
+  vault_get_index     733ms    (bl: 800ms) [############ |] PASS
+  vault_put           337ms   (bl: 1500ms) [#####                   |] PASS
+  admin_users         381ms   (bl: 2000ms) [######                           |] PASS
+  admin_stats         181ms   (bl: 2000ms) [###                              |] PASS
+  admin_templates    2559ms   (bl: 3000ms) [##########################################       |] PASS
+  admin_export       1022ms   (bl: 5000ms) [#################] PASS
+
+  Concurrent Access
+------------------------------------------------------------------------
+  concurrent_5_streams p95=1947ms  max=1947ms
+
+  Payload Size Scaling
+------------------------------------------------------------------------
+  1kb_roundtrip       p95=690ms   max=690ms  (bl: 1000ms) PASS
+  50kb_roundtrip      p95=650ms   max=650ms  (bl: 1500ms) PASS
+  200kb_roundtrip     p95=619ms   max=619ms  (bl: 3000ms) PASS
+  500kb_roundtrip     p95=1033ms  max=1033ms (bl: 3000ms) PASS
+  1mb_put             p95=613ms   max=613ms  (bl: 5000ms) PASS
+```
 
 ### Reports
 
 Performance tests generate 3 output formats:
-1. **Terminal**: ASCII bar chart (immediate feedback during qualification)
-2. **HTML**: `backend/perf/perf-report.html` — inline SVG charts, self-contained, no dependencies
-3. **Markdown+SVG**: `docs/perf/YYYY-MM-DD.md` — visible on GitHub, tracks history
+
+| Format | Location | Contents |
+|--------|----------|----------|
+| **Terminal** | stdout | ASCII bar chart with pass/fail (shown above) |
+| **HTML** | `backend/perf/perf-report.html` | Self-contained with inline SVG charts (bar chart, box plot, payload scaling line chart) |
+| **Markdown** | `docs/perf/report.md` | Inline SVG bar chart + tables (renders on GitHub) |
+| **JSON** | `backend/perf/results.json` | Raw results data for programmatic analysis |
+
+Open the HTML report to see interactive charts: `open backend/perf/perf-report.html`
+
+The HTML report includes:
+- **Endpoint Response Times** — horizontal bar chart with baseline threshold markers
+- **Response Time Distribution** — box plot showing min/p50/p95/p99/max per endpoint
+- **Payload Size Scaling** — line chart comparing actual p95 vs baseline across payload sizes
 
 ### Updating baselines
 
-Edit `backend/perf/baselines.json` when response times legitimately change (new dependencies, infrastructure changes). Commit the updated file.
+Edit `backend/perf/baselines.json` when response times legitimately change (new dependencies, infrastructure changes, Lambda memory adjustments). Commit the updated file. Key considerations:
+
+- `auth_login` is intentionally slow — bcrypt with 12 rounds in pure JavaScript on Lambda
+- `health` baseline includes cold start latency; increase Lambda memory to reduce this
+- Payload baselines account for both PUT + GET round-trip (except 1MB which is PUT-only)
 
 ---
 
