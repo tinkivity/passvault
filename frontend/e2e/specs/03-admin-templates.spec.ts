@@ -30,10 +30,13 @@ test.describe('Admin — Email Templates', () => {
     await adminPage.goto('/ui/admin/email-templates');
     await adminPage.waitForLoadState('networkidle');
 
-    // Find first preview button
+    // Select a template card first (Preview is disabled until one is selected)
+    await adminPage.getByText('Invitation').click({ timeout: 5000 });
+
+    // Find first preview button and wait for it to be enabled
     const previewBtn = adminPage.getByRole('button', { name: /Preview/i }).first();
 
-    if (await previewBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+    if (await previewBtn.isEnabled({ timeout: 5000 }).catch(() => false)) {
       // Listen for new page (tab) event
       const pagePromise = context.waitForEvent('page', { timeout: 10000 });
       await previewBtn.click();
