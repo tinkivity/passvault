@@ -65,6 +65,8 @@ PassVault is a privacy-focused, serverless password vault where:
 | [RECOVERY.md](docs/RECOVERY.md) | Offline vault recovery manual |
 | [COSTS.md](docs/COSTS.md) | Cost analysis and projections |
 | [BOTPROTECTION.md](docs/BOTPROTECTION.md) | Bot defense layers, kill switch, cost analysis |
+| [QUALIFICATION.md](docs/QUALIFICATION.md) | Automated qualification pipeline, E2E and performance tests |
+| [EMAIL-TEMPLATES.md](docs/EMAIL-TEMPLATES.md) | Email template design, i18n, bulk export/import |
 
 ### Per-package
 

@@ -67,6 +67,50 @@ src/components/vault/
 
 ---
 
+## E2E Browser Tests (Playwright)
+
+E2E tests run in headless Chromium against a deployed stack. The test specs live in `e2e/specs/` and use a shared auth fixture in `e2e/fixtures/auth.fixture.ts`.
+
+### Running E2E tests
+
+```bash
+# Recommended: use the wrapper script from repo root
+./scripts/e2etest.sh --env dev --profile AndreasDevAccess
+
+# Interactive debugging
+./scripts/e2etest.sh --env dev --profile AndreasDevAccess --ui
+
+# View the last HTML report
+npx playwright show-report e2e-report
+```
+
+See [docs/TESTING.md](../docs/TESTING.md#e2e-browser-tests-playwright) for full documentation including environment variables and example output.
+
+### E2E test inventory
+
+| Spec | Tests | Status | What it covers |
+|------|-------|--------|---------------|
+| `e2e/specs/01-auth.spec.ts` | 6 | Active | Login via API injection, logout via header icon, invalid credentials, route guards for /ui and /ui/admin |
+| `e2e/specs/02-admin-users.spec.ts` | 6 | Active | Dashboard heading, users table, create user + OTP dialog, view user detail, edit user, delete user |
+| `e2e/specs/03-admin-templates.spec.ts` | 5 | Active | Email templates page, language tabs (EN/DE/FR/RU), preview in new tab, download, upload + edited badge |
+| `e2e/specs/04-vault-unlock.spec.ts` | 3 | Fixme | Vault unlock with password (needs vault data fixture) |
+| `e2e/specs/05-vault-items.spec.ts` | 3 | Fixme | Create/search/delete vault items (needs vault data fixture) |
+| `e2e/specs/06-notifications.spec.ts` | 3 | Fixme | Notification preferences (only available for `role=user`, not admin) |
+| `e2e/specs/07-language.spec.ts` | 2 | Active | Switch to German via globe icon, switch back to English |
+
+### Auth fixture
+
+The `adminPage` fixture (`e2e/fixtures/auth.fixture.ts`) authenticates via direct API call to `/api/auth/login` and injects the session into `sessionStorage` (key `pv_session`). This bypasses browser form submission, avoiding race conditions with `vite preview` where React event handlers may not be attached when Playwright clicks the submit button.
+
+### Debugging failures
+
+- **Screenshots**: `e2e-results/<test>/test-failed-1.png`
+- **Video**: `e2e-results/<test>/video.webm`
+- **Traces**: `npx playwright show-trace e2e-results/<test>/trace.zip`
+- **HTML report**: `e2e-report/index.html`
+
+---
+
 ## Manual UI Testing
 
 Use `scripts/post-deploy.sh --env dev` to test against a deployed dev stack:

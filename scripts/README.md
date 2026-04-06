@@ -201,6 +201,137 @@ Runs automated penetration tests organized by OWASP categories against a deploye
 
 ---
 
+## e2etest.sh
+
+Runs Playwright E2E browser tests against a deployed stack. Creates a temporary admin user, onboards it (OTP login + password change), starts a local Vite dev server, runs tests, and cleans up on exit.
+
+**When to run:** After deploying a stack, to validate browser-level user flows.
+
+**Usage:**
+
+```bash
+# Run against dev (creates its own admin, cleans up after)
+./scripts/e2etest.sh --env dev
+
+# Keep test user for inspection
+./scripts/e2etest.sh --env dev --keep
+
+# Clean up a previous --keep run
+./scripts/e2etest.sh --cleanup --env dev
+
+# Interactive debugging with Playwright UI
+./scripts/e2etest.sh --env dev --ui
+
+# Headed mode (visible browser)
+./scripts/e2etest.sh --env dev --headed
+```
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--env` | Target environment: `dev`, `beta` (required; prod blocked) |
+| `--profile` | AWS named profile |
+| `--region` | AWS region (default: `eu-central-1`) |
+| `--stack` | CloudFormation stack name override |
+| `--base-url` | API base URL override (skips CloudFormation lookup) |
+| `--keep` | Keep test user after run (writes state file for later cleanup) |
+| `--cleanup` | Skip tests; only clean up from a previous `--keep` run |
+| `--headed` | Run with visible browser |
+| `--ui` | Run in Playwright UI mode (interactive debugging) |
+
+**Cleanup covers:** E2E admin user, vaults, S3 files, audit events. Vite server and `.env.local` are always cleaned up on exit.
+
+---
+
+## perftest.sh
+
+Runs performance tests (response times, concurrent users, payload scaling) against a deployed stack. Creates a temporary admin user, onboards it (OTP login + password change), runs vitest perf scenarios, and cleans up on exit.
+
+**When to run:** After deploying a stack, to verify API performance against checked-in baselines.
+
+**Usage:**
+
+```bash
+# Run against dev
+./scripts/perftest.sh --env dev
+
+# Run against beta
+./scripts/perftest.sh --env beta
+
+# Keep test data after run (for manual inspection)
+./scripts/perftest.sh --env dev --keep
+
+# Clean up a previous --keep run (auto-discovers state file)
+./scripts/perftest.sh --cleanup --env dev
+
+# Clean up with a specific state file
+./scripts/perftest.sh --cleanup .perf-state-dev-rapid-tiger.json
+```
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--env` | Target environment: `dev`, `beta` (required; prod blocked) |
+| `--profile` | AWS named profile |
+| `--region` | AWS region (default: `eu-central-1`) |
+| `--stack` | CloudFormation stack name override |
+| `--base-url` | API base URL override (skips CloudFormation lookup) |
+| `--keep` | Keep test data after run (writes state file for later cleanup) |
+| `--cleanup` | Skip tests; only clean up data from a previous `--keep` run |
+
+**Cleanup covers:** perf admin user, created users, vaults, S3 files, login events, audit events.
+
+---
+
+## qualify.sh
+
+Runs the full qualification pipeline for the dev environment: build, unit tests, deploy, SIT, pentest, E2E browser tests, performance tests — then auto-destroys on success or preserves the stack on failure for debugging.
+
+**When to run:** Before merging feature branches to main, before promoting to beta.
+
+**Usage:**
+
+```bash
+# Full qualification
+./scripts/qualify.sh --profile AndreasDevAccess
+
+# Cleanup after debugging failures
+./scripts/qualify.sh --cleanup --profile AndreasDevAccess
+
+# Cleanup with specific state file
+./scripts/qualify.sh --cleanup .qualify-state-dev-20260406-120000.json --profile AndreasDevAccess
+```
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--profile` | AWS named profile |
+| `--region` | AWS region (default: `eu-central-1`) |
+| `--cleanup [file]` | Cleanup-only mode (auto-discovers state file if not specified) |
+
+**Pipeline:** Build → Unit tests → CDK deploy → SIT → Pentest → E2E → Performance → Evaluate
+
+See [docs/QUALIFICATION.md](../docs/QUALIFICATION.md) for full documentation.
+
+---
+
+## generate-template-manifest.ts
+
+Generates `cdk/assets/email-templates/_meta.json` — a SHA-256 hash manifest of all email templates. Used by the backend to detect which templates have been modified from their CDK-deployed originals.
+
+**When to run:** After changing any email template in `cdk/assets/email-templates/`. Run before deploying.
+
+**Usage:**
+
+```bash
+npx tsx scripts/generate-template-manifest.ts
+```
+
+---
+
 ## post-destroy.sh
 
 Removes AWS resources left behind after `cdk destroy` (DynamoDB tables with RETAIN policy, S3 buckets, orphaned CloudWatch log groups).
