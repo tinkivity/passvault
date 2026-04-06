@@ -74,8 +74,8 @@ test.describe.serial('Admin — User Management', () => {
     // Should navigate to user detail
     await adminPage.waitForURL('**/ui/admin/users/**', { timeout: 15000 });
 
-    // User info should be displayed
-    await expect(adminPage.getByText(createdUsername)).toBeVisible({ timeout: 10000 });
+    // User info should be displayed (use paragraph to avoid breadcrumb duplicate)
+    await expect(adminPage.getByRole('paragraph').filter({ hasText: createdUsername })).toBeVisible({ timeout: 10000 });
   });
 
   test('edit user — save succeeds', async ({ adminPage }) => {
