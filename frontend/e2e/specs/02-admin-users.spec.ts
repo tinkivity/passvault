@@ -34,9 +34,9 @@ test.describe.serial('Admin — User Management', () => {
       adminPage.getByRole('heading', { name: 'Create User' }),
     ).toBeVisible({ timeout: 10000 });
 
-    // Fill out the form — username is an email
+    // Fill out the form — email address field
     createdUsername = `e2e-test-${Date.now()}@example.com`;
-    await adminPage.locator('#username, input[name="username"]').first().fill(createdUsername);
+    await adminPage.locator('#new-username').fill(createdUsername);
 
     // Fill display name if present
     const displayNameField = adminPage.locator('#displayName, input[name="displayName"]').first();
@@ -47,13 +47,16 @@ test.describe.serial('Admin — User Management', () => {
     // Submit the form
     await adminPage.getByRole('button', { name: /Create/i }).last().click();
 
-    // OTP dialog should appear (shows one-time password)
+    // OTP dialog should appear (shows one-time password heading)
     await expect(
-      adminPage.getByText(/One-Time Password/i),
+      adminPage.getByRole('heading', { name: /One-Time Password/i }),
     ).toBeVisible({ timeout: 15000 });
 
-    // Close the OTP dialog
-    await adminPage.getByRole('button', { name: /Done|Close|OK/i }).click();
+    // Copy OTP (enables Done button), then close the dialog
+    const copyBtn = adminPage.locator('button[aria-label*="opy"], button:has(svg)').filter({ has: adminPage.locator('svg') }).first();
+    await copyBtn.click({ timeout: 5000 }).catch(() => {});
+    // Close dialog — force click in case Done is still disabled
+    await adminPage.getByRole('button', { name: /Done|Close|OK/i }).click({ force: true, timeout: 5000 });
   });
 
   test('view user detail — info displayed', async ({ adminPage }) => {

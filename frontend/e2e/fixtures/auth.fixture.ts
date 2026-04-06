@@ -1,38 +1,63 @@
-import { test as base, expect, type Page } from '@playwright/test';
+import { test as base, expect, type Page, type APIRequestContext } from '@playwright/test';
 
 /**
  * Custom fixture that provides a `adminPage` — a Page already logged in
  * as admin using E2E_ADMIN_EMAIL / E2E_ADMIN_PASSWORD env vars.
  *
+ * Authenticates via direct API call and injects the session into
+ * sessionStorage, bypassing browser form submission entirely.
+ * This avoids race conditions with vite preview where native form
+ * POST can fire before React attaches event handlers.
+ *
  * Tests that use this fixture are automatically skipped when the env vars
  * are not set.
- *
- * NOTE: Authenticated E2E tests are currently marked as fixme due to a
- * form submission issue with vite preview (React event handlers not
- * attaching before Playwright interacts with the form). See 01-auth.spec.ts
- * for details.
  */
 export const test = base.extend<{ adminPage: Page }>({
-  adminPage: async ({ page }, use) => {
+  adminPage: async ({ page, request }, use) => {
     const email = process.env.E2E_ADMIN_EMAIL;
     const password = process.env.E2E_ADMIN_PASSWORD;
+    const apiBase = process.env.E2E_API_BASE_URL ?? '';
 
     if (!email || !password) {
       base.skip(true, 'E2E_ADMIN_EMAIL and E2E_ADMIN_PASSWORD must be set');
       return;
     }
 
-    // Navigate to login page and wait for the form to render
+    // Login via API directly (no browser form, no CORS, no PoW in dev)
+    const loginRes = await request.post(`${apiBase}/api/auth/login`, {
+      data: { username: email, password },
+    });
+    const body = await loginRes.json();
+    if (!body.success) {
+      throw new Error(`API login failed: ${JSON.stringify(body)}`);
+    }
+    const d = body.data;
+
+    // Navigate to the app origin so sessionStorage is on the right domain
     await page.goto('/login');
-    await expect(page.locator('#username')).toBeVisible({ timeout: 20000 });
+    await page.waitForLoadState('domcontentloaded');
 
-    // Fill credentials and submit
-    await page.locator('#username').fill(email);
-    await page.locator('#password').fill(password);
-    await page.locator('button[type="submit"]').click();
+    // Inject auth session (matches AuthContext SESSION_KEY = 'pv_session')
+    await page.evaluate((authState: Record<string, unknown>) => {
+      sessionStorage.setItem('pv_session', JSON.stringify(authState));
+    }, {
+      token: d.token,
+      userId: d.userId,
+      role: d.role,
+      username: d.username,
+      firstName: d.firstName ?? null,
+      lastName: d.lastName ?? null,
+      displayName: d.displayName ?? null,
+      status: 'active',
+      plan: d.plan ?? null,
+      loginEventId: d.loginEventId ?? null,
+      expiresAt: d.expiresAt ?? null,
+      accountExpired: false,
+    });
 
-    // Wait for redirect to /ui (admin lands on /ui/admin/dashboard)
-    await page.waitForURL('**/ui/**', { timeout: 45000 });
+    // Navigate to admin dashboard — React reads sessionStorage on mount
+    await page.goto('/ui/admin/dashboard');
+    await page.waitForURL('**/ui/**', { timeout: 20000 });
 
     await use(page);
   },

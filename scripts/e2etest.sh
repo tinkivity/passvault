@@ -438,6 +438,7 @@ if [[ "$UI_MODE" == "true" ]]; then
 fi
 
 E2E_BASE_URL="http://localhost:${VITE_PORT}" \
+E2E_API_BASE_URL="$API_URL" \
 E2E_ADMIN_EMAIL="$E2E_EMAIL" \
 E2E_ADMIN_PASSWORD="$E2E_PASSWORD" \
   npx playwright test $PLAYWRIGHT_ARGS \
