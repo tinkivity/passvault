@@ -152,6 +152,7 @@ if [[ "$CLEANUP" == "true" ]]; then
   VAULTS_TABLE_NAME=$(jq -r '.vaultsTable' "$CLEANUP_FILE") \
   LOGIN_EVENTS_TABLE_NAME=$(jq -r '.loginEventsTable' "$CLEANUP_FILE") \
   FILES_BUCKET=$(jq -r '.filesBucket' "$CLEANUP_FILE") \
+  CLEANUP_LABEL="Perf" \
     npx tsx "$REPO_ROOT/scripts/sit-cleanup.ts"
 
   rm -f "$CLEANUP_FILE"
@@ -326,6 +327,7 @@ run_cleanup() {
   VAULTS_TABLE_NAME="passvault-vaults-${ENV}" \
   LOGIN_EVENTS_TABLE_NAME="passvault-login-events-${ENV}" \
   FILES_BUCKET="$FILES_BUCKET" \
+  CLEANUP_LABEL="Perf" \
     npx tsx "$REPO_ROOT/scripts/sit-cleanup.ts" || echo "  Warning: cleanup failed."
 }
 

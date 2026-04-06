@@ -1,17 +1,20 @@
 #!/usr/bin/env npx tsx
 /**
- * SIT cleanup helper.
+ * Test data cleanup helper — shared by SIT, E2E, and Perf scripts.
  *
- * Removes the SIT admin and any users they created during the test run.
+ * Removes the test admin and any users they created during the test run.
  * Also cleans up associated vault files, login events, and audit events.
  *
  * Required env vars:
- *   ENVIRONMENT      — dev or beta
- *   DYNAMODB_TABLE   — users table name
+ *   ENVIRONMENT       — dev or beta
+ *   DYNAMODB_TABLE    — users table name
  *
  * At least one of:
- *   SIT_ADMIN_EMAIL  — email of the SIT admin
- *   SIT_ADMIN_USER_ID — userId of the SIT admin (fallback if username was renamed)
+ *   SIT_ADMIN_EMAIL   — email of the test admin
+ *   SIT_ADMIN_USER_ID — userId of the test admin
+ *
+ * Optional:
+ *   CLEANUP_LABEL     — label for log output (default: "SIT")
  */
 
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
@@ -38,6 +41,7 @@ const AUDIT_EVENTS_TABLE = process.env.AUDIT_EVENTS_TABLE ?? `passvault-audit-${
 
 const SIT_ADMIN_EMAIL = process.env.SIT_ADMIN_EMAIL;
 const SIT_ADMIN_USER_ID = process.env.SIT_ADMIN_USER_ID;
+const CLEANUP_LABEL = process.env.CLEANUP_LABEL ?? 'SIT';
 
 if (!SIT_ADMIN_EMAIL && !SIT_ADMIN_USER_ID) {
   console.error('Error: at least one of SIT_ADMIN_EMAIL or SIT_ADMIN_USER_ID is required.');
@@ -207,7 +211,7 @@ async function deleteEvents(userIds: string[]): Promise<number> {
 }
 
 async function main() {
-  console.log(`\nSIT Cleanup`);
+  console.log(`\n${CLEANUP_LABEL} Cleanup`);
   console.log(`  Environment : ${ENV}`);
   if (SIT_ADMIN_EMAIL) console.log(`  Admin email : ${SIT_ADMIN_EMAIL}`);
   if (SIT_ADMIN_USER_ID) console.log(`  Admin userId: ${SIT_ADMIN_USER_ID}`);
@@ -233,23 +237,23 @@ async function main() {
   }
 
   if (!adminUserId) {
-    console.log(`  SIT admin "${SIT_ADMIN_EMAIL}" not found and no userId provided — nothing to clean up.`);
+    console.log(`  ${CLEANUP_LABEL} admin "${SIT_ADMIN_EMAIL}" not found and no userId provided — nothing to clean up.`);
     return;
   }
 
   // Verify the user actually exists when using userId fallback
   if (!SIT_ADMIN_EMAIL || !(await findUserByUsername(SIT_ADMIN_EMAIL))) {
     if (!(await userExists(adminUserId))) {
-      console.log(`  SIT admin userId "${adminUserId}" not found — nothing to clean up.`);
+      console.log(`  ${CLEANUP_LABEL} admin userId "${adminUserId}" not found — nothing to clean up.`);
       return;
     }
   }
 
   const allUserIds = [adminUserId];
 
-  // Find users created by the SIT admin
+  // Find users created by the test admin
   const createdUsers = await findUsersCreatedBy(adminUserId);
-  console.log(`  Found ${createdUsers.length} user(s) created by SIT admin.`);
+  console.log(`  Found ${createdUsers.length} user(s) created by ${CLEANUP_LABEL} admin.`);
 
   // Delete vault files and records for each created user
   for (const user of createdUsers) {
@@ -264,13 +268,13 @@ async function main() {
     allUserIds.push(user.userId);
   }
 
-  // Delete SIT admin's own vaults (if any)
+  // Delete test admin's own vaults (if any)
   const adminVaults = await findVaultsByUser(adminUserId);
   const adminVaultIds = adminVaults.map(v => v.vaultId);
   summary.filesDeleted += await deleteVaultFiles(adminVaultIds);
   summary.vaultsDeleted += await deleteVaultRecords(adminVaultIds);
 
-  // Delete the SIT admin
+  // Delete the test admin
   await deleteUser(adminUserId);
   summary.usersDeleted++;
 
