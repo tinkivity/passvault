@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import type { AdminStats, CreateUserRequest, ListLoginEventsResponse, UpdateUserRequest, UserSummary } from '@passvault/shared';
+import type { AdminStats, CreateUserRequest, EmailTemplateImportResult, EmailTemplateListResponse, ListLoginEventsResponse, UpdateUserRequest, UserSummary } from '@passvault/shared';
 import { api } from '../services/api.js';
 
 export function useAdmin(token: string | null) {
@@ -242,5 +242,80 @@ export function useAdmin(token: string | null) {
     }
   }, [token]);
 
-  return { loading, error, createUser, listUsers, downloadUserVault, refreshOtp, resetUser, deleteUser, lockUser, unlockUser, expireUser, retireUser, reactivateUser, updateUser, emailUserVault, getStats, getLoginEvents };
+  const listEmailTemplates = useCallback(async (): Promise<EmailTemplateListResponse> => {
+    if (!token) throw new Error('Not authenticated');
+    setLoading(true);
+    setError(null);
+    try {
+      return await api.listEmailTemplates(token);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to list email templates';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  const getEmailTemplate = useCallback(async (type: string, language: string): Promise<{ html: string }> => {
+    if (!token) throw new Error('Not authenticated');
+    setLoading(true);
+    setError(null);
+    try {
+      return await api.getEmailTemplate(type, language, token);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to get email template';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  const putEmailTemplate = useCallback(async (type: string, language: string, html: string): Promise<void> => {
+    if (!token) throw new Error('Not authenticated');
+    setLoading(true);
+    setError(null);
+    try {
+      await api.putEmailTemplate(type, language, html, token);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to upload email template';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  const exportEmailTemplates = useCallback(async (modifiedOnly: boolean): Promise<{ filename: string; data: string }> => {
+    if (!token) throw new Error('Not authenticated');
+    setLoading(true);
+    setError(null);
+    try {
+      return await api.exportEmailTemplates(modifiedOnly, token);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to export email templates';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  const importEmailTemplates = useCallback(async (data: string): Promise<EmailTemplateImportResult> => {
+    if (!token) throw new Error('Not authenticated');
+    setLoading(true);
+    setError(null);
+    try {
+      return await api.importEmailTemplates(data, token);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to import email templates';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [token]);
+
+  return { loading, error, createUser, listUsers, downloadUserVault, refreshOtp, resetUser, deleteUser, lockUser, unlockUser, expireUser, retireUser, reactivateUser, updateUser, emailUserVault, getStats, getLoginEvents, listEmailTemplates, getEmailTemplate, putEmailTemplate, exportEmailTemplates, importEmailTemplates };
 }

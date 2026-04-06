@@ -12,7 +12,8 @@
 #                       passvault-audit-{env}                  (removalPolicy: DESTROY)
 #                       passvault-config-{env}                 (removalPolicy: DESTROY)
 #                       passvault-login-events-{env}           (removalPolicy: DESTROY)
-#   • S3 files bucket   auto-named, found via CFN stack tag    (removalPolicy: RETAIN)
+#   • S3 files bucket     auto-named, found via 'passvault:env' tag    (removalPolicy: RETAIN)
+#   • S3 templates bucket  auto-named, found via 'passvault:env' tag    (removalPolicy: DESTROY)
 #   • CloudWatch logs   /aws/lambda/passvault-*-{env}          (DESTROY but sometimes missed)
 #   • (prod only)       /aws/lambda/passvault-kill-switch
 
@@ -174,39 +175,24 @@ _delete_table "passvault-audit-${ENV}"
 _delete_table "passvault-config-${ENV}"
 _delete_table "passvault-login-events-${ENV}"
 
-# ── S3 files bucket ───────────────────────────────────────────────────────────
+# ── S3 buckets ───────────────────────────────────────────────────────────────
 section "S3 ──────────────────────────────────────────────────────────────────────"
-echo "  Searching for files bucket tagged 'passvault:env=$ENV' ..."
 
-FILES_BUCKET=""
-all_buckets=$(aws s3api list-buckets \
-  --query "Buckets[].Name" \
-  --output text 2>/dev/null || echo "")
+_delete_bucket() {
+  local bucket="$1"
 
-for bucket in $all_buckets; do
-  tag_val=$(aws s3api get-bucket-tagging \
-    --bucket "$bucket" \
-    --query "TagSet[?Key=='passvault:env'].Value | [0]" \
-    --output text 2>/dev/null || echo "")
-  if [[ "$tag_val" == "$ENV" ]]; then
-    FILES_BUCKET="$bucket"
-    break
-  fi
-done
-
-if [[ -n "$FILES_BUCKET" ]]; then
-  OBJ_COUNT=$(aws s3 ls "s3://${FILES_BUCKET}" --recursive \
+  OBJ_COUNT=$(aws s3 ls "s3://${bucket}" --recursive \
     --region "$REGION" 2>/dev/null | wc -l | tr -d ' ')
-  echo "  Found: $FILES_BUCKET  ($OBJ_COUNT current objects)"
+  echo "  Found: $bucket  ($OBJ_COUNT current objects)"
 
-  if confirm "Empty and delete bucket '$FILES_BUCKET'?"; then
+  if confirm "Empty and delete bucket '$bucket'?"; then
     echo "  Removing objects..."
-    aws s3 rm "s3://${FILES_BUCKET}" --recursive --region "$REGION" &>/dev/null || true
+    aws s3 rm "s3://${bucket}" --recursive --region "$REGION" &>/dev/null || true
 
     # For versioned buckets (prod has versioning enabled): delete all versions
     # and delete markers that remain after the recursive remove.
     versioning=$(aws s3api get-bucket-versioning \
-      --bucket "$FILES_BUCKET" \
+      --bucket "$bucket" \
       --query "Status" --output text 2>/dev/null || echo "")
 
     if [[ "$versioning" == "Enabled" || "$versioning" == "Suspended" ]]; then
@@ -228,22 +214,58 @@ if objs:
 PYEOF
 )
       aws s3api list-object-versions \
-        --bucket "$FILES_BUCKET" \
+        --bucket "$bucket" \
         --region "$REGION" \
         --output json 2>/dev/null \
-      | python3 -c "$_PY_DELETE_VERSIONS" "$FILES_BUCKET" "$REGION" || true
+      | python3 -c "$_PY_DELETE_VERSIONS" "$bucket" "$REGION" || true
     fi
 
     aws s3api delete-bucket \
-      --bucket "$FILES_BUCKET" \
+      --bucket "$bucket" \
       --region "$REGION"
     echo "  ✓ Deleted."
-    DELETED+=("S3: $FILES_BUCKET")
+    DELETED+=("S3: $bucket")
   else
     echo "  Skipped."
   fi
+}
+
+echo "  Searching for buckets tagged 'passvault:env=$ENV' ..."
+
+S3_BUCKETS=()
+all_buckets=$(aws s3api list-buckets \
+  --query "Buckets[].Name" \
+  --output text 2>/dev/null || echo "")
+
+for bucket in $all_buckets; do
+  tag_val=$(aws s3api get-bucket-tagging \
+    --bucket "$bucket" \
+    --query "TagSet[?Key=='passvault:env'].Value | [0]" \
+    --output text 2>/dev/null || echo "")
+  if [[ "$tag_val" == "$ENV" ]]; then
+    S3_BUCKETS+=("$bucket")
+  fi
+done
+
+if [[ ${#S3_BUCKETS[@]} -gt 0 ]]; then
+  echo "  Found ${#S3_BUCKETS[@]} bucket(s):"
+  for bucket in "${S3_BUCKETS[@]}"; do
+    purpose=$(aws s3api get-bucket-tagging \
+      --bucket "$bucket" \
+      --query "TagSet[?Key=='passvault:bucket'].Value | [0]" \
+      --output text 2>/dev/null || echo "")
+    if [[ -n "$purpose" && "$purpose" != "None" ]]; then
+      echo "    • $bucket  (purpose: $purpose)"
+    else
+      echo "    • $bucket  (purpose: unknown)"
+    fi
+  done
+
+  for bucket in "${S3_BUCKETS[@]}"; do
+    _delete_bucket "$bucket"
+  done
 else
-  echo "  Not found: no bucket tagged '$STACK_NAME'  (already removed or never deployed)"
+  echo "  Not found: no bucket tagged 'passvault:env=$ENV'  (already removed or never deployed)"
 fi
 
 # ── CloudWatch log groups ─────────────────────────────────────────────────────

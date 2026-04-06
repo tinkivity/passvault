@@ -6,7 +6,8 @@ export type AuditAction =
   // admin_actions
   | 'user_created' | 'user_locked' | 'user_unlocked' | 'user_expired'
   | 'user_retired' | 'user_reset' | 'user_reactivated' | 'user_updated' | 'user_deleted'
-  | 'user_otp_refreshed' | 'user_emailed_vault' | 'audit_config_changed'
+  | 'user_otp_refreshed' | 'user_emailed_vault' | 'audit_config_changed' | 'email_template_updated'
+  | 'email_templates_imported' | 'email_templates_exported'
   // vault_operations
   | 'vault_opened' | 'vault_saved' | 'vault_downloaded' | 'vault_imported'
   | 'vault_renamed' | 'vault_deleted' | 'vault_created'

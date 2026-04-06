@@ -22,3 +22,25 @@ export async function verifyToken(token: string): Promise<TokenPayload> {
   const secret = await getJwtSecret();
   return jwt.verify(token, secret) as TokenPayload;
 }
+
+// ── Unsubscribe tokens (vault backup emails) ────────────────────────────────
+
+interface UnsubscribePayload {
+  userId: string;
+  purpose: 'unsubscribe';
+}
+
+const UNSUBSCRIBE_EXPIRY_SECONDS = 72 * 3600; // 72 hours
+
+export async function signUnsubscribeToken(userId: string): Promise<string> {
+  const secret = await getJwtSecret();
+  const payload: UnsubscribePayload = { userId, purpose: 'unsubscribe' };
+  return jwt.sign(payload, secret, { expiresIn: UNSUBSCRIBE_EXPIRY_SECONDS });
+}
+
+export async function verifyUnsubscribeToken(token: string): Promise<string> {
+  const secret = await getJwtSecret();
+  const payload = jwt.verify(token, secret) as UnsubscribePayload;
+  if (payload.purpose !== 'unsubscribe') throw new Error('Invalid token purpose');
+  return payload.userId;
+}

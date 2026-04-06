@@ -6,6 +6,7 @@ import { vaultLifecycleScenarios } from './04-vault-lifecycle.js';
 import { vaultItemsScenarios } from './05-vault-items.js';
 import { userProfileScenarios } from './06-user-profile.js';
 import { adminAuditScenarios } from './07-admin-audit.js';
+import { emailTemplateScenarios } from './08-email-templates.js';
 
 const ctx = createContext();
 
@@ -18,3 +19,4 @@ vaultLifecycleScenarios(ctx);
 vaultItemsScenarios(ctx);
 userProfileScenarios(ctx);
 adminAuditScenarios(ctx);
+emailTemplateScenarios(ctx);

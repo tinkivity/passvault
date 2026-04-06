@@ -105,5 +105,11 @@
   "categoryCreditCards": "Кредитные карты",
   "categoryIdentities": "Удостоверения",
   "categoryWifiNetworks": "Сети Wi-Fi",
-  "categoryPrivateKeys": "Приватные ключи"
+  "categoryPrivateKeys": "Приватные ключи",
+  "warning_duplicate_password": "Дублирующийся пароль",
+  "warning_duplicate_password_desc": "Этот пароль используется другим элементом в вашем хранилище.",
+  "warning_too_simple_password": "Слишком простой пароль",
+  "warning_too_simple_password_desc": "Этот пароль не соответствует минимальным требованиям безопасности.",
+  "warning_breached_password": "Скомпрометированный пароль",
+  "warning_breached_password_desc": "Этот пароль был обнаружен в известной утечке данных."
 }

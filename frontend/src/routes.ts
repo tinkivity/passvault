@@ -21,6 +21,7 @@ export const ROUTES = {
       /** @deprecated Use AUDIT instead */
       LOGINS:    '/ui/admin/logs/logins',
       AUDIT:     '/ui/admin/logs/audit',
+      EMAIL_TEMPLATES: '/ui/admin/email-templates',
     },
   },
 } as const;

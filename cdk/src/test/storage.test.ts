@@ -96,8 +96,8 @@ describe('StorageConstruct (dev)', () => {
     expect(Object.keys(versioned)).toHaveLength(0);
   });
 
-  it('creates exactly 2 S3 buckets', () => {
-    template.resourceCountIs('AWS::S3::Bucket', 2);
+  it('creates exactly 3 S3 buckets', () => {
+    template.resourceCountIs('AWS::S3::Bucket', 3);
   });
 
   it('blocks all public access on S3 buckets', () => {

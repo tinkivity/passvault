@@ -7,3 +7,4 @@ export * from './vault-schema.js';
 export * from './challenge.js';
 export * from './api.js';
 export * from './audit.js';
+export * from './email.js';

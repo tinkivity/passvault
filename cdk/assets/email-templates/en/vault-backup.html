@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <title>Vault Backup — {{appName}}</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f5f5f7; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;">
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #f5f5f7;">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+
+        <!-- Main Card -->
+        <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="600" style="max-width: 600px; width: 100%; background-color: #ffffff; border-radius: 12px; overflow: hidden; border-top: 3px solid #0071e3;">
+          <!-- Header -->
+          <tr>
+            <td style="padding: 40px 40px 0 40px; font-family: system-ui, 'Segoe UI', Inter, Roboto, sans-serif;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                <tr>
+                  <td style="padding-bottom: 12px;">
+                    <img src="{{logoUrl}}" alt="{{appName}}" width="32" height="32" style="display: inline-block; vertical-align: middle; border: 0; width: 32px; height: 32px; margin-right: 10px;" />
+                    <span style="font-size: 15px; font-weight: 600; color: #0071e3; letter-spacing: 0.3px; vertical-align: middle;">{{appName}}</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding: 20px 40px 0 40px; font-family: system-ui, 'Segoe UI', Inter, Roboto, sans-serif;">
+              <h1 style="margin: 0 0 24px 0; font-size: 22px; font-weight: 600; color: #1d1d1f; line-height: 1.3;">
+                Scheduled Vault Backup
+              </h1>
+              <p style="margin: 0 0 20px 0; font-size: 15px; color: #1d1d1f; line-height: 1.6;">
+                Hello {{userName}},
+              </p>
+              <p style="margin: 0 0 20px 0; font-size: 15px; color: #1d1d1f; line-height: 1.6;">
+                A scheduled backup of your vault has been completed and is attached to this email. Please store it in a safe location.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Backup Details Box -->
+          <tr>
+            <td style="padding: 8px 40px 0 40px; font-family: system-ui, 'Segoe UI', Inter, Roboto, sans-serif;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #f5f5f7; border: 1px solid #d2d2d7; border-radius: 10px;">
+                <tr>
+                  <td style="padding: 20px 24px;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                      <tr>
+                        <td style="padding: 4px 0; font-size: 13px; color: #6e6e73; line-height: 1.5; width: 100px; vertical-align: top;">
+                          Vault
+                        </td>
+                        <td style="padding: 4px 0; font-size: 14px; font-weight: 600; color: #1d1d1f; line-height: 1.5;">
+                          {{vaultName}}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td style="padding: 4px 0; font-size: 13px; color: #6e6e73; line-height: 1.5; width: 100px; vertical-align: top;">
+                          Backed up
+                        </td>
+                        <td style="padding: 4px 0; font-size: 14px; font-weight: 500; color: #1d1d1f; line-height: 1.5;">
+                          {{backupDate}}
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Security Reminder -->
+          <tr>
+            <td style="padding: 24px 40px 0 40px; font-family: system-ui, 'Segoe UI', Inter, Roboto, sans-serif;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #f0f7ff; border: 1px solid #b3d7ff; border-radius: 10px;">
+                <tr>
+                  <td style="padding: 16px 20px;">
+                    <p style="margin: 0 0 8px 0; font-size: 14px; color: #1d1d1f; line-height: 1.6;">
+                      <strong>Reminder:</strong> This backup is encrypted with your vault password. You will need your password to decrypt and restore its contents.
+                    </p>
+                    <p style="margin: 0; font-size: 13px; color: #6e6e73; line-height: 1.6;">
+                      For step-by-step instructions on how to decrypt a vault backup, see the
+                      <a href="{{recoveryGuideUrl}}" style="color: #0071e3; text-decoration: underline;">Recovery Guide</a>.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Safe to Share Notice -->
+          <tr>
+            <td style="padding: 24px 40px 0 40px; font-family: system-ui, 'Segoe UI', Inter, Roboto, sans-serif;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="background-color: #ecfdf5; border: 1px solid #6ee7b7; border-radius: 10px;">
+                <tr>
+                  <td style="padding: 16px 20px;">
+                    <p style="margin: 0 0 4px 0; font-size: 14px; font-weight: 600; color: #065f46; line-height: 1.5;">
+                      &#x1F6E1; This attachment is safe to store and share.
+                    </p>
+                    <p style="margin: 0; font-size: 13px; color: #065f46; line-height: 1.6;">
+                      Your vault backup is protected with post-quantum encryption (Argon2id&nbsp;+&nbsp;AES&#8209;256&#8209;GCM). Without your vault password, the contents are completely unreadable &mdash; even with future quantum computers.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Divider -->
+          <tr>
+            <td style="padding: 24px 40px 0 40px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                <tr>
+                  <td style="border-top: 1px solid #e8e8ed; height: 1px; font-size: 1px; line-height: 1px;">&nbsp;</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Open PassVault Button -->
+          <tr>
+            <td align="center" style="padding: 24px 40px 0 40px; font-family: system-ui, 'Segoe UI', Inter, Roboto, sans-serif;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td align="center" style="background-color: #0071e3; border-radius: 8px;">
+                    <a href="{{appUrl}}" target="_blank" style="display: inline-block; padding: 12px 32px; font-family: system-ui, 'Segoe UI', Inter, Roboto, sans-serif; font-size: 15px; font-weight: 600; color: #ffffff; text-decoration: none; min-width: 200px; text-align: center; line-height: 20px;">
+                      Open {{appName}}
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Unsubscribe / Cadence Info -->
+          <tr>
+            <td style="padding: 24px 40px 0 40px; font-family: system-ui, 'Segoe UI', Inter, Roboto, sans-serif;">
+              <p style="margin: 0 0 8px 0; font-size: 13px; color: #6e6e73; line-height: 1.5;">
+                You are receiving this email because your backup frequency is set to <strong>{{currentFrequency}}</strong>.
+                You can change this setting at any time in {{appName}} under your notification preferences.
+              </p>
+              <p style="margin: 0; font-size: 13px; color: #6e6e73; line-height: 1.5;">
+                <a href="{{unsubscribeUrl}}" style="color: #0071e3; text-decoration: underline;">Unsubscribe from backup emails</a>
+                &mdash; this link is valid for 72 hours.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 32px 40px 40px 40px; font-family: system-ui, 'Segoe UI', Inter, Roboto, sans-serif;">
+              <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%">
+                <tr>
+                  <td style="border-top: 1px solid #e8e8ed; padding-top: 24px;">
+                    <p style="margin: 0 0 4px 0; font-size: 12px; color: #86868b; line-height: 1.5;">
+                      This is an automated message from {{appName}}. Please do not reply.
+                    </p>
+                    <p style="margin: 0; font-size: 12px; color: #86868b; line-height: 1.5;">
+                      &copy; {{year}} {{appName}}. All rights reserved.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+
+      </td>
+    </tr>
+  </table>
+
+<!-- PLAIN_TEXT_START -->
+<!--
+Scheduled Vault Backup
+
+Hello {{userName}},
+
+A scheduled backup of your vault has been completed and is attached to this email.
+
+Vault: {{vaultName}}
+Backed up: {{backupDate}}
+
+Reminder: This backup is encrypted with your vault password. You will need your password to decrypt and restore its contents.
+
+THIS ATTACHMENT IS SAFE TO STORE AND SHARE.
+Your vault backup is protected with post-quantum encryption (Argon2id + AES-256-GCM). Without your vault password, the contents are completely unreadable - even with future quantum computers.
+
+For step-by-step instructions on how to decrypt a vault backup, see the Recovery Guide:
+{{recoveryGuideUrl}}
+
+Open {{appName}}: {{appUrl}}
+
+You are receiving this email because your backup frequency is set to {{currentFrequency}}.
+You can change this setting at any time in {{appName}} under your notification preferences.
+
+Unsubscribe from backup emails (valid for 72 hours): {{unsubscribeUrl}}
+
+---
+This is an automated message from {{appName}}. Please do not reply.
+(c) {{year}} {{appName}}. All rights reserved.
+-->
+<!-- PLAIN_TEXT_END -->
+</body>
+</html>

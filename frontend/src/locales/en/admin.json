@@ -72,6 +72,7 @@
   "dailyBackup": "Daily backup",
   "weeklyBackup": "Weekly backup",
   "monthlyBackup": "Monthly backup",
+  "quarterlyBackup": "Quarterly backup",
   "failedToLoadPrefs": "Failed to load notification preferences",
   "failedToSavePrefs": "Failed to save preferences",
   "auditCategories": "Audit Categories",
@@ -143,5 +144,13 @@
   "downgradeWarning": "Downgrading from Administrator will revoke all admin privileges. This user will no longer be able to access the admin panel or manage other users.",
   "deleteVaultConfirmText": "Are you sure you want to delete {{name}}? This action cannot be undone and all items in the vault will be permanently lost.",
   "failedToCreateUser": "Failed to create user",
-  "audit": "Audit"
+  "audit": "Audit",
+  "language": "Language",
+  "vaultBackup": "Vault Backup",
+  "lastBackupSent": "Last Backup Sent",
+  "notConfigured": "Not configured",
+  "weekly": "Weekly",
+  "monthly": "Monthly",
+  "off": "Off",
+  "emailTemplates": "Email Templates"
 }

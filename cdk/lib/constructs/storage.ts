@@ -13,6 +13,7 @@ export class StorageConstruct extends Construct {
   public readonly auditEventsTable: dynamodb.Table;
   public readonly configTable: dynamodb.Table;
   public readonly filesBucket: s3.Bucket;
+  public readonly templatesBucket: s3.Bucket;
   public readonly frontendBucket: s3.Bucket;
 
   constructor(scope: Construct, id: string, config: EnvironmentConfig) {
@@ -115,10 +116,22 @@ export class StorageConstruct extends Construct {
         noncurrentVersionsToRetain: 3,
       });
     }
-    // Explicit tag so post-destroy.sh can find this bucket after `cdk destroy`.
+    // Explicit tags so post-destroy.sh can find buckets after `cdk destroy`.
     // CloudFormation's automatic aws:cloudformation:* tags are removed from
-    // retained resources on stack deletion; this custom tag is not.
+    // retained resources on stack deletion; these custom tags are not.
     cdk.Tags.of(this.filesBucket).add('passvault:env', env);
+    cdk.Tags.of(this.filesBucket).add('passvault:bucket', 'files');
+
+    // S3: email templates (changeable post-deploy by admins)
+    this.templatesBucket = new s3.Bucket(this, 'TemplatesBucket', {
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
+      enforceSSL: true,
+    });
+    cdk.Tags.of(this.templatesBucket).add('passvault:env', env);
+    cdk.Tags.of(this.templatesBucket).add('passvault:bucket', 'templates');
 
     // S3: frontend static assets
     this.frontendBucket = new s3.Bucket(this, 'FrontendBucket', {

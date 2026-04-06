@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { randomBytes } from 'crypto';
+import { gzipSync } from 'zlib';
 import {
   ERRORS,
   LIMITS,
@@ -21,6 +22,8 @@ import {
 import { getVaultIndexFile, getVaultItemsFile, putVaultSplitFiles, deleteVaultSplitFiles, getLegacyVaultFile, migrateLegacyVaultFile } from '../utils/s3.js';
 import { getUserById, createVaultRecord, getVaultRecord, listVaultsByUser, deleteVaultRecord, updateVaultDisplayName } from '../utils/dynamodb.js';
 import { sendEmailWithAttachment } from '../utils/ses.js';
+import { renderEmail } from '../utils/email-templates.js';
+import { resolveLanguage } from '../utils/language.js';
 import { recordAuditEvent } from '../utils/audit.js';
 
 // Hardcoded warning code catalog — returned by GET /api/config/warning-codes.
@@ -300,22 +303,28 @@ export async function sendVaultEmail(
 
   const now = new Date().toISOString();
   const date = now.slice(0, 10);
-  const filename = `passvault-${user.username}-${date}.vault`;
+  const filename = `passvault-${user.username}-${date}.vault.gz`;
+
+  const lang = resolveLanguage(user.preferredLanguage);
+  const { html, plainText } = await renderEmail('vault-export', lang, {
+    userName: user.username,
+    exportDate: date,
+    filename,
+  });
+
+  // Gzip-compress the vault export
+  const compressed = gzipSync(Buffer.from(JSON.stringify(downloadResult.response, null, 2), 'utf-8'));
 
   await sendEmailWithAttachment(
     user.username,
     'Your PassVault encrypted vault export',
-    [
-      `Your encrypted vault is attached as ${filename}.`,
-      ``,
-      `Exported:  ${now}`,
-      `Username:  ${user.username}`,
-    ].join('\n'),
+    plainText,
     {
       filename,
-      content: JSON.stringify(downloadResult.response, null, 2),
-      contentType: 'application/octet-stream',
+      content: compressed.toString('binary'),
+      contentType: 'application/gzip',
     },
+    html,
   );
 
   return { response: { success: true } };

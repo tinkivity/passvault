@@ -19,13 +19,15 @@ import { getUserById, getUserByUsername, getUserByRegistrationToken, createUser,
 import { hashPassword, verifyPassword, generateOtp, generateSalt } from '../utils/crypto.js';
 import { signToken } from '../utils/jwt.js';
 import { deleteLegacyVaultFile, deleteVaultSplitFiles } from '../utils/s3.js';
-import { sendEmail } from '../utils/ses.js';
+import { sendHtmlEmail } from '../utils/ses.js';
+import { renderEmail } from '../utils/email-templates.js';
+import { resolveLanguage } from '../utils/language.js';
 import { verifyPasskeyToken } from './passkey.js';
 import { deleteVault, sendVaultEmail } from './vault.js';
 import { config } from '../config.js';
 import { recordAuditEvent } from '../utils/audit.js';
 
-export async function adminLogin(request: LoginRequest): Promise<{ response?: LoginResponse; error?: string; statusCode?: number }> {
+export async function adminLogin(request: LoginRequest, acceptLanguage?: string): Promise<{ response?: LoginResponse; error?: string; statusCode?: number }> {
   if (typeof request.password !== 'string' || request.password.length > LIMITS.MAX_PASSWORD_LENGTH) {
     return { error: ERRORS.INVALID_CREDENTIALS, statusCode: 401 };
   }
@@ -83,11 +85,17 @@ export async function adminLogin(request: LoginRequest): Promise<{ response?: Lo
     return { error: ERRORS.ACCOUNT_EXPIRED, statusCode: 403 };
   }
 
-  await updateUser(user.userId, {
+  // Resolve language from Accept-Language header if user has 'auto' or no preference
+  const adminLoginUpdates: Partial<User> = {
     lastLoginAt: new Date().toISOString(),
     failedLoginAttempts: 0,
     lockedUntil: null,
-  });
+  };
+  if (!user.preferredLanguage || user.preferredLanguage === 'auto') {
+    const resolved = resolveLanguage('auto', acceptLanguage);
+    adminLoginUpdates.preferredLanguage = resolved as import('@passvault/shared').PreferredLanguage;
+  }
+  await updateUser(user.userId, adminLoginUpdates);
 
   const loginEventId = randomUUID();
   // Deprecated: kept for backward compatibility
@@ -187,6 +195,7 @@ export async function createUserInvitation(
     lastName: request.lastName ?? null,
     displayName: request.displayName ?? null,
     expiresAt: request.expiresAt !== undefined ? request.expiresAt : null,
+    preferredLanguage: request.preferredLanguage,
     ...(registrationToken && { registrationToken, registrationTokenExpiresAt }),
   };
 
@@ -205,21 +214,17 @@ export async function createUserInvitation(
   if (process.env.SENDER_EMAIL) {
     console.log(`Sending invitation email to ${request.username}`);
     try {
-      const lines: string[] = [
-        `Username: ${request.username}`,
-        `One-time password: ${otp}`,
-        `This password expires in ${config.session.otpExpiryMinutes} minutes.`,
-      ];
-      if (registrationToken) {
-        // Prod: include verification link
-        const baseUrl = process.env.FRONTEND_URL || '';
-        lines.push(``, `Please verify your email address before logging in:`);
-        lines.push(`${baseUrl}/verify-email?token=${registrationToken}`);
-        lines.push(`This link expires in 7 days.`);
-      } else {
-        lines.push('Please log in and change your password immediately.');
-      }
-      await sendEmail(request.username, 'Your PassVault account', lines.join('\n'));
+      const lang = resolveLanguage(request.preferredLanguage);
+      const baseUrl = process.env.FRONTEND_URL || '';
+      const verifyUrl = registrationToken ? `${baseUrl}/verify-email?token=${registrationToken}` : '';
+      const { html, plainText } = await renderEmail('invitation', lang, {
+        userName: request.username,
+        otpCode: otp,
+        otpExpiryMinutes: String(config.session.otpExpiryMinutes),
+        verifyUrl,
+        linkExpiryDays: '7',
+      });
+      await sendHtmlEmail(request.username, 'Your PassVault account', html, plainText);
       console.log(`Invitation email sent to ${request.username}`);
     } catch (err) {
       console.error(`Failed to send invitation email to ${request.username}:`, err);
@@ -272,6 +277,9 @@ export async function listUsers(): Promise<ListUsersResponse> {
       lastName: u.lastName ?? null,
       displayName: u.displayName ?? null,
       expiresAt: u.expiresAt ?? null,
+      preferredLanguage: u.preferredLanguage,
+      notificationPrefs: u.notificationPrefs ?? null,
+      lastBackupSentAt: u.lastBackupSentAt ?? null,
     })),
   };
 }
@@ -298,16 +306,13 @@ export async function refreshOtp(
 
   if (process.env.SENDER_EMAIL && user.username.includes('@')) {
     try {
-      await sendEmail(
-        user.username,
-        'Your PassVault account - new one-time password',
-        [
-          `Username: ${user.username}`,
-          `New one-time password: ${otp}`,
-          `This password expires in ${config.session.otpExpiryMinutes} minutes.`,
-          'Please log in and change your password immediately.',
-        ].join('\n'),
-      );
+      const lang = resolveLanguage(user.preferredLanguage);
+      const { html, plainText } = await renderEmail('otp-refresh', lang, {
+        userName: user.username,
+        otpCode: otp,
+        otpExpiryMinutes: String(config.session.otpExpiryMinutes),
+      });
+      await sendHtmlEmail(user.username, 'Your PassVault account - new one-time password', html, plainText);
     } catch (err) {
       console.error(`Failed to send refreshed OTP email to ${user.username}:`, err);
     }
@@ -369,18 +374,12 @@ export async function resetUser(
   // Send email notification if configured
   if (process.env.SENDER_EMAIL && user.username.includes('@')) {
     try {
-      await sendEmail(
-        user.username,
-        'Your PassVault account has been reset',
-        [
-          `Your account has been reset by an administrator.`,
-          ``,
-          `Username: ${user.username}`,
-          `One-time password: ${otp}`,
-          ``,
-          `Please log in and set up your account again.`,
-        ].join('\n'),
-      );
+      const lang = resolveLanguage(user.preferredLanguage);
+      const { html, plainText } = await renderEmail('account-reset', lang, {
+        userName: user.username,
+        otpCode: otp,
+      });
+      await sendHtmlEmail(user.username, 'Your PassVault account has been reset', html, plainText);
     } catch (err) {
       console.error('Failed to send reset email:', err);
     }
@@ -626,6 +625,8 @@ export async function updateUserProfile(
     }
   }
   if ('expiresAt' in request) updates.expiresAt = request.expiresAt;
+  if ('preferredLanguage' in request) updates.preferredLanguage = request.preferredLanguage;
+  if ('notificationPrefs' in request) updates.notificationPrefs = request.notificationPrefs;
 
   if (Object.keys(updates).length > 0) {
     await updateUser(request.userId, updates);

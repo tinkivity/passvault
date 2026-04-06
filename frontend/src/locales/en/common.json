@@ -113,5 +113,7 @@
   "copied": "Copied!",
   "showingRange": "{{from}}-{{to}} of {{total}}",
   "help": "Help",
-  "helpComingSoon": "Help — coming soon"
+  "helpComingSoon": "Help — coming soon",
+  "never": "Never",
+  "emailTemplates": "Email Templates"
 }

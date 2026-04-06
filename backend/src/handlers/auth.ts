@@ -18,7 +18,8 @@ import {
 } from './auth.schemas.js';
 import { login, changePassword, selfChangePassword, updateProfile, requestEmailChange, verifyEmailChange, lockSelf } from '../services/auth.js';
 import { verifyEmailToken } from '../services/admin.js';
-import { updateLoginEventLogout } from '../utils/dynamodb.js';
+import { updateLoginEventLogout, updateUser } from '../utils/dynamodb.js';
+import { verifyUnsubscribeToken } from '../utils/jwt.js';
 import * as passkey from './passkey.shared.js';
 import { parseBody } from '../utils/request.js';
 
@@ -41,13 +42,15 @@ router.patch(API_PATHS.AUTH_PROFILE,                   [auth(), validate(UpdateP
 router.post(API_PATHS.AUTH_EMAIL_CHANGE,               [pow(MEDIUM), auth(), validate(EmailChangeSchema)],              handleEmailChange);
 router.post(API_PATHS.AUTH_VERIFY_EMAIL_CHANGE,        [pow(MEDIUM), honeypot(), validate(VerifyEmailChangeSchema)],    handleVerifyEmailChange);
 router.post(API_PATHS.AUTH_LOCK_SELF,                  [pow(MEDIUM), honeypot(), validate(LockSelfSchema)],             handleLockSelf);
+router.post(API_PATHS.AUTH_UNSUBSCRIBE,               [],                                                               handleUnsubscribe);
 
 export const handler = (event: APIGatewayProxyEvent) => router.dispatch(event);
 
 async function handleLogin(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
   const parsed = parseBody(event);
   if ('parseError' in parsed) return parsed.parseError;
-  const result = await login(parsed.body as unknown as import('@passvault/shared').LoginRequest);
+  const acceptLanguage = event.headers?.['Accept-Language'] ?? event.headers?.['accept-language'];
+  const result = await login(parsed.body as unknown as import('@passvault/shared').LoginRequest, acceptLanguage);
 
   if (result.error) {
     return error(result.error, result.statusCode || 401);
@@ -176,4 +179,24 @@ async function handleLockSelf(event: APIGatewayProxyEvent): Promise<APIGatewayPr
   const result = await lockSelf(token);
   if (result.error) return error(result.error, result.statusCode || 400);
   return success({ success: true });
+}
+
+async function handleUnsubscribe(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  const parsed = parseBody(event);
+  if ('parseError' in parsed) return parsed.parseError;
+  const { token } = parsed.body as { token?: string };
+
+  if (!token || typeof token !== 'string') {
+    return error('Missing or invalid token', 400);
+  }
+
+  let userId: string;
+  try {
+    userId = await verifyUnsubscribeToken(token);
+  } catch {
+    return error('Invalid or expired unsubscribe token. Please log in to manage your notification settings.', 400);
+  }
+
+  await updateUser(userId, { notificationPrefs: { vaultBackup: 'none' } });
+  return success({ success: true, message: 'You have been unsubscribed from vault backup emails.' });
 }

@@ -105,5 +105,11 @@
   "categoryCreditCards": "Cartes de crédit",
   "categoryIdentities": "Identités",
   "categoryWifiNetworks": "Réseaux Wi-Fi",
-  "categoryPrivateKeys": "Clés privées"
+  "categoryPrivateKeys": "Clés privées",
+  "warning_duplicate_password": "Mot de passe en double",
+  "warning_duplicate_password_desc": "Ce mot de passe est utilisé par un autre élément de votre coffre.",
+  "warning_too_simple_password": "Mot de passe trop simple",
+  "warning_too_simple_password_desc": "Ce mot de passe ne respecte pas les exigences minimales de sécurité.",
+  "warning_breached_password": "Mot de passe compromis",
+  "warning_breached_password_desc": "Ce mot de passe est apparu dans une fuite de données connue."
 }

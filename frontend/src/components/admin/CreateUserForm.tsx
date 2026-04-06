@@ -1,11 +1,19 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { CreateUserRequest } from '@passvault/shared';
+import type { CreateUserRequest, PreferredLanguage } from '@passvault/shared';
 import { LIMITS } from '@passvault/shared';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { OtpDisplay } from './OtpDisplay.js';
+
+const LANGUAGE_OPTIONS: { value: PreferredLanguage; label: string }[] = [
+  { value: 'auto', label: 'Auto (English)' },
+  { value: 'en', label: 'English' },
+  { value: 'de', label: 'Deutsch' },
+  { value: 'fr', label: 'Fran\u00e7ais' },
+  { value: 'ru', label: '\u0420\u0443\u0441\u0441\u043a\u0438\u0439' },
+];
 
 function defaultExpiresAt(): string {
   return new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -25,6 +33,7 @@ export function CreateUserForm({ onCreateUser, loading, onDone, onOtpVisibleChan
   const [lastName, setLastName] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [plan, setPlan] = useState<'free' | 'pro' | 'administrator'>('free');
+  const [language, setLanguage] = useState<PreferredLanguage>('auto');
   const [adminConfirm, setAdminConfirm] = useState(false);
   const [isPerpetual, setIsPerpetual] = useState(false);
   const [expiresAt, setExpiresAt] = useState(defaultExpiresAt());
@@ -48,6 +57,7 @@ export function CreateUserForm({ onCreateUser, loading, onDone, onOtpVisibleChan
         displayName: displayName.trim() || undefined,
         plan,
         expiresAt: isPerpetual ? null : expiresAt || null,
+        preferredLanguage: language,
       };
       const result = await onCreateUser(req);
       setCreated(result);
@@ -57,6 +67,7 @@ export function CreateUserForm({ onCreateUser, loading, onDone, onOtpVisibleChan
       setLastName('');
       setDisplayName('');
       setPlan('free');
+      setLanguage('auto');
       setAdminConfirm(false);
       setIsPerpetual(false);
       setExpiresAt(defaultExpiresAt());
@@ -150,6 +161,20 @@ export function CreateUserForm({ onCreateUser, loading, onDone, onOtpVisibleChan
             {t('adminCreateWarning')}
           </p>
         )}
+      </div>
+
+      <div className="space-y-1">
+        <Label htmlFor="new-language">{t('language')}</Label>
+        <select
+          id="new-language"
+          value={language}
+          onChange={e => setLanguage(e.target.value as PreferredLanguage)}
+          className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
+          {LANGUAGE_OPTIONS.map(opt => (
+            <option key={opt.value} value={opt.value}>{opt.label}</option>
+          ))}
+        </select>
       </div>
 
       <div className="space-y-2">

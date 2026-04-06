@@ -20,7 +20,9 @@ import {
   getUserByEmailChangeLockToken,
 } from '../utils/dynamodb.js';
 import { randomUUID } from 'crypto';
-import { sendEmail } from '../utils/ses.js';
+import { sendHtmlEmail } from '../utils/ses.js';
+import { renderEmail } from '../utils/email-templates.js';
+import { resolveLanguage } from '../utils/language.js';
 import { hashPassword, verifyPassword } from '../utils/crypto.js';
 import { validatePassword } from '../utils/password.js';
 import { signToken } from '../utils/jwt.js';
@@ -28,7 +30,7 @@ import { verifyPasskeyToken } from './passkey.js';
 import { recordAuditEvent } from '../utils/audit.js';
 
 
-export async function login(request: LoginRequest): Promise<{ response?: LoginResponse; error?: string; statusCode?: number }> {
+export async function login(request: LoginRequest, acceptLanguage?: string): Promise<{ response?: LoginResponse; error?: string; statusCode?: number }> {
   let user;
   let passkeyLogin = false;
   let passkeyCredentialId: string | undefined;
@@ -123,11 +125,19 @@ export async function login(request: LoginRequest): Promise<{ response?: LoginRe
     return { error: ERRORS.ACCOUNT_EXPIRED, statusCode: 403 };
   }
 
-  await updateUser(user.userId, {
+  // Resolve language from Accept-Language header if user has 'auto' or no preference
+  const loginUpdates: Partial<import('@passvault/shared').User> = {
     lastLoginAt: new Date().toISOString(),
     failedLoginAttempts: 0,
     lockedUntil: null,
-  });
+  };
+  if (!user.preferredLanguage || user.preferredLanguage === 'auto') {
+    const resolved = resolveLanguage('auto', acceptLanguage);
+    if (resolved !== 'en' || !user.preferredLanguage) {
+      loginUpdates.preferredLanguage = resolved as import('@passvault/shared').PreferredLanguage;
+    }
+  }
+  await updateUser(user.userId, loginUpdates);
 
   const loginEventId = randomUUID();
   // Deprecated: kept for backward compatibility
@@ -337,38 +347,24 @@ export async function requestEmailChange(
   });
 
   const frontendUrl = process.env.FRONTEND_URL || '';
+  const lang = resolveLanguage(user.preferredLanguage);
 
   // Send verification email to the NEW address
   const verifyUrl = `${frontendUrl}/verify-email-change?token=${emailChangeToken}`;
-  await sendEmail(
-    newEmail,
-    'PassVault — Verify your new email address',
-    [
-      'You requested to change your PassVault email address.',
-      '',
-      'Click the link below to verify this email address:',
-      verifyUrl,
-      '',
-      'This link expires in 24 hours.',
-      'If you did not request this change, you can safely ignore this email.',
-    ].join('\n'),
-  );
+  const verifyEmail = await renderEmail('email-change-verify', lang, {
+    verifyUrl,
+    linkExpiryHours: '24',
+  });
+  await sendHtmlEmail(newEmail, 'PassVault — Verify your new email address', verifyEmail.html, verifyEmail.plainText);
 
   // Send notification to the OLD address
   const lockUrl = `${frontendUrl}/lock-account?token=${emailChangeLockToken}`;
-  await sendEmail(
-    user.username,
-    'PassVault — Email change requested',
-    [
-      'An email change was requested for your PassVault account.',
-      `The new email address is: ${newEmail}`,
-      '',
-      'If this was not you, click the link below to lock your account immediately:',
-      lockUrl,
-      '',
-      'This link expires in 1 hour.',
-    ].join('\n'),
-  );
+  const notifyEmail = await renderEmail('email-change-notify', lang, {
+    newEmail,
+    lockUrl,
+    linkExpiryHours: '1',
+  });
+  await sendHtmlEmail(user.username, 'PassVault — Email change requested', notifyEmail.html, notifyEmail.plainText);
 
   return {};
 }

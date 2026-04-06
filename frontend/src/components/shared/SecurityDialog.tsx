@@ -261,8 +261,8 @@ export function SecurityDialog({ open, onOpenChange }: SecurityDialogProps) {
             ) : null}
           </div>
 
-          {/* Passkeys section */}
-          <div className="border-t border-border pt-4">
+          {/* Passkeys section — hidden for admins in dev (passkeys not usable for admin login) */}
+          {!(isAdmin && !config.passkeyRequired) && <div className="border-t border-border pt-4">
             <div className="flex items-center justify-between">
               <Label className="text-sm font-semibold">{t('passkeys')}</Label>
               {!passkeysLoading && (
@@ -386,7 +386,7 @@ export function SecurityDialog({ open, onOpenChange }: SecurityDialogProps) {
             {passkeyError && (
               <p className="mt-2 text-sm text-destructive">{passkeyError}</p>
             )}
-          </div>
+          </div>}
         </div>
 
         <DialogFooter>

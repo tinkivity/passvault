@@ -100,7 +100,7 @@ export function VaultItemNewPage() {
   };
 
   return (
-    <div className="max-w-lg space-y-6">
+    <div className="max-w-3xl space-y-6">
       <h1 className="text-xl font-semibold">{t('newItem')}</h1>
 
       <form onSubmit={handleSubmit} className="space-y-4">

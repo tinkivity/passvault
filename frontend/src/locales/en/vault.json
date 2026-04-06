@@ -105,5 +105,11 @@
   "categoryCreditCards": "Credit cards",
   "categoryIdentities": "Identities",
   "categoryWifiNetworks": "Wi-Fi networks",
-  "categoryPrivateKeys": "Private keys"
+  "categoryPrivateKeys": "Private keys",
+  "warning_duplicate_password": "Duplicate Password",
+  "warning_duplicate_password_desc": "This password is used by another item in your vault.",
+  "warning_too_simple_password": "Password Too Simple",
+  "warning_too_simple_password_desc": "This password does not meet the minimum security requirements.",
+  "warning_breached_password": "Breached Password",
+  "warning_breached_password_desc": "This password has appeared in a known data breach."
 }

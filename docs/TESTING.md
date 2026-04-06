@@ -75,6 +75,7 @@ scripts/sitest.sh --cleanup --env dev
 | 05 Vault Items | 6 | Encrypt + save items, fetch index/items, update, warning codes |
 | 06 User Profile | 3 | Self-change password, re-login, logout |
 | 07 Admin Audit | 12 | Config, event queries, pagination, filtering, sorting, vault ops |
+| 08 Email Templates | 23 | List/download/upload templates, language variants, i18n, version, export all/modified, import zip, modified flag detection, unsubscribe, notification prefs |
 
 See [backend/sit/SCENARIOS.md](backend/sit/SCENARIOS.md) for detailed scenario documentation.
 
@@ -114,6 +115,7 @@ scripts/pentest.sh --cleanup --env dev
 | 08 CORS Headers | 3 | Preflight, PoW headers, Access-Control |
 | 09 JWT Attacks | 4 | Tampered payload, expired, alg:none |
 | 10 Vault Security | 4 | Cross-user access, unique salts, size limits |
+| 11 Email Templates | 28 | Auth/authz for templates, export, import, version endpoints; input validation (empty body, invalid base64, non-zip data); unsubscribe token attacks |
 
 See [backend/pentest/REPORT.md](backend/pentest/REPORT.md) for the findings template.
 

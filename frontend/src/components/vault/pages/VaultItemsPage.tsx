@@ -155,7 +155,7 @@ export function VaultItemsPage() {
                             <TooltipContent>
                               <ul className="text-xs space-y-0.5">
                                 {entry.warningCodes.map(code => (
-                                  <li key={code}>{catalog.find(d => d.code === code)?.label ?? code}</li>
+                                  <li key={code}>{t(`warning_${code}`, { defaultValue: catalog.find(d => d.code === code)?.label ?? code })}</li>
                                 ))}
                               </ul>
                             </TooltipContent>

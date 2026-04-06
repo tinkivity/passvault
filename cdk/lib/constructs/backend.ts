@@ -5,6 +5,7 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as events from 'aws-cdk-lib/aws-events';
 import * as eventsTargets from 'aws-cdk-lib/aws-events-targets';
+import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import { Construct } from 'constructs';
 import { resolve } from 'path';
 import type { EnvironmentConfig } from '@passvault/shared';
@@ -260,6 +261,17 @@ export class BackendConstruct extends Construct {
     // IAM: grant S3 file read+write to admin-mgmt (creates empty vault on invite, downloads vault for backup)
     storage.filesBucket.grantReadWrite(this.adminMgmtFn);
 
+    // IAM: grant email templates bucket access
+    // Read-only for Lambdas that send emails; read+write for admin-mgmt (template management API)
+    storage.templatesBucket.grantRead(this.authFn);
+    storage.templatesBucket.grantRead(this.vaultFn);
+    storage.templatesBucket.grantReadWrite(this.adminMgmtFn);
+
+    // Pass templates bucket name to email-sending Lambdas
+    this.authFn.addEnvironment('TEMPLATES_BUCKET', storage.templatesBucket.bucketName);
+    this.adminMgmtFn.addEnvironment('TEMPLATES_BUCKET', storage.templatesBucket.bucketName);
+    this.vaultFn.addEnvironment('TEMPLATES_BUCKET', storage.templatesBucket.bucketName);
+
     // Digest Lambda — scheduled daily at 01:00 UTC, sends failed-login digests and vault backups
     const digestLogGroup = new logs.LogGroup(this, 'DigestLogs', {
 
@@ -281,16 +293,29 @@ export class BackendConstruct extends Construct {
       timeout: cdk.Duration.minutes(5),
       logGroup: digestLogGroup,
     });
+    // Digest needs JWT for signing unsubscribe tokens
+    this.digestFn.addEnvironment('JWT_SECRET_PARAM', jwtSecretParamName);
+    jwtSecretParam.grantRead(this.digestFn);
     storage.usersTable.grantReadWriteData(this.digestFn);
     storage.loginEventsTable.grantReadData(this.digestFn);
     storage.vaultsTable.grantReadData(this.digestFn);
     storage.filesBucket.grantRead(this.digestFn);
+    storage.templatesBucket.grantRead(this.digestFn);
+    this.digestFn.addEnvironment('TEMPLATES_BUCKET', storage.templatesBucket.bucketName);
 
     // EventBridge rule: run digest daily at 01:00 UTC
     new events.Rule(this, 'DigestSchedule', {
       ruleName: `passvault-digest-schedule-${env}`,
       schedule: events.Schedule.cron({ minute: '0', hour: '1' }),
       targets: [new eventsTargets.LambdaFunction(this.digestFn)],
+    });
+
+    // Seed default email templates into S3 (prune: false → never deletes admin-uploaded templates)
+    new s3deploy.BucketDeployment(this, 'SeedEmailTemplates', {
+      sources: [s3deploy.Source.asset(resolve(__dirname, '../../assets/email-templates'))],
+      destinationBucket: storage.templatesBucket,
+      destinationKeyPrefix: 'templates',
+      prune: false,
     });
 
     // API Gateway
@@ -341,132 +366,169 @@ export class BackendConstruct extends Construct {
       responseHeaders: corsHeaders,
     });
 
+    // Shared LambdaIntegration instances — using allowTestInvoke: false to prevent
+    // CDK from creating per-method AWS::Lambda::Permission resources. Instead, we
+    // grant a single blanket invoke permission per Lambda below. This avoids hitting
+    // the 20 KB Lambda resource policy size limit when many API routes exist.
+    const challengeIntegration = new apigateway.LambdaIntegration(this.challengeFn, { allowTestInvoke: false });
+    const healthIntegration = new apigateway.LambdaIntegration(this.healthFn, { allowTestInvoke: false });
+    const authIntegration = new apigateway.LambdaIntegration(this.authFn, { allowTestInvoke: false });
+    const adminAuthIntegration = new apigateway.LambdaIntegration(this.adminAuthFn, { allowTestInvoke: false });
+    const adminMgmtIntegration = new apigateway.LambdaIntegration(this.adminMgmtFn, { allowTestInvoke: false });
+    const vaultIntegration = new apigateway.LambdaIntegration(this.vaultFn, { allowTestInvoke: false });
+
+    // Single blanket permission: allow API Gateway to invoke each Lambda
+    for (const fn of [this.challengeFn, this.healthFn, this.authFn, this.adminAuthFn, this.adminMgmtFn, this.vaultFn]) {
+      fn.addPermission(`ApiGwInvoke-${fn.node.id}`, {
+        principal: new cdk.aws_iam.ServicePrincipal('apigateway.amazonaws.com'),
+        sourceArn: this.api.arnForExecuteApi('*', '/*', '*'),
+      });
+    }
+
     // Routes — all nested under /api so CloudFront can route /api/* to API GW
     // without conflicting with SPA paths (/admin/login, /vault, etc.)
     const apiRoot = this.api.root.addResource('api');
 
     const challenge = apiRoot.addResource('challenge');
-    challenge.addMethod('GET', new apigateway.LambdaIntegration(this.challengeFn));
+    challenge.addMethod('GET', challengeIntegration);
 
     const health = apiRoot.addResource('health');
-    health.addMethod('GET', new apigateway.LambdaIntegration(this.healthFn));
+    health.addMethod('GET', healthIntegration);
 
     const auth = apiRoot.addResource('auth');
     const authLogin = auth.addResource('login');
-    authLogin.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
+    authLogin.addMethod('POST', authIntegration);
     const authChangePassword = auth.addResource('change-password');
-    authChangePassword.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
+    authChangePassword.addMethod('POST', authIntegration);
     const authChangePasswordSelf = authChangePassword.addResource('self');
-    authChangePasswordSelf.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
+    authChangePasswordSelf.addMethod('POST', authIntegration);
     const authPasskey = auth.addResource('passkey');
     const authPasskeyChallenge = authPasskey.addResource('challenge');
-    authPasskeyChallenge.addMethod('GET', new apigateway.LambdaIntegration(this.authFn));
+    authPasskeyChallenge.addMethod('GET', authIntegration);
     const authPasskeyVerify = authPasskey.addResource('verify');
-    authPasskeyVerify.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
+    authPasskeyVerify.addMethod('POST', authIntegration);
     const authPasskeyRegister = authPasskey.addResource('register');
     const authPasskeyRegisterChallenge = authPasskeyRegister.addResource('challenge');
-    authPasskeyRegisterChallenge.addMethod('GET', new apigateway.LambdaIntegration(this.authFn));
-    authPasskeyRegister.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
+    authPasskeyRegisterChallenge.addMethod('GET', authIntegration);
+    authPasskeyRegister.addMethod('POST', authIntegration);
     const authPasskeys = auth.addResource('passkeys');
-    authPasskeys.addMethod('GET', new apigateway.LambdaIntegration(this.authFn));
+    authPasskeys.addMethod('GET', authIntegration);
     const authPasskeyById = authPasskeys.addResource('{credentialId}');
-    authPasskeyById.addMethod('DELETE', new apigateway.LambdaIntegration(this.authFn));
-    authPasskeyById.addMethod('PATCH', new apigateway.LambdaIntegration(this.authFn));
+    authPasskeyById.addMethod('DELETE', authIntegration);
+    authPasskeyById.addMethod('PATCH', authIntegration);
 
     const admin = apiRoot.addResource('admin');
     // Admin auth / onboarding routes → adminAuthFn
     const adminLogin = admin.addResource('login');
-    adminLogin.addMethod('POST', new apigateway.LambdaIntegration(this.adminAuthFn));
+    adminLogin.addMethod('POST', adminAuthIntegration);
     const adminChangePassword = admin.addResource('change-password');
-    adminChangePassword.addMethod('POST', new apigateway.LambdaIntegration(this.adminAuthFn));
+    adminChangePassword.addMethod('POST', adminAuthIntegration);
     const adminPasskey = admin.addResource('passkey');
     const adminPasskeyChallenge = adminPasskey.addResource('challenge');
-    adminPasskeyChallenge.addMethod('GET', new apigateway.LambdaIntegration(this.adminAuthFn));
+    adminPasskeyChallenge.addMethod('GET', adminAuthIntegration);
     const adminPasskeyVerify = adminPasskey.addResource('verify');
-    adminPasskeyVerify.addMethod('POST', new apigateway.LambdaIntegration(this.adminAuthFn));
+    adminPasskeyVerify.addMethod('POST', adminAuthIntegration);
     const adminPasskeyRegister = adminPasskey.addResource('register');
     const adminPasskeyRegisterChallenge = adminPasskeyRegister.addResource('challenge');
-    adminPasskeyRegisterChallenge.addMethod('GET', new apigateway.LambdaIntegration(this.adminAuthFn));
-    adminPasskeyRegister.addMethod('POST', new apigateway.LambdaIntegration(this.adminAuthFn));
+    adminPasskeyRegisterChallenge.addMethod('GET', adminAuthIntegration);
+    adminPasskeyRegister.addMethod('POST', adminAuthIntegration);
     const adminPasskeys = admin.addResource('passkeys');
-    adminPasskeys.addMethod('GET', new apigateway.LambdaIntegration(this.adminAuthFn));
+    adminPasskeys.addMethod('GET', adminAuthIntegration);
     const adminPasskeyById = adminPasskeys.addResource('{credentialId}');
-    adminPasskeyById.addMethod('DELETE', new apigateway.LambdaIntegration(this.adminAuthFn));
-    adminPasskeyById.addMethod('PATCH', new apigateway.LambdaIntegration(this.adminAuthFn));
+    adminPasskeyById.addMethod('DELETE', adminAuthIntegration);
+    adminPasskeyById.addMethod('PATCH', adminAuthIntegration);
 
     // Admin management routes → adminMgmtFn
     const adminUsers = admin.addResource('users');
-    adminUsers.addMethod('POST', new apigateway.LambdaIntegration(this.adminMgmtFn));
-    adminUsers.addMethod('GET', new apigateway.LambdaIntegration(this.adminMgmtFn));
+    adminUsers.addMethod('POST', adminMgmtIntegration);
+    adminUsers.addMethod('GET', adminMgmtIntegration);
     const adminUserById = adminUsers.addResource('{userId}');
-    adminUserById.addMethod('DELETE', new apigateway.LambdaIntegration(this.adminMgmtFn));
-    adminUserById.addMethod('PATCH', new apigateway.LambdaIntegration(this.adminMgmtFn));
+    adminUserById.addMethod('DELETE', adminMgmtIntegration);
+    adminUserById.addMethod('PATCH', adminMgmtIntegration);
     const adminUserVault = adminUserById.addResource('vault');
-    adminUserVault.addMethod('GET', new apigateway.LambdaIntegration(this.adminMgmtFn));
+    adminUserVault.addMethod('GET', adminMgmtIntegration);
     const adminUserLock = adminUserById.addResource('lock');
-    adminUserLock.addMethod('POST', new apigateway.LambdaIntegration(this.adminMgmtFn));
+    adminUserLock.addMethod('POST', adminMgmtIntegration);
     const adminUserUnlock = adminUserById.addResource('unlock');
-    adminUserUnlock.addMethod('POST', new apigateway.LambdaIntegration(this.adminMgmtFn));
+    adminUserUnlock.addMethod('POST', adminMgmtIntegration);
     const adminUserRetire = adminUserById.addResource('retire');
-    adminUserRetire.addMethod('POST', new apigateway.LambdaIntegration(this.adminMgmtFn));
+    adminUserRetire.addMethod('POST', adminMgmtIntegration);
     const adminUserExpire = adminUserById.addResource('expire');
-    adminUserExpire.addMethod('POST', new apigateway.LambdaIntegration(this.adminMgmtFn));
+    adminUserExpire.addMethod('POST', adminMgmtIntegration);
     const adminUserReactivate = adminUserById.addResource('reactivate');
-    adminUserReactivate.addMethod('POST', new apigateway.LambdaIntegration(this.adminMgmtFn));
+    adminUserReactivate.addMethod('POST', adminMgmtIntegration);
     const adminUserRefreshOtp = adminUserById.addResource('refresh-otp');
-    adminUserRefreshOtp.addMethod('POST', new apigateway.LambdaIntegration(this.adminMgmtFn));
+    adminUserRefreshOtp.addMethod('POST', adminMgmtIntegration);
     const adminUserReset = adminUserById.addResource('reset');
-    adminUserReset.addMethod('POST', new apigateway.LambdaIntegration(this.adminMgmtFn));
+    adminUserReset.addMethod('POST', adminMgmtIntegration);
     const adminUserEmailVault = adminUserById.addResource('email-vault');
-    adminUserEmailVault.addMethod('POST', new apigateway.LambdaIntegration(this.adminMgmtFn));
+    adminUserEmailVault.addMethod('POST', adminMgmtIntegration);
     const adminStats = admin.addResource('stats');
-    adminStats.addMethod('GET', new apigateway.LambdaIntegration(this.adminMgmtFn));
+    adminStats.addMethod('GET', adminMgmtIntegration);
     const adminLoginEvents = admin.addResource('login-events');
-    adminLoginEvents.addMethod('GET', new apigateway.LambdaIntegration(this.adminMgmtFn));
+    adminLoginEvents.addMethod('GET', adminMgmtIntegration);
     const adminAuditEvents = admin.addResource('audit-events');
-    adminAuditEvents.addMethod('GET', new apigateway.LambdaIntegration(this.adminMgmtFn));
+    adminAuditEvents.addMethod('GET', adminMgmtIntegration);
     const adminAuditConfig = admin.addResource('audit-config');
-    adminAuditConfig.addMethod('GET', new apigateway.LambdaIntegration(this.adminMgmtFn));
-    adminAuditConfig.addMethod('PUT', new apigateway.LambdaIntegration(this.adminMgmtFn));
+    adminAuditConfig.addMethod('GET', adminMgmtIntegration);
+    adminAuditConfig.addMethod('PUT', adminMgmtIntegration);
+
+    // Admin email template management routes → adminMgmtFn
+    const adminEmailTemplates = admin.addResource('email-templates');
+    adminEmailTemplates.addMethod('GET', adminMgmtIntegration);
+    // Static sub-resources MUST be registered before {type} so API Gateway
+    // doesn't treat 'export', 'import', 'version' as path parameter values.
+    const adminEmailTemplatesExport = adminEmailTemplates.addResource('export');
+    adminEmailTemplatesExport.addMethod('GET', adminMgmtIntegration);
+    const adminEmailTemplatesImport = adminEmailTemplates.addResource('import');
+    adminEmailTemplatesImport.addMethod('POST', adminMgmtIntegration);
+    const adminEmailTemplatesVersion = adminEmailTemplates.addResource('version');
+    adminEmailTemplatesVersion.addMethod('GET', adminMgmtIntegration);
+    const adminEmailTemplateByType = adminEmailTemplates.addResource('{type}');
+    const adminEmailTemplateByTypeLang = adminEmailTemplateByType.addResource('{language}');
+    adminEmailTemplateByTypeLang.addMethod('GET', adminMgmtIntegration);
+    adminEmailTemplateByTypeLang.addMethod('PUT', adminMgmtIntegration);
 
     const authVerifyEmail = auth.addResource('verify-email');
-    authVerifyEmail.addMethod('GET', new apigateway.LambdaIntegration(this.authFn));
+    authVerifyEmail.addMethod('GET', authIntegration);
     const authLogout = auth.addResource('logout');
-    authLogout.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
+    authLogout.addMethod('POST', authIntegration);
     const authProfile = auth.addResource('profile');
-    authProfile.addMethod('PATCH', new apigateway.LambdaIntegration(this.authFn));
+    authProfile.addMethod('PATCH', authIntegration);
     const authEmailChange = auth.addResource('email-change');
-    authEmailChange.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
+    authEmailChange.addMethod('POST', authIntegration);
     const authVerifyEmailChange = auth.addResource('verify-email-change');
-    authVerifyEmailChange.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
+    authVerifyEmailChange.addMethod('POST', authIntegration);
     const authLockSelf = auth.addResource('lock-self');
-    authLockSelf.addMethod('POST', new apigateway.LambdaIntegration(this.authFn));
+    authLockSelf.addMethod('POST', authIntegration);
+    const authUnsubscribe = auth.addResource('unsubscribe');
+    authUnsubscribe.addMethod('POST', authIntegration);
 
     // Vaults — all operations unified under /api/vaults
     const vaults = apiRoot.addResource('vaults');
-    vaults.addMethod('GET', new apigateway.LambdaIntegration(this.vaultFn));
-    vaults.addMethod('POST', new apigateway.LambdaIntegration(this.vaultFn));
+    vaults.addMethod('GET', vaultIntegration);
+    vaults.addMethod('POST', vaultIntegration);
     // notifications must be registered before {vaultId} for API Gateway static-path precedence
     const vaultNotifications = vaults.addResource('notifications');
-    vaultNotifications.addMethod('GET', new apigateway.LambdaIntegration(this.vaultFn));
-    vaultNotifications.addMethod('POST', new apigateway.LambdaIntegration(this.vaultFn));
+    vaultNotifications.addMethod('GET', vaultIntegration);
+    vaultNotifications.addMethod('POST', vaultIntegration);
     const vaultById = vaults.addResource('{vaultId}');
-    vaultById.addMethod('GET', new apigateway.LambdaIntegration(this.vaultFn));
-    vaultById.addMethod('PUT', new apigateway.LambdaIntegration(this.vaultFn));
-    vaultById.addMethod('PATCH', new apigateway.LambdaIntegration(this.vaultFn));
-    vaultById.addMethod('DELETE', new apigateway.LambdaIntegration(this.vaultFn));
+    vaultById.addMethod('GET', vaultIntegration);
+    vaultById.addMethod('PUT', vaultIntegration);
+    vaultById.addMethod('PATCH', vaultIntegration);
+    vaultById.addMethod('DELETE', vaultIntegration);
     const vaultIndex = vaultById.addResource('index');
-    vaultIndex.addMethod('GET', new apigateway.LambdaIntegration(this.vaultFn));
+    vaultIndex.addMethod('GET', vaultIntegration);
     const vaultItems = vaultById.addResource('items');
-    vaultItems.addMethod('GET', new apigateway.LambdaIntegration(this.vaultFn));
+    vaultItems.addMethod('GET', vaultIntegration);
     const vaultDownload = vaultById.addResource('download');
-    vaultDownload.addMethod('GET', new apigateway.LambdaIntegration(this.vaultFn));
+    vaultDownload.addMethod('GET', vaultIntegration);
     const vaultEmail = vaultById.addResource('email');
-    vaultEmail.addMethod('POST', new apigateway.LambdaIntegration(this.vaultFn));
+    vaultEmail.addMethod('POST', vaultIntegration);
 
     // Config (warning codes catalog — public, no auth required)
     const configResource = apiRoot.addResource('config');
     const configWarningCodes = configResource.addResource('warning-codes');
-    configWarningCodes.addMethod('GET', new apigateway.LambdaIntegration(this.vaultFn));
+    configWarningCodes.addMethod('GET', vaultIntegration);
   }
 }
