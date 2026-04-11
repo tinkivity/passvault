@@ -289,14 +289,29 @@ PERF_PASSWORD="Perf$(openssl rand -hex 12)!Pw"
 
 echo "  Onboarding perf admin (login + password change)..."
 
-# Login with OTP
-LOGIN_RES=$(curl -s -X POST "$API_URL/api/auth/login" \
-  -H "Content-Type: application/json" \
-  -d "{\"username\":\"$PERF_EMAIL\",\"password\":\"$PERF_OTP\"}")
+# Login with OTP. sit-create-admin.ts writes the user to DynamoDB via a direct
+# PutCommand; the login endpoint reads via the username-index GSI which is
+# eventually consistent. If the GSI hasn't propagated yet, the login returns
+# a 401 with "Invalid username or password" — the same error as a bad password.
+# Retry a few times with backoff to absorb this.
+LOGIN_TOKEN=""
+LOGIN_RES=""
+for attempt in 1 2 3 4 5; do
+  LOGIN_RES=$(curl -s -X POST "$API_URL/api/auth/login" \
+    -H "Content-Type: application/json" \
+    -d "{\"username\":\"$PERF_EMAIL\",\"password\":\"$PERF_OTP\"}")
+  LOGIN_TOKEN=$(echo "$LOGIN_RES" | jq -r '.data.token // empty')
+  if [[ -n "$LOGIN_TOKEN" ]]; then
+    break
+  fi
+  if [[ "$attempt" -lt 5 ]]; then
+    echo "  Login attempt $attempt returned no token; retrying in 2s (likely GSI propagation)..."
+    sleep 2
+  fi
+done
 
-LOGIN_TOKEN=$(echo "$LOGIN_RES" | jq -r '.data.token // empty')
 if [[ -z "$LOGIN_TOKEN" ]]; then
-  echo "  ERROR: Failed to login perf admin with OTP."
+  echo "  ERROR: Failed to login perf admin with OTP after 5 attempts."
   echo "  Response: $LOGIN_RES"
   exit 1
 fi
