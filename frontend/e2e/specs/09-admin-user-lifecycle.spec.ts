@@ -63,25 +63,45 @@ test.describe.serial('Admin lifecycle — lock / unlock', () => {
   test('lock: status transitions to locked', async ({ adminPage, request, adminAuth, apiBase }) => {
     await gotoUserDetail(adminPage, testUser);
 
+    // Wait for the actual POST /lock response before continuing. This is the
+    // only reliable sync point — waitForTimeout races Lambda cold starts,
+    // and the fixture guard only catches 5xx, not pending requests.
+    const lockResponse = adminPage.waitForResponse(
+      (res) => res.url().includes(`/api/admin/users/${testUser.userId}/lock`) && res.request().method() === 'POST',
+      { timeout: 30000 },
+    );
     await adminPage.getByRole('button', { name: /^Lock$/i }).click();
+    const lockRes = await lockResponse;
+    expect(lockRes.status()).toBe(200);
 
-    // UI: the Lock button should disappear and Unlock should appear.
+    // UI sanity: the Lock button should disappear and Unlock should appear.
     await expect(adminPage.getByRole('button', { name: /^Unlock$/i })).toBeVisible({ timeout: 15000 });
 
-    // API: GET /api/admin/users reports status=locked
-    const state = await getUserState(request, apiBase, adminAuth.token, testUser.userId);
-    expect(state?.status).toBe('locked');
+    // API: listAllUsers uses Scan without ConsistentRead (eventually
+    // consistent), so poll to absorb any lag between UpdateItem and Scan.
+    await expect.poll(async () => {
+      const state = await getUserState(request, apiBase, adminAuth.token, testUser.userId);
+      return state?.status;
+    }, { timeout: 10000 }).toBe('locked');
   });
 
   test('unlock: status reverts, Lock button reappears', async ({ adminPage, request, adminAuth, apiBase }) => {
     await gotoUserDetail(adminPage, testUser);
 
+    const unlockResponse = adminPage.waitForResponse(
+      (res) => res.url().includes(`/api/admin/users/${testUser.userId}/unlock`) && res.request().method() === 'POST',
+      { timeout: 30000 },
+    );
     await adminPage.getByRole('button', { name: /^Unlock$/i }).click();
+    const unlockRes = await unlockResponse;
+    expect(unlockRes.status()).toBe(200);
 
     await expect(adminPage.getByRole('button', { name: /^Lock$/i })).toBeVisible({ timeout: 15000 });
 
-    const state = await getUserState(request, apiBase, adminAuth.token, testUser.userId);
-    expect(state?.status).not.toBe('locked');
+    await expect.poll(async () => {
+      const state = await getUserState(request, apiBase, adminAuth.token, testUser.userId);
+      return state?.status;
+    }, { timeout: 10000 }).not.toBe('locked');
   });
 });
 
@@ -105,15 +125,24 @@ test.describe.serial('Admin lifecycle — expire / reactivate', () => {
   test('expire: user status becomes expired', async ({ adminPage, request, adminAuth, apiBase }) => {
     await gotoUserDetail(adminPage, testUser);
 
+    // Wait for the POST /expire response — NOT a fixed timeout. Lambda
+    // cold-starts in dev can exceed 500ms, in which case the assertion
+    // below would race an in-flight request and read stale 'active'.
+    // Seen as status=-1, time=-1ms in the Playwright trace.
+    const expireResponse = adminPage.waitForResponse(
+      (res) => res.url().includes(`/api/admin/users/${testUser.userId}/expire`) && res.request().method() === 'POST',
+      { timeout: 30000 },
+    );
     await adminPage.getByRole('button', { name: /^Expire$/i }).click();
+    const expireRes = await expireResponse;
+    expect(expireRes.status()).toBe(200);
 
-    // UI: let the page re-render. The expire button may become disabled or
-    // the status badge may change — we rely on the API truth source below
-    // rather than guessing the exact UI reflection.
-    await adminPage.waitForTimeout(500);
-
-    const state = await getUserState(request, apiBase, adminAuth.token, testUser.userId);
-    expect(state?.status).toBe('expired');
+    // Poll the admin list API — listAllUsers Scans without ConsistentRead,
+    // so the change may not be visible to the very next read.
+    await expect.poll(async () => {
+      const state = await getUserState(request, apiBase, adminAuth.token, testUser.userId);
+      return state?.status;
+    }, { timeout: 10000 }).toBe('expired');
   });
 
   test('reactivate: user returns to active via list-row action', async ({ adminPage, request, adminAuth, apiBase }) => {
