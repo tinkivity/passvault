@@ -350,19 +350,29 @@ npx cdk deploy PassVault-Beta \
   --context passkeyOrigin=https://beta.pv.example.com
 ```
 
-CDK emits a `PlusAddress` stack output. `qualify.sh --env beta` reads it,
-constructs every test user as `you+<tag>-<timestamp>@example.com`, and prompts
-for confirmation before running (bypass with `--yes` in CI). An inbox filter
-on `+sit-`, `+e2e-`, `+perf-` auto-archives the noise.
+CDK emits two stack outputs the qualification pipeline depends on:
 
-Validation rules (enforced at synth time):
+- `Domain` — the root domain passed via `--context domain=<d>`
+- `PlusAddress` — the mailbox passed via `--context plusAddress=<addr>`
+
+On fresh-deploy runs (no `PassVault-Beta` yet), `qualify.sh --env beta`
+requires the operator to pass `--domain` and `--plus-address` on the command
+line — CDK has nowhere else to read them from. On subsequent runs
+(`--resume`, `--cleanup`), qualify.sh reads both values directly from the
+stack's CloudFormation outputs and the flags become optional. Test users
+become `you+<tag>-<timestamp>@example.com`, and qualify prompts for
+confirmation before sending real mail (bypass with `--yes` in CI).
+
+Validation rules (enforced at synth time by
+[cdk/lib/validate-context.ts](lib/validate-context.ts)):
 - `plusAddress` requires `domain` to also be set.
 - `plusAddress` must be a well-formed `local@domain` email.
 - The domain portion of `plusAddress` must equal the `domain` context value.
 
-Dev is never affected: `qualify.sh --env dev` keeps the legacy
+Dev is never affected: `qualify.sh` (default env) keeps the legacy
 `@passvault-test.local` fallback and does not send real mail (dev Lambdas have
-no `SENDER_EMAIL` configured).
+no `SENDER_EMAIL` configured). Prod is not qualifiable at all — `qualify.sh
+--env prod` is rejected outright.
 
 ---
 

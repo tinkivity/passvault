@@ -22,25 +22,30 @@ PassVault deploys to AWS using CDK. Three environments are supported: **dev**, *
 
 ## Qualification Gate
 
-Before promoting changes to beta or prod, run the qualification pipeline.
-`qualify.sh` supports `--env dev | beta | prod` — default is dev, which is
-safe (no real mail is sent) and what you should run on feature branches.
-Before cutting a beta release, also run it against a beta stack that has
-[test email routing](../cdk/DEPLOYMENT.md#4b-routing-qualification-test-mail-to-your-inbox)
-configured so invitation/export/digest mail exercises SES end-to-end.
+Before promoting changes to beta, run the qualification pipeline. Dev is the
+fast, mail-safe path used on feature branches; beta exercises the full
+SES/email path via [test email routing](../cdk/DEPLOYMENT.md#4b-routing-qualification-test-mail-to-your-inbox)
+and is the gate before cutting a beta release. **Prod is not qualifiable** —
+`qualify.sh --env prod` is rejected outright to keep test traffic off
+production.
 
 ```bash
-# Dev qualification — fast, no real mail
+# Dev — self-contained, no real mail sent
 ./scripts/qualify.sh --profile <your-profile>
 
-# Beta qualification — reads PlusAddress from the deployed stack;
-# prompts before sending real mail (bypass with --yes in CI)
-./scripts/qualify.sh --env beta --profile <your-profile>
+# Beta, first run against a fresh PassVault-Beta stack (flags required)
+./scripts/qualify.sh --env beta \
+  --domain example.com \
+  --plus-address you@example.com \
+  --profile <your-profile>
+
+# Beta, subsequent runs (values read from the deployed stack's outputs)
+./scripts/qualify.sh --env beta --resume --profile <your-profile>
 ```
 
 Both modes automate: build, unit tests, CDK deploy, SIT, pentest, E2E browser
 tests, and performance benchmarks. See [QUALIFICATION.md](QUALIFICATION.md)
-for full details and the flag reference.
+for the flag reference and the full contract.
 
 ---
 

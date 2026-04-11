@@ -100,7 +100,7 @@ describe('validatePlusAddressContext', () => {
 });
 
 describe('PassVaultStack — plusAddress plumbing', () => {
-  it('emits PlusAddress CfnOutput when both domain and plusAddress are set', () => {
+  it('emits PlusAddress and Domain CfnOutputs when both are set', () => {
     const app = new App({ context: { adminEmail: 'admin@example.com' } });
     const stack = new PassVaultStack(app, 'TestStackPlus', betaConfig, {
       env: { account: '123456789012', region: 'eu-central-1' },
@@ -108,8 +108,7 @@ describe('PassVaultStack — plusAddress plumbing', () => {
       plusAddress: 'ops@example.com',
     });
     const template = Template.fromStack(stack);
-    template.hasOutput('PlusAddress', {
-      Value: 'ops@example.com',
-    });
+    template.hasOutput('PlusAddress', { Value: 'ops@example.com' });
+    template.hasOutput('Domain', { Value: 'example.com' });
   });
 });

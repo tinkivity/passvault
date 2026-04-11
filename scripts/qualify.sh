@@ -1,23 +1,42 @@
 #!/usr/bin/env bash
-# qualify.sh — Full qualification pipeline for PassVault (dev | beta | prod).
+# qualify.sh — Full qualification pipeline for PassVault (dev | beta).
+#
+# Prod is not qualifiable by this script — the qualification pipeline creates
+# and destroys ephemeral test users and is unsafe to run against production.
 #
 # Usage:
-#   ./scripts/qualify.sh [--env dev|beta|prod] [--profile <name>] [--region <region>]
-#   ./scripts/qualify.sh --env beta --domain example.com --plus-address you@example.com [--yes]
-#   ./scripts/qualify.sh --resume [--env <env>] [--profile <name>] [--region <region>]
-#   ./scripts/qualify.sh --cleanup [state-file] [--env <env>] [--profile <name>] [--region <region>]
+#   # Dev (self-contained; no operator input required)
+#   ./scripts/qualify.sh [--profile <name>] [--region <region>]
+#
+#   # Beta — fresh deploy (no existing PassVault-Beta stack):
+#   #   --domain and --plus-address are MANDATORY because cdk deploy needs them.
+#   ./scripts/qualify.sh --env beta \
+#     --domain example.com --plus-address you@example.com \
+#     [--profile <name>] [--region <region>] [--yes]
+#
+#   # Beta — resume against an already-deployed stack:
+#   #   --domain and --plus-address are read from the stack's Domain and
+#   #   PlusAddress CfnOutputs, no CLI flags needed.
+#   ./scripts/qualify.sh --env beta --resume [--profile <name>]
+#
+#   # Cleanup (dev or beta). For beta, values are discovered from the stack
+#   # outputs if still present; otherwise --domain/--plus-address must be
+#   # re-passed so cdk destroy can synth the same stack.
+#   ./scripts/qualify.sh --cleanup [state-file] [--env <env>] [--profile <name>]
 #
 # Options:
-#   --env <name>           Target environment: dev (default) | beta | prod
+#   --env <name>           Target environment: dev (default) | beta. prod is rejected.
 #   --profile <name>       AWS named profile
 #   --region <region>      AWS region (default: eu-central-1)
-#   --domain <d>           Root domain — required for fresh beta/prod deploys (cdk --context domain=<d>)
-#   --plus-address <addr>  Single mailbox that receives all qualification mail.
-#                          Must be local@<domain>. When set, test users become
-#                          local+<tag>@<domain>. When unset in beta/prod, falls back
-#                          to the stack's PlusAddress output if present, otherwise
-#                          to the legacy @passvault-test.local addresses.
-#   --yes                  Skip the beta/prod "real mail will be sent" confirmation (CI bypass)
+#   --domain <d>           Root domain. Required for beta fresh deploys (cdk needs
+#                          --context domain=<d>). Ignored/discovered-from-stack when
+#                          the target stack already exists. The domain must already
+#                          be a Verified SES identity in the account/region.
+#   --plus-address <addr>  Mailbox that receives all qualification test mail.
+#                          Required for beta fresh deploys. Must be local@<domain>
+#                          and its domain must equal --domain. Test users become
+#                          local+<tag>@<domain>.
+#   --yes                  Skip the beta "real mail will be sent" confirmation (CI bypass)
 #   --resume               Skip build/test/deploy; run SIT/pentest/E2E/perf against existing stack
 #   --cleanup [state-file] Skip tests; only tear down a previous qualification run.
 #                          If no file given, auto-discovers .qualify-state-${env}-*.json.
@@ -40,9 +59,10 @@ CLEANUP_FILE=""
 RESUME=false
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-USAGE="Usage: $0 [--env dev|beta|prod] [--profile <name>] [--region <region>] [--resume] [--yes]
-       $0 --env beta --domain <d> --plus-address <addr> [--yes]
-       $0 --cleanup [state-file] [--env <env>] [--profile <name>] [--region <region>]"
+USAGE="Usage: $0 [--profile <name>] [--region <region>] [--resume] [--yes]                            # dev (default)
+       $0 --env beta --domain <d> --plus-address <addr> [--profile <name>] [--yes]   # beta, fresh deploy
+       $0 --env beta --resume [--profile <name>]                                     # beta, against existing stack
+       $0 --cleanup [state-file] [--env <env>] [--profile <name>]"
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
@@ -76,9 +96,19 @@ while [[ $# -gt 0 ]]; do
 done
 
 case "$ENV" in
-  dev|beta|prod) ;;
+  dev|beta) ;;
+  prod)
+    cat >&2 <<'EOM'
+Error: qualification against prod is not allowed.
+
+qualify.sh creates and destroys ephemeral test users, admins, and vaults. Run
+it against dev (safe, no real mail) or beta (real SES via test email routing)
+only. Prod must never see qualification traffic.
+EOM
+    exit 1
+    ;;
   *)
-    echo "Error: unknown environment '$ENV'. Valid values: dev, beta, prod." >&2
+    echo "Error: unknown environment '$ENV'. Valid values: dev, beta." >&2
     exit 1
     ;;
 esac
@@ -87,7 +117,7 @@ esac
 STACK_ENV_CAP="$(echo "$ENV" | tr '[:lower:]' '[:upper:]' | cut -c1)$(echo "$ENV" | cut -c2-)"
 STACK="PassVault-${STACK_ENV_CAP}"
 
-# Validate --plus-address shape (local@domain). When --domain is also given, enforce match.
+# Validate --plus-address shape (local@domain) and domain match when set.
 if [[ -n "$PLUS_ADDRESS" ]]; then
   if [[ ! "$PLUS_ADDRESS" =~ ^[^@[:space:]]+@[^@[:space:]]+$ ]]; then
     echo "Error: --plus-address must be a valid email (local@domain), got: $PLUS_ADDRESS" >&2
@@ -109,8 +139,8 @@ else
   ADMIN_EMAIL_CTX="qualify@passvault-test.local"
 fi
 
-# Common CDK context args, used by deploy and destroy. Extra --context flags are
-# appended when domain/plus-address are provided.
+# Common CDK context args, used by deploy and destroy. Extra --context flags
+# are appended when domain/plus-address are provided (always, for beta/prod).
 cdk_ctx_args() {
   local args="--context env=$ENV --context adminEmail=$ADMIN_EMAIL_CTX"
   [[ -n "$DOMAIN" ]]       && args="$args --context domain=$DOMAIN"
@@ -165,6 +195,109 @@ aws_args() {
   echo "$args"
 }
 
+# ── Resolve context: verify credentials, probe stack, fill/demand beta flags ─
+#
+# Runs once, up front, so the rest of the script (cleanup mode, normal mode,
+# sub-script invocations, final destroy) has a single consistent view of
+# DOMAIN, PLUS_ADDRESS, and STACK_EXISTS. Without this, beta cleanup and
+# beta --resume would have no way to recover domain/plus-address and cdk
+# destroy would synth a different stack graph than what was deployed.
+#
+# Dev is unaffected: domain/plus-address stay empty and all cdk invocations
+# use the same minimal context they always did.
+
+if ! aws sts get-caller-identity --region "$REGION" &>/dev/null; then
+  echo "Error: no AWS access — aws sts get-caller-identity failed." >&2
+  [[ -n "$PROFILE" ]] \
+    && echo "  Your SSO session may have expired. Run: aws sso login --profile $PROFILE" >&2 \
+    || echo "  Your SSO session may have expired. Run: aws sso login" >&2
+  exit 1
+fi
+
+STACK_EXISTS=false
+if aws cloudformation describe-stacks --stack-name "$STACK" --region "$REGION" &>/dev/null; then
+  STACK_EXISTS=true
+fi
+
+if [[ "$ENV" == "beta" && "$CLEANUP" == "true" && "$STACK_EXISTS" == "false" ]]; then
+  # Cleanup mode with no remaining stack — nothing to destroy, so domain/
+  # plus-address are not needed. Fall through; the sub-script cleanups and
+  # state-file removal still run, cdk destroy is a no-op.
+  echo "  $STACK already destroyed — cleanup will remove sub-script state only."
+elif [[ "$ENV" == "beta" ]]; then
+  if [[ "$STACK_EXISTS" == "true" ]]; then
+    # Stack is already deployed. Read the Domain and PlusAddress outputs that
+    # the CDK stack emits (cdk/lib/passvault-stack.ts) and use them as the
+    # single source of truth for every downstream step. If the operator
+    # *also* passed --domain or --plus-address, they must match exactly —
+    # mismatched values would cause the final cdk destroy to synth against a
+    # different context than was deployed and orphan resources.
+    DISCOVERED_DOMAIN=$(_cfn_output Domain 2>/dev/null || echo "")
+    DISCOVERED_PLUS=$(_cfn_output PlusAddress 2>/dev/null || echo "")
+    [[ "$DISCOVERED_DOMAIN" == "None" ]] && DISCOVERED_DOMAIN=""
+    [[ "$DISCOVERED_PLUS"   == "None" ]] && DISCOVERED_PLUS=""
+
+    if [[ -z "$DISCOVERED_DOMAIN" || -z "$DISCOVERED_PLUS" ]]; then
+      cat >&2 <<EOM
+Error: $STACK exists but is missing the Domain and/or PlusAddress CfnOutputs.
+
+  Discovered Domain       : '${DISCOVERED_DOMAIN:-<missing>}'
+  Discovered PlusAddress  : '${DISCOVERED_PLUS:-<missing>}'
+
+This means the stack was deployed before the test-email-routing feature
+landed (or without --context domain=... and --context plusAddress=...). Redeploy
+with both contexts set, then re-run qualify. See cdk/DEPLOYMENT.md §4b.
+EOM
+      exit 1
+    fi
+
+    if [[ -n "$DOMAIN" && "$DOMAIN" != "$DISCOVERED_DOMAIN" ]]; then
+      echo "Error: --domain '$DOMAIN' does not match $STACK's Domain output '$DISCOVERED_DOMAIN'." >&2
+      echo "       Omit --domain to use the deployed value, or redeploy the stack first." >&2
+      exit 1
+    fi
+    if [[ -n "$PLUS_ADDRESS" && "$PLUS_ADDRESS" != "$DISCOVERED_PLUS" ]]; then
+      echo "Error: --plus-address '$PLUS_ADDRESS' does not match $STACK's PlusAddress output '$DISCOVERED_PLUS'." >&2
+      echo "       Omit --plus-address to use the deployed value, or redeploy the stack first." >&2
+      exit 1
+    fi
+
+    DOMAIN="$DISCOVERED_DOMAIN"
+    PLUS_ADDRESS="$DISCOVERED_PLUS"
+    PLUS_LOCAL="${PLUS_ADDRESS%@*}"
+    PLUS_DOMAIN="${PLUS_ADDRESS#*@}"
+    echo "  Context source: $STACK outputs (Domain=$DOMAIN, PlusAddress=$PLUS_ADDRESS)"
+  else
+    # Stack does not exist — qualify.sh will run `cdk deploy` and needs the
+    # values on the CLI. There is nowhere else to get them from.
+    MISSING=""
+    [[ -z "$DOMAIN" ]]       && MISSING="${MISSING} --domain"
+    [[ -z "$PLUS_ADDRESS" ]] && MISSING="${MISSING} --plus-address"
+    if [[ -n "$MISSING" ]]; then
+      cat >&2 <<EOM
+Error: beta qualification requires${MISSING}.
+
+  $STACK is not yet deployed, so qualify.sh will run \`cdk deploy\` as part
+  of Step 3. CDK needs these two pieces of information to synthesize a beta
+  stack with SES wiring and test-mail routing:
+
+    --domain <d>            root domain, must be a Verified SES identity in
+                            this account/region (see cdk/DEPLOYMENT.md §4a)
+    --plus-address <addr>   local@<d>, the single mailbox that receives all
+                            qualification test-user mail
+
+  Once $STACK has been deployed with these contexts, subsequent runs
+  (--resume, --cleanup) read them from the stack's Domain and PlusAddress
+  CfnOutputs and the flags become optional.
+
+Example:
+  $0 --env beta --domain example.com --plus-address you@example.com --profile <p>
+EOM
+      exit 1
+    fi
+  fi
+fi
+
 # ── Cleanup-only mode ────────────────────────────────────────────────────────
 if [[ "$CLEANUP" == "true" ]]; then
 
@@ -210,18 +343,10 @@ if [[ "$CLEANUP" == "true" ]]; then
   echo "  State file  : $(basename "$CLEANUP_FILE")"
   echo "  Region      : $REGION"
   [[ -n "$PROFILE" ]] && echo "  AWS profile : $PROFILE"
+  [[ -n "$DOMAIN" ]] && echo "  Domain      : $DOMAIN"
+  [[ -n "$PLUS_ADDRESS" ]] && echo "  Plus address: $PLUS_ADDRESS"
   echo ""
-
-  # Verify AWS access
-  section "AWS credentials"
-  if ! aws sts get-caller-identity --region "$REGION" &>/dev/null; then
-    echo "  No AWS access — cannot reach AWS STS."
-    [[ -n "$PROFILE" ]] \
-      && echo "    aws sso login --profile $PROFILE" \
-      || echo "    aws sso login"
-    exit 1
-  fi
-  echo "  AWS credentials valid."
+  # AWS credentials already verified above in the resolve-context phase.
 
   # SIT cleanup
   if [[ -n "$SIT_STATE" && -f "$REPO_ROOT/$SIT_STATE" ]]; then
@@ -304,22 +429,12 @@ PERF_STATE_FILE=""
 # ── Step 0: Preflight ────────────────────────────────────────────────────────
 section "Step 0 — Preflight"
 
-echo "  Checking AWS access..."
-if ! aws sts get-caller-identity --region "$REGION" &>/dev/null; then
-  echo "  No AWS access — cannot reach AWS STS."
-  echo "  Your SSO session may have expired. Run:"
-  [[ -n "$PROFILE" ]] \
-    && echo "    aws sso login --profile $PROFILE" \
-    || echo "    aws sso login"
-  echo ""
-  exit 1
-fi
-echo "  AWS credentials valid."
+# AWS credentials and stack existence were already resolved up front (see
+# "Resolve context" phase near the top of this script). $STACK_EXISTS is set
+# there. Here we only interpret that result against --resume.
+echo "  AWS credentials: OK (verified up front)."
 
-STACK_EXISTS=false
-echo "  Checking for existing $STACK stack..."
-if aws cloudformation describe-stacks --stack-name "$STACK" --region "$REGION" &>/dev/null; then
-  STACK_EXISTS=true
+if [[ "$STACK_EXISTS" == "true" ]]; then
   if [[ "$RESUME" == "true" ]]; then
     echo "  Stack $STACK exists — resuming (skipping build/test/deploy)."
   else
@@ -348,22 +463,9 @@ echo "  Region      : $REGION"
 echo "  Started     : $STARTED_AT"
 echo ""
 
-# Beta/prod: discover PlusAddress from the deployed stack if the operator
-# didn't pass one on the CLI. Single source of truth is the stack output.
-if [[ -z "$PLUS_ADDRESS" && "$STACK_EXISTS" == "true" && "$ENV" != "dev" ]]; then
-  DISCOVERED_PLUS=$(_cfn_output PlusAddress 2>/dev/null || echo "")
-  if [[ -n "$DISCOVERED_PLUS" && "$DISCOVERED_PLUS" != "None" ]]; then
-    PLUS_ADDRESS="$DISCOVERED_PLUS"
-    PLUS_LOCAL="${PLUS_ADDRESS%@*}"
-    PLUS_DOMAIN="${PLUS_ADDRESS#*@}"
-    ADMIN_EMAIL_CTX="${PLUS_LOCAL}+qualify-admin@${PLUS_DOMAIN}"
-    echo "  Discovered PlusAddress from stack: $PLUS_ADDRESS"
-  fi
-fi
-
-# Beta/prod with real-mail routing: require explicit confirmation before proceeding.
+# Beta with real-mail routing: require explicit confirmation before proceeding.
 # Dev is never prompted; --yes bypasses for CI.
-if [[ "$ENV" != "dev" && -n "$PLUS_ADDRESS" && "$ASSUME_YES" != "true" ]]; then
+if [[ "$ENV" == "beta" && -n "$PLUS_ADDRESS" && "$ASSUME_YES" != "true" ]]; then
   echo ""
   echo -e "${YELLOW}⚠  ${ENV} qualification will send real emails to ${PLUS_LOCAL}+*@${PLUS_DOMAIN}${RESET}"
   echo "   (~15 messages: one invitation per test user, plus vault-export and digest)"

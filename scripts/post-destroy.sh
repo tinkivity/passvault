@@ -4,7 +4,21 @@
 # Usage:
 #   ./scripts/post-destroy.sh --env <dev|beta|prod> [--profile <aws-profile>] [--region <region>]
 #
-# Run this after: cdk destroy PassVault-{Dev|Beta|Prod} --context env={env}
+# Run this after `cdk destroy`.
+#
+# Dev:
+#   cd cdk && cdk destroy PassVault-Dev --context env=dev \
+#     --context adminEmail=you@example.com
+#
+# Beta / Prod: destroy must repeat every --context the stack was deployed
+# with, otherwise CDK synthesizes a different stack graph and the destroy
+# fails or orphans resources. Pass env, adminEmail, domain, and (if the
+# stack was deployed for qualification) plusAddress:
+#   cd cdk && cdk destroy PassVault-Beta \
+#     --context env=beta \
+#     --context domain=example.com \
+#     --context plusAddress=you@example.com \
+#     --context adminEmail=you+qualify-admin@example.com
 #
 # Resources cleaned up:
 #   • DynamoDB tables   passvault-users-{env}                  (removalPolicy: RETAIN)
@@ -93,8 +107,12 @@ stack_status=$(aws cloudformation describe-stacks \
 
 if [[ "$stack_status" != "DOES_NOT_EXIST" ]]; then
   echo "⚠  Stack $STACK_NAME still exists (status: $stack_status)."
-  echo "   Destroy it first:"
-  echo "     cd cdk && cdk destroy $STACK_NAME --context env=$ENV"
+  echo "   Destroy it first. Beta/prod stacks were deployed with additional"
+  echo "   --context flags (domain, plusAddress, adminEmail) — you must repeat"
+  echo "   the same flags at destroy time or CDK will synth a different stack"
+  echo "   graph. See the file header of this script for the full command."
+  echo "   Minimum form (dev):"
+  echo "     cd cdk && cdk destroy $STACK_NAME --context env=$ENV --context adminEmail=you@example.com"
   echo ""
   if [[ "$ENV" == "dev" ]]; then
     echo "  [auto-confirmed for dev]"

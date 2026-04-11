@@ -330,18 +330,24 @@ Edit `backend/perf/baselines.json` when response times legitimately change (new 
 ## Qualification Pipeline
 
 The qualification script automates the complete verification pipeline for
-dev, beta, or prod. Dev is the fast, mail-safe path used on feature
-branches; beta exercises the full SES/email path via
-[test email routing](../cdk/DEPLOYMENT.md#4b-routing-qualification-test-mail-to-your-inbox)
-and is the gate before a beta release.
+dev and beta. **Prod is not qualifiable** — `qualify.sh --env prod` is
+rejected outright to keep test traffic off production. Dev is the fast,
+mail-safe path used on feature branches; beta exercises the full SES/email
+path via [test email routing](../cdk/DEPLOYMENT.md#4b-routing-qualification-test-mail-to-your-inbox)
+and is the gate before cutting a beta release.
 
 ```bash
-# Dev qualification (default; no real mail sent)
+# Dev (default; self-contained, no real mail sent)
 ./scripts/qualify.sh --profile <aws-profile>
 
-# Beta qualification — reads PlusAddress from the deployed stack,
-# prompts before sending real mail (bypass with --yes in CI)
-./scripts/qualify.sh --env beta --profile <aws-profile>
+# Beta, first run against a fresh PassVault-Beta stack (flags required)
+./scripts/qualify.sh --env beta \
+  --domain example.com \
+  --plus-address you@example.com \
+  --profile <aws-profile>
+
+# Beta, subsequent runs (values read from Domain/PlusAddress stack outputs)
+./scripts/qualify.sh --env beta --resume --profile <aws-profile>
 
 # Cleanup after debugging failures (match the --env of the failed run)
 ./scripts/qualify.sh --cleanup --profile <aws-profile>
@@ -354,7 +360,7 @@ and is the gate before a beta release.
 - Any fail: stack preserved, reports available, cleanup via `--cleanup`
 
 See [QUALIFICATION.md](QUALIFICATION.md) for full documentation and the
-flag reference (including `--env`, `--plus-address`, `--yes`).
+flag reference.
 
 ---
 
@@ -374,7 +380,8 @@ flag reference (including `--env`, `--plus-address`, `--yes`).
 
 Before promoting from dev to beta to prod:
 
-- [ ] **`./scripts/qualify.sh --profile <name>` passes** (runs all automated checks below)
+- [ ] **`./scripts/qualify.sh --profile <name>` passes on dev** (fast gate on every feature branch; no real mail sent)
+- [ ] **`./scripts/qualify.sh --env beta --resume --profile <name>` passes on beta** (full SES + test-mail-routing gate before cutting a beta release)
 - [ ] `npm test` passes (all unit tests green)
 - [ ] `npm run typecheck` passes (no type errors in any package)
 - [ ] `npm run build` succeeds (shared, backend, frontend)

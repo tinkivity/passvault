@@ -183,6 +183,15 @@ export class PassVaultStack extends cdk.Stack {
       description: 'Initial administrator username (email address)',
     });
 
+    // Beta/prod: persist the deploy-time domain and plus-address as stack
+    // outputs so scripts/qualify.sh can resume against an already-deployed
+    // stack without the operator having to re-pass the same flags.
+    if (props?.domain) {
+      new cdk.CfnOutput(this, 'Domain', {
+        value: props.domain,
+        description: 'Root domain passed at deploy time (--context domain=<d>).',
+      });
+    }
     if (props?.plusAddress) {
       new cdk.CfnOutput(this, 'PlusAddress', {
         value: props.plusAddress,
