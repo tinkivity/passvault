@@ -261,9 +261,11 @@ section "Perf admin setup"
 ADJECTIVES=("rapid" "steady" "fluid" "dense" "sonic" "polar" "ember" "azure")
 NOUNS=("tiger" "eagle" "shark" "bison" "cobra" "falcon" "orca" "mantis")
 PERF_NAME="${ADJECTIVES[$((RANDOM % 8))]}-${NOUNS[$((RANDOM % 8))]}"
-PERF_EMAIL="perf-${PERF_NAME}@passvault-test.local"
+source "$REPO_ROOT/scripts/lib/test-emails.sh"
+PERF_EMAIL=$(make_test_email "perf-${PERF_NAME}")
 
 echo "  Perf admin  : $PERF_EMAIL"
+[[ -n "${PASSVAULT_PLUS_ADDRESS:-}" ]] && echo "  Email routing: on"
 
 # ── Create perf admin ────────────────────────────────────────────────────────
 PERF_JSON=$(ENVIRONMENT="$ENV" ADMIN_EMAIL="$PERF_EMAIL" DYNAMODB_TABLE="$TABLE" \

@@ -257,7 +257,11 @@ section "SIT admin setup"
 ADJECTIVES=("quick" "clever" "silent" "bright" "bold" "sharp" "calm" "keen")
 NOUNS=("fox" "owl" "hawk" "wolf" "bear" "lynx" "crane" "pike")
 SIT_NAME="${ADJECTIVES[$((RANDOM % 8))]}-${NOUNS[$((RANDOM % 8))]}"
-SIT_EMAIL="sit-${SIT_NAME}@passvault-test.local"
+source "$REPO_ROOT/scripts/lib/test-emails.sh"
+SIT_EMAIL=$(make_test_email "sit-${SIT_NAME}")
+if [[ -n "${PASSVAULT_PLUS_ADDRESS:-}" ]]; then
+  echo "  Email routing: on → $SIT_EMAIL"
+fi
 
 echo "  SIT admin   : $SIT_EMAIL"
 

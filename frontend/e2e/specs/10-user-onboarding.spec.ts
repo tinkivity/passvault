@@ -5,6 +5,7 @@ import {
   completeFirstLogin,
   completeAdminFirstLogin,
 } from '../helpers/users.js';
+import { testUserEmail } from '../helpers/test-emails.js';
 
 /**
  * First-login OTP → change-password UI flow.
@@ -91,7 +92,7 @@ test.describe.serial('User onboarding — first-login password change (admin)', 
     const apiRes = await request.post(`${apiBase}/api/admin/users`, {
       headers: { Authorization: `Bearer ${adminAuth.token}` },
       data: {
-        username: `e2e-onboarding-admin-${Date.now()}@passvault-test.local`,
+        username: testUserEmail(`e2e-onboarding-admin-${Date.now()}`),
         plan: 'administrator',
         firstName: 'E2E',
         lastName: 'AdminOnboarding',
@@ -102,7 +103,7 @@ test.describe.serial('User onboarding — first-login password change (admin)', 
       throw new Error(`admin create failed: ${JSON.stringify(body)}`);
     }
     userId = body.data.userId;
-    username = body.data.username ?? `e2e-onboarding-admin-${Date.now()}@passvault-test.local`;
+    username = body.data.username ?? testUserEmail(`e2e-onboarding-admin-${Date.now()}`);
     otp = body.data.oneTimePassword;
   });
 

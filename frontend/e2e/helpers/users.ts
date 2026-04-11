@@ -1,5 +1,6 @@
 import type { APIRequestContext, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
+import { testUserEmail } from './test-emails.js';
 
 /**
  * Admin-side user management helpers for e2e tests.
@@ -36,7 +37,7 @@ export async function createTestUser(
   opts: { plan?: 'free' | 'pro' | 'administrator'; usernamePrefix?: string } = {},
 ): Promise<CreatedTestUser> {
   const prefix = opts.usernamePrefix ?? 'e2e-lifecycle';
-  const username = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@passvault-test.local`;
+  const username = testUserEmail(`${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
   const res = await request.post(`${apiBase}/api/admin/users`, {
     headers: { Authorization: `Bearer ${token}` },
     data: {

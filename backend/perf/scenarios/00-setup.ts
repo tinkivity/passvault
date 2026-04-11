@@ -13,6 +13,7 @@ import type {
   VaultPutResponse,
 } from '@passvault/shared';
 import type { PerfContext } from '../lib/context.js';
+import { testUserEmail } from '../../sit/lib/test-emails.js';
 
 const HIGH = POW_CONFIG.DIFFICULTY.HIGH;
 const MEDIUM = POW_CONFIG.DIFFICULTY.MEDIUM;
@@ -88,7 +89,7 @@ export function setupPerf(ctx: PerfContext) {
     });
 
     it('creates test user via admin API', async () => {
-      ctx.testUserEmail = `perf-user-${ts}@passvault-test.local`;
+      ctx.testUserEmail = testUserEmail(`perf-user-${ts}`);
 
       const res = await request<{ success: boolean; data: CreateUserResponse }>('POST', API_PATHS.ADMIN_USERS, {
         body: { username: ctx.testUserEmail, plan: 'pro', firstName: 'Perf', lastName: 'Tester' },

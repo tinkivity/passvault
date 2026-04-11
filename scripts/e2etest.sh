@@ -378,9 +378,11 @@ section "E2E admin setup"
 ADJECTIVES=("swift" "vivid" "lucid" "agile" "crisp" "noble" "prime" "brisk")
 NOUNS=("puma" "kite" "heron" "otter" "raven" "viper" "ibis" "newt")
 E2E_NAME="${ADJECTIVES[$((RANDOM % 8))]}-${NOUNS[$((RANDOM % 8))]}"
-E2E_EMAIL="e2e-${E2E_NAME}@passvault-test.local"
+source "$REPO_ROOT/scripts/lib/test-emails.sh"
+E2E_EMAIL=$(make_test_email "e2e-${E2E_NAME}")
 
 echo "  E2E admin   : $E2E_EMAIL"
+[[ -n "${PASSVAULT_PLUS_ADDRESS:-}" ]] && echo "  Email routing: on"
 
 E2E_JSON=$(ENVIRONMENT="$ENV" ADMIN_EMAIL="$E2E_EMAIL" DYNAMODB_TABLE="$TABLE" \
   npx tsx "$REPO_ROOT/scripts/sit-create-admin.ts" 2>/dev/null)
