@@ -32,6 +32,7 @@ KEEP=false
 CLEANUP=false
 CLEANUP_FILE=""
 RERUN=false
+RERUN_FILE=""
 HEADED=false
 UI_MODE=false
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -39,20 +40,23 @@ VITE_PID=""
 VITE_PORT=5173
 
 USAGE="Usage: $0 --env <dev|beta> [options]
-       $0 --rerun --env <dev|beta> [--profile <name>]
+       $0 --rerun [state-file] --env <dev|beta> [--profile <name>]
        $0 --cleanup [state-file] --env <dev|beta> [--profile <name>]
 
 Options:
-  --env <env>             Environment (required; dev or beta ONLY)
+  --env <env>             Environment (required unless --rerun/--cleanup is
+                          given with an explicit state file)
   --profile <name>        AWS named profile
   --region <region>       AWS region (default: eu-central-1)
   --stack <name>          CloudFormation stack name override
   --base-url <url>        API base URL override (skips CloudFormation lookup)
   --keep                  Keep test user after run (default: cleanup)
-  --rerun                 Re-run only the tests that failed in the last run.
-                          Requires --env and a state file from a prior --keep
-                          run. Reuses the same admin user; leaves state in
-                          place so you can iterate. Does not touch AWS.
+  --rerun [state-file]    Re-run only the tests that failed in the last run.
+                          With no argument, auto-discovers the state file for
+                          --env (errors if multiple). With a path, uses that
+                          file exactly. Reuses the same admin user; leaves
+                          state in place so you can iterate. Does not touch
+                          AWS.
   --cleanup [state-file]  Skip tests; only clean up from a previous --keep run
   --headed                Run in headed mode (visible browser)
   --ui                    Run in Playwright UI mode (interactive)
@@ -67,7 +71,15 @@ while [[ $# -gt 0 ]]; do
     --stack)          STACK="$2";          shift 2 ;;
     --base-url)       BASE_URL="$2";       shift 2 ;;
     --keep)           KEEP=true;           shift ;;
-    --rerun)          RERUN=true;          shift ;;
+    --rerun)
+      RERUN=true
+      if [[ $# -ge 2 && "$2" != --* ]]; then
+        RERUN_FILE="$2"
+        shift 2
+      else
+        shift
+      fi
+      ;;
     --headed)         HEADED=true;         shift ;;
     --ui)             UI_MODE=true;        shift ;;
     --cleanup)
@@ -92,6 +104,22 @@ section() {
 
 if [[ -n "$PROFILE" ]]; then
   export AWS_PROFILE="$PROFILE"
+fi
+
+# ── Early ENV derivation from an explicit --rerun state file ─────────────────
+# Lets `--rerun <file>` work without also passing `--env`, matching the
+# flexibility of `--cleanup <file>`. The env validation block below will then
+# see the correct ENV and pass.
+if [[ "$RERUN" == "true" && -n "$RERUN_FILE" && -z "$ENV" ]]; then
+  if [[ ! -f "$RERUN_FILE" ]]; then
+    echo "Error: state file not found: $RERUN_FILE" >&2
+    exit 1
+  fi
+  ENV=$(jq -r '.env // empty' "$RERUN_FILE")
+  if [[ -z "$ENV" ]]; then
+    echo "Error: state file '$RERUN_FILE' has no 'env' field." >&2
+    exit 1
+  fi
 fi
 
 # ── Cleanup-only mode ────────────────────────────────────────────────────────
@@ -215,26 +243,52 @@ fi
 
 # ── Rerun mode: load state from a prior --keep run, skip admin creation ─────
 if [[ "$RERUN" == "true" ]]; then
-  shopt -s nullglob
-  MATCHES=( "$REPO_ROOT"/.e2e-state-"${ENV}"-*.json )
-  shopt -u nullglob
+  if [[ -n "$RERUN_FILE" ]]; then
+    # Explicit state file: validate and use directly. Supports absolute
+    # and relative paths. Matches --cleanup's explicit-file flexibility.
+    if [[ ! -f "$RERUN_FILE" ]]; then
+      echo "Error: state file not found: $RERUN_FILE" >&2
+      exit 1
+    fi
+    STATE_FILE="$RERUN_FILE"
+  else
+    # Auto-discover: glob for .e2e-state-<env>-*.json in the repo root.
+    shopt -s nullglob
+    MATCHES=( "$REPO_ROOT"/.e2e-state-"${ENV}"-*.json )
+    shopt -u nullglob
 
-  if [[ ${#MATCHES[@]} -eq 0 ]]; then
-    echo "Error: no state file found for env '$ENV'." >&2
-    echo "Run with --keep first to create one:" >&2
-    echo "  $0 --env $ENV --keep" >&2
+    if [[ ${#MATCHES[@]} -eq 0 ]]; then
+      echo "Error: no state file found for env '$ENV'." >&2
+      echo "Run with --keep first to create one:" >&2
+      echo "  $0 --env $ENV --keep" >&2
+      exit 1
+    fi
+    if [[ ${#MATCHES[@]} -gt 1 ]]; then
+      echo "Error: multiple state files found for env '$ENV':" >&2
+      for f in "${MATCHES[@]}"; do
+        echo "  $(basename "$f")" >&2
+      done
+      echo "" >&2
+      echo "Specify which one to use:" >&2
+      echo "  $0 --rerun <state-file> --env $ENV" >&2
+      exit 1
+    fi
+
+    STATE_FILE="${MATCHES[0]}"
+  fi
+
+  # Load state from the resolved file. Note: ENV comes from the state file
+  # too (overrides the CLI --env if they differ — consistent with
+  # --cleanup). STACK is also loaded so the rest of the script sees the
+  # same values the original --keep run used.
+  STATE_ENV=$(jq -r '.env // empty' "$STATE_FILE")
+  if [[ -z "$STATE_ENV" ]]; then
+    echo "Error: state file '$(basename "$STATE_FILE")' has no 'env' field." >&2
     exit 1
   fi
-  if [[ ${#MATCHES[@]} -gt 1 ]]; then
-    echo "Error: multiple state files found for env '$ENV':" >&2
-    for f in "${MATCHES[@]}"; do
-      echo "  $(basename "$f")" >&2
-    done
-    echo "Clean up the extras first with --cleanup <state-file>." >&2
-    exit 1
-  fi
-
-  STATE_FILE="${MATCHES[0]}"
+  ENV="$STATE_ENV"
+  STATE_STACK=$(jq -r '.stack // empty' "$STATE_FILE")
+  [[ -n "$STATE_STACK" ]] && STACK="$STATE_STACK"
 
   API_URL=$(jq -r '.apiUrl // empty' "$STATE_FILE")
   TABLE=$(jq -r '.usersTable' "$STATE_FILE")
