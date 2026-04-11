@@ -15,11 +15,22 @@ import { SesNotifierConstruct } from './constructs/ses-notifier.js';
 interface PassVaultStackProps extends cdk.StackProps {
   certificate?: acm.ICertificate;
   domain?: string;
+  plusAddress?: string;
 }
 
 export class PassVaultStack extends cdk.Stack {
   constructor(scope: Construct, id: string, config: EnvironmentConfig, props?: PassVaultStackProps) {
     super(scope, id, props);
+
+    // Precondition reminder — SES domain verification must have completed out-of-band.
+    // CDK cannot check this synchronously; the warning fires at synth/deploy time.
+    if (props?.domain) {
+      console.warn(
+        `[passvault-stack] Reminder: "${props.domain}" must be a Verified SES identity ` +
+          `in this account/region before \`cdk deploy\`. Run the SES send-email smoke ` +
+          `test described in cdk/DEPLOYMENT.md first if you haven't already.`,
+      );
+    }
 
     // Admin email — used as the initial administrator username and as the SES alert recipient.
     // Required for all stacks. Provide via:
@@ -171,6 +182,14 @@ export class PassVaultStack extends cdk.Stack {
       value: adminEmail,
       description: 'Initial administrator username (email address)',
     });
+
+    if (props?.plusAddress) {
+      new cdk.CfnOutput(this, 'PlusAddress', {
+        value: props.plusAddress,
+        description:
+          'Qualification mailbox. Scripts build test-user addresses as local+<tag>@domain.',
+      });
+    }
 
     new cdk.CfnOutput(this, 'ApiUrl', {
       value: backend.api.url,
