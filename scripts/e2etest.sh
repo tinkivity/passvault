@@ -31,6 +31,7 @@ BASE_URL=""
 KEEP=false
 CLEANUP=false
 CLEANUP_FILE=""
+RERUN=false
 HEADED=false
 UI_MODE=false
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -38,6 +39,7 @@ VITE_PID=""
 VITE_PORT=5173
 
 USAGE="Usage: $0 --env <dev|beta> [options]
+       $0 --rerun --env <dev|beta> [--profile <name>]
        $0 --cleanup [state-file] --env <dev|beta> [--profile <name>]
 
 Options:
@@ -47,6 +49,10 @@ Options:
   --stack <name>          CloudFormation stack name override
   --base-url <url>        API base URL override (skips CloudFormation lookup)
   --keep                  Keep test user after run (default: cleanup)
+  --rerun                 Re-run only the tests that failed in the last run.
+                          Requires --env and a state file from a prior --keep
+                          run. Reuses the same admin user; leaves state in
+                          place so you can iterate. Does not touch AWS.
   --cleanup [state-file]  Skip tests; only clean up from a previous --keep run
   --headed                Run in headed mode (visible browser)
   --ui                    Run in Playwright UI mode (interactive)
@@ -61,6 +67,7 @@ while [[ $# -gt 0 ]]; do
     --stack)          STACK="$2";          shift 2 ;;
     --base-url)       BASE_URL="$2";       shift 2 ;;
     --keep)           KEEP=true;           shift ;;
+    --rerun)          RERUN=true;          shift ;;
     --headed)         HEADED=true;         shift ;;
     --ui)             UI_MODE=true;        shift ;;
     --cleanup)
@@ -189,13 +196,15 @@ if [[ -z "$STACK" ]]; then
 fi
 
 # ── Preflight ────────────────────────────────────────────────────────────────
-echo ""
-echo "PassVault E2E Tests"
-echo "  Environment : $ENV"
-echo "  Stack       : $STACK"
-echo "  Region      : $REGION"
-[[ -n "$PROFILE" ]] && echo "  AWS profile : $PROFILE"
-echo ""
+if [[ "$RERUN" != "true" ]]; then
+  echo ""
+  echo "PassVault E2E Tests"
+  echo "  Environment : $ENV"
+  echo "  Stack       : $STACK"
+  echo "  Region      : $REGION"
+  [[ -n "$PROFILE" ]] && echo "  AWS profile : $PROFILE"
+  echo ""
+fi
 
 # Check Playwright is installed
 if ! (cd "$REPO_ROOT/frontend" && npx playwright --version &>/dev/null); then
@@ -204,7 +213,58 @@ if ! (cd "$REPO_ROOT/frontend" && npx playwright --version &>/dev/null); then
   exit 1
 fi
 
-# ── AWS access check ─────────────────────────────────────────────────────────
+# ── Rerun mode: load state from a prior --keep run, skip admin creation ─────
+if [[ "$RERUN" == "true" ]]; then
+  shopt -s nullglob
+  MATCHES=( "$REPO_ROOT"/.e2e-state-"${ENV}"-*.json )
+  shopt -u nullglob
+
+  if [[ ${#MATCHES[@]} -eq 0 ]]; then
+    echo "Error: no state file found for env '$ENV'." >&2
+    echo "Run with --keep first to create one:" >&2
+    echo "  $0 --env $ENV --keep" >&2
+    exit 1
+  fi
+  if [[ ${#MATCHES[@]} -gt 1 ]]; then
+    echo "Error: multiple state files found for env '$ENV':" >&2
+    for f in "${MATCHES[@]}"; do
+      echo "  $(basename "$f")" >&2
+    done
+    echo "Clean up the extras first with --cleanup <state-file>." >&2
+    exit 1
+  fi
+
+  STATE_FILE="${MATCHES[0]}"
+
+  API_URL=$(jq -r '.apiUrl // empty' "$STATE_FILE")
+  TABLE=$(jq -r '.usersTable' "$STATE_FILE")
+  FILES_BUCKET=$(jq -r '.filesBucket // empty' "$STATE_FILE")
+  E2E_EMAIL=$(jq -r '.adminEmail' "$STATE_FILE")
+  E2E_USER_ID=$(jq -r '.adminUserId' "$STATE_FILE")
+  E2E_PASSWORD=$(jq -r '.adminPassword // empty' "$STATE_FILE")
+  E2E_NAME=$(basename "$STATE_FILE" .json | sed "s|^\.e2e-state-${ENV}-||")
+
+  if [[ -z "$API_URL" || -z "$E2E_PASSWORD" ]]; then
+    echo "Error: state file '$(basename "$STATE_FILE")' is from an older --keep run" >&2
+    echo "and is missing apiUrl or adminPassword. Delete it and re-run with --keep:" >&2
+    echo "  $0 --cleanup --env $ENV" >&2
+    echo "  $0 --env $ENV --keep" >&2
+    exit 1
+  fi
+
+  section "E2E rerun"
+  echo "  State file  : $(basename "$STATE_FILE")"
+  echo "  Environment : $ENV"
+  echo "  Admin email : $E2E_EMAIL"
+  echo "  API URL     : $API_URL"
+  echo "  Reusing existing admin user; --last-failed only."
+
+  # Treat rerun as an implicit --keep so on_exit preserves admin + state file.
+  KEEP=true
+fi
+
+# ── AWS access check (skipped on --rerun — no AWS calls needed) ─────────────
+if [[ "$RERUN" != "true" ]]; then
 section "AWS credentials"
 if ! aws sts get-caller-identity --region "$REGION" &>/dev/null; then
   echo "  No AWS access — cannot reach AWS STS."
@@ -333,6 +393,7 @@ if [[ "$CP_SUCCESS" != "true" ]]; then
 fi
 
 echo "  E2E admin onboarded successfully."
+fi  # end: if [[ "$RERUN" != "true" ]]
 
 # ── Cleanup / state management ───────────────────────────────────────────────
 TEST_EXIT_CODE=0
@@ -363,18 +424,25 @@ run_cleanup() {
 
 write_state_file() {
   STATE_FILE="$REPO_ROOT/.e2e-state-${ENV}-${E2E_NAME}.json"
+  # NOTE: this file contains the throwaway admin's password so --rerun can
+  # reuse the same user without recreating it. The file is .gitignored and
+  # the admin is a short-lived test account; delete via --cleanup when done.
   cat > "$STATE_FILE" <<EOJSON
 {
   "env": "$ENV",
   "region": "$REGION",
+  "stack": "$STACK",
+  "apiUrl": "$API_URL",
   "usersTable": "$TABLE",
   "vaultsTable": "passvault-vaults-${ENV}",
   "loginEventsTable": "passvault-login-events-${ENV}",
   "filesBucket": "${FILES_BUCKET}",
   "adminEmail": "$E2E_EMAIL",
-  "adminUserId": "$E2E_USER_ID"
+  "adminUserId": "$E2E_USER_ID",
+  "adminPassword": "$E2E_PASSWORD"
 }
 EOJSON
+  chmod 600 "$STATE_FILE"
 }
 
 on_exit() {
@@ -390,15 +458,33 @@ on_exit() {
     write_state_file
     local rel_state="${STATE_FILE#"$REPO_ROOT"/}"
     echo ""
-    echo "  --keep specified: E2E admin user left in place."
-    echo "  State file  : $rel_state"
-    echo "  Admin email : $E2E_EMAIL"
-    echo "  Admin pass  : $E2E_PASSWORD"
-    echo "  To clean up later, run:"
-    echo ""
-    echo "    ./scripts/e2etest.sh --cleanup --env $ENV"
-    [[ -n "$PROFILE" ]] && echo "      (add --profile $PROFILE if needed)"
-    echo ""
+    if [[ "$RERUN" == "true" ]]; then
+      echo "  --rerun complete: E2E admin user and state file preserved."
+      echo "  State file  : $rel_state"
+      echo "  To re-run failures again, run:"
+      echo ""
+      echo "    ./scripts/e2etest.sh --rerun --env $ENV"
+      [[ -n "$PROFILE" ]] && echo "      (add --profile $PROFILE if needed)"
+      echo ""
+      echo "  When done, clean up with:"
+      echo ""
+      echo "    ./scripts/e2etest.sh --cleanup --env $ENV"
+      echo ""
+    else
+      echo "  --keep specified: E2E admin user left in place."
+      echo "  State file  : $rel_state"
+      echo "  Admin email : $E2E_EMAIL"
+      echo "  Admin pass  : $E2E_PASSWORD"
+      echo "  To re-run only failing tests, run:"
+      echo ""
+      echo "    ./scripts/e2etest.sh --rerun --env $ENV"
+      [[ -n "$PROFILE" ]] && echo "      (add --profile $PROFILE if needed)"
+      echo ""
+      echo "  To clean up, run:"
+      echo ""
+      echo "    ./scripts/e2etest.sh --cleanup --env $ENV"
+      echo ""
+    fi
   else
     echo ""
     echo "── Cleanup "
@@ -452,6 +538,9 @@ if [[ "$HEADED" == "true" ]]; then
 fi
 if [[ "$UI_MODE" == "true" ]]; then
   PLAYWRIGHT_ARGS="--ui"
+fi
+if [[ "$RERUN" == "true" ]]; then
+  PLAYWRIGHT_ARGS="$PLAYWRIGHT_ARGS --last-failed"
 fi
 
 E2E_BASE_URL="http://localhost:${VITE_PORT}" \
