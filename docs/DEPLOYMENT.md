@@ -22,13 +22,25 @@ PassVault deploys to AWS using CDK. Three environments are supported: **dev**, *
 
 ## Qualification Gate
 
-Before promoting changes to beta or prod, run the qualification pipeline against a fresh dev deployment:
+Before promoting changes to beta or prod, run the qualification pipeline.
+`qualify.sh` supports `--env dev | beta | prod` — default is dev, which is
+safe (no real mail is sent) and what you should run on feature branches.
+Before cutting a beta release, also run it against a beta stack that has
+[test email routing](../cdk/DEPLOYMENT.md#4b-routing-qualification-test-mail-to-your-inbox)
+configured so invitation/export/digest mail exercises SES end-to-end.
 
 ```bash
+# Dev qualification — fast, no real mail
 ./scripts/qualify.sh --profile <your-profile>
+
+# Beta qualification — reads PlusAddress from the deployed stack;
+# prompts before sending real mail (bypass with --yes in CI)
+./scripts/qualify.sh --env beta --profile <your-profile>
 ```
 
-This automates: build, unit tests, CDK deploy, SIT, pentest, E2E browser tests, and performance benchmarks. See [QUALIFICATION.md](QUALIFICATION.md) for details.
+Both modes automate: build, unit tests, CDK deploy, SIT, pentest, E2E browser
+tests, and performance benchmarks. See [QUALIFICATION.md](QUALIFICATION.md)
+for full details and the flag reference.
 
 ---
 
@@ -116,8 +128,8 @@ The SIT creates a temporary admin, exercises auth, vault, admin, and audit flows
 
 | Document | Description |
 |----------|-------------|
-| [cdk/DEPLOYMENT.md](cdk/DEPLOYMENT.md) | Full deployment guide (SSM, CDK context, SES, monitoring) |
-| [cdk/ARCHITECTURE.md](cdk/ARCHITECTURE.md) | CDK constructs, DynamoDB tables, Lambda definitions, API Gateway |
-| [scripts/README.md](scripts/README.md) | Operational scripts (post-deploy, post-destroy, sitest, pentest, smoke-test) |
+| [cdk/DEPLOYMENT.md](../cdk/DEPLOYMENT.md) | Full deployment guide (SSM, CDK context, SES, monitoring) |
+| [cdk/ARCHITECTURE.md](../cdk/ARCHITECTURE.md) | CDK constructs, DynamoDB tables, Lambda definitions, API Gateway |
+| [scripts/README.md](../scripts/README.md) | Operational scripts (post-deploy, post-destroy, sitest, pentest, smoke-test) |
 | [BOTPROTECTION.md](BOTPROTECTION.md) | Bot defense layers, CloudFront flat-rate plan, kill switch, cost analysis |
 | [COSTS.md](COSTS.md) | Detailed cost projections per user count |

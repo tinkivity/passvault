@@ -407,9 +407,9 @@ All environment differences are driven by a single `EnvironmentConfig` type. The
 ## 3. Technical Architecture
 
 > **Implementation details** have moved to per-package docs:
-> - [frontend/ARCHITECTURE.md](frontend/ARCHITECTURE.md) — routing, state management, encryption flow, PoW, honeypot
-> - [backend/ARCHITECTURE.md](backend/ARCHITECTURE.md) — handlers, services, middleware, utilities, build
-> - [cdk/ARCHITECTURE.md](cdk/ARCHITECTURE.md) — CDK constructs, DynamoDB, Lambda, API Gateway, CloudFront, kill switch
+> - [frontend/ARCHITECTURE.md](../frontend/ARCHITECTURE.md) — routing, state management, encryption flow, PoW, honeypot
+> - [backend/ARCHITECTURE.md](../backend/ARCHITECTURE.md) — handlers, services, middleware, utilities, build
+> - [cdk/ARCHITECTURE.md](../cdk/ARCHITECTURE.md) — CDK constructs, DynamoDB, Lambda, API Gateway, CloudFront, kill switch
 >
 > This section retains the high-level design intent.
 
@@ -1171,9 +1171,9 @@ All error responses follow the shape `{ "success": false, "error": "<CODE>", "me
 Deployment details have moved to dedicated guides:
 
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** — Quick start and overview
-- **[cdk/DEPLOYMENT.md](cdk/DEPLOYMENT.md)** — Full deployment guide (SSM secrets, CDK context variables, SES email, monitoring, troubleshooting)
-- **[cdk/ARCHITECTURE.md](cdk/ARCHITECTURE.md)** — CDK constructs, stack composition, resource naming
-- **[scripts/README.md](scripts/README.md)** — Post-deploy scripts (init-admin, seed-dev, setup, cleanup)
+- **[cdk/DEPLOYMENT.md](../cdk/DEPLOYMENT.md)** — Full deployment guide (SSM secrets, CDK context variables, SES email, monitoring, troubleshooting)
+- **[cdk/ARCHITECTURE.md](../cdk/ARCHITECTURE.md)** — CDK constructs, stack composition, resource naming
+- **[scripts/README.md](../scripts/README.md)** — Post-deploy scripts (init-admin, seed-dev, setup, cleanup)
 
 ## 8. Development Phases
 
