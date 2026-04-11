@@ -29,7 +29,11 @@ async function gotoUserDetail(
   await expect(row).toBeVisible({ timeout: 45000 });
   await row.click();
   await page.waitForURL(new RegExp(`/ui/admin/users/${user.userId}`), { timeout: 15000 });
-  await expect(page.getByRole('button', { name: /Refresh OTP/i })).toBeVisible({ timeout: 15000 });
+  // Edit button at UserDetailPage.tsx:251 is the one action button that
+  // renders unconditionally (for any non-retired target in read mode),
+  // regardless of status. Action buttons like Refresh OTP, Lock, Expire,
+  // etc. are status-gated and NOT reliable as readiness markers.
+  await expect(page.getByRole('button', { name: /^Edit$/i })).toBeVisible({ timeout: 15000 });
 }
 
 // Helper: assert that the user-detail status badge text contains the given
@@ -242,11 +246,12 @@ test.describe.serial('Admin lifecycle — refresh OTP', () => {
 
     // The OTP is rendered inside a <code> element by OtpDisplay.tsx.
     // It starts masked (• bullet chars) until the user clicks Reveal, so
-    // assert on either the real 12-char OTP or the 12-char bullet mask.
+    // assert on either the real OTP or the bullet mask. Length is
+    // LIMITS.OTP_LENGTH = 16 (shared/src/constants.ts).
     const dialog = adminPage.getByRole('dialog');
     const otpCode = dialog.locator('code').first();
     await expect(otpCode).toBeVisible({ timeout: 5000 });
-    await expect(otpCode).toHaveText(/^[A-Za-z0-9!@#$%^&*\u2022]{12}$/);
+    await expect(otpCode).toHaveText(/^[A-Za-z0-9!@#$%^&*\u2022]{16}$/);
 
     // Close the dialog via the copy → Done flow used by existing tests.
     await adminPage.context().grantPermissions(['clipboard-write', 'clipboard-read']);
