@@ -3,9 +3,15 @@ import {
   createTestUser,
   deleteTestUser,
   completeFirstLogin,
+  completeAdminOnboardingWithPasskey,
   type CreatedTestUser,
 } from '../helpers/users.js';
 import { installVirtualAuthenticator } from '../helpers/webauthn.js';
+
+// Beta-specific test groups (passkey-required backend) are gated on this
+// env var. Set E2E_PASSKEY_REQUIRED=true when running against a beta stack
+// that has `passkeyRequired: true` in its config.
+const PASSKEY_REQUIRED = process.env.E2E_PASSKEY_REQUIRED === 'true';
 
 /**
  * Passkey / WebAuthn e2e tests driven by a Chrome virtual authenticator
@@ -330,43 +336,141 @@ test.describe.serial('Passkey — failure modes', () => {
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-// Group 6: Admin two-step login (BETA/PROD only — not reachable in dev)
+// Group 6: Admin two-step login (BETA/PROD only — gated on E2E_PASSKEY_REQUIRED)
+//
+// Backend auth.ts:189-194 gates the two-step response on
+// config.features.passkeyRequired. Dev has this false, so set
+// E2E_PASSKEY_REQUIRED=true when running against a beta stack.
 // ────────────────────────────────────────────────────────────────────────────
-test.describe('Passkey — admin two-step login', () => {
-  test.fixme('admin password login → passkey verification → dashboard', async () => {
-    // The admin two-step login is gated on config.features.passkeyRequired
-    // (backend auth.ts:189-194). Dev has this false, so after admin password
-    // login the response never includes requirePasskeyVerification=true and
-    // the second step is unreachable via the UI. Gate this test behind an
-    // E2E_PASSKEY_REQUIRED=true env var and run it in a beta-pointed CI job.
-    //
-    // Flow when enabled:
-    //   1. adminFixture creates the admin with a registered passkey
-    //   2. page.goto('/login'), fill admin username + password, submit
-    //   3. UI transitions to adminPasskeyStep (see LoginPage.tsx:84-112)
-    //   4. Click "Verify with passkey" — virtual authenticator signs
-    //   5. Backend admin/passkey/verify returns passkeyToken
-    //   6. Frontend calls admin/login with { passkeyToken, password }
-    //   7. Land on /ui/admin/dashboard with role=admin
+test.describe.serial('Passkey — admin two-step login', () => {
+  let admin: CreatedTestUser;
+  const NEW_PASSWORD = 'AdminTwoStep42!Pw';
+
+  test.beforeAll(async ({ request, adminAuth, apiBase }) => {
+    test.skip(!PASSKEY_REQUIRED, 'requires E2E_PASSKEY_REQUIRED=true (beta backend)');
+    admin = await createTestUser(request, apiBase, adminAuth.token, {
+      plan: 'administrator',
+      usernamePrefix: 'e2e-passkey-admin-twostep',
+    });
+  });
+
+  test.afterAll(async ({ request, adminAuth, apiBase }) => {
+    if (admin?.userId) await deleteTestUser(request, apiBase, adminAuth.token, admin.userId);
+  });
+
+  test('admin password login → passkey verification → dashboard', async ({
+    page, passkeyAuthenticator,
+  }) => {
+    test.skip(!PASSKEY_REQUIRED, 'requires E2E_PASSKEY_REQUIRED=true (beta backend)');
+
+    // Phase 1: full first-time admin onboarding — OTP → change password →
+    // /passkey-setup → register passkey → land on /ui/admin/dashboard.
+    // The virtual authenticator (fixture) handles the WebAuthn ceremony.
+    await completeAdminOnboardingWithPasskey(page, admin.username, admin.oneTimePassword, NEW_PASSWORD);
+
+    // Sanity: dashboard rendered and exactly one credential registered.
+    await expect(page.getByRole('heading', { name: /Dashboard/i })).toBeVisible({ timeout: 15000 });
+    expect((await passkeyAuthenticator.getCredentials()).length).toBe(1);
+
+    // Phase 2: log out so we can test the two-step login flow fresh.
+    await logoutFromSidebar(page);
+
+    // Phase 3: log in with username + password. On a passkeyRequired backend
+    // this returns requirePasskeyVerification: true and the UI transitions
+    // to the "Verify Your Identity" step (see LoginPage.tsx:84-112).
+    await page.goto('/login');
+    await expect(page.locator('#username')).toBeVisible({ timeout: 15000 });
+    await page.locator('#username').fill(admin.username);
+    await page.locator('#password').fill(NEW_PASSWORD);
+    await page.locator('button[type="submit"]').click();
+
+    // Phase 4: click "Verify with passkey" — virtual authenticator signs
+    // the assertion automatically, backend admin/passkey/verify returns a
+    // passkeyToken, frontend calls /api/admin/login with it.
+    const verifyBtn = page.getByRole('button', { name: /Verify with passkey/i });
+    await expect(verifyBtn).toBeVisible({ timeout: 15000 });
+    await verifyBtn.click();
+
+    // Phase 5: land on the admin dashboard.
+    await page.waitForURL(/\/ui\/admin\/dashboard/, { timeout: 20000 });
+    await expect(page.getByRole('heading', { name: /Dashboard/i })).toBeVisible({ timeout: 15000 });
   });
 });
 
 // ────────────────────────────────────────────────────────────────────────────
-// Group 7: Admin passkey management in Security dialog (BETA/PROD only)
+// Group 7: Admin passkey management (BETA/PROD only — gated on E2E_PASSKEY_REQUIRED)
+//
+// SecurityDialog hides the passkey section for admins when
+// !config.passkeyRequired (frontend SecurityDialog.tsx:265), so the admin
+// cannot manage passkeys via the UI on dev. Gated the same way as Group 6.
 // ────────────────────────────────────────────────────────────────────────────
-test.describe('Passkey — admin passkey management', () => {
-  test.fixme('admin registers and revokes passkeys from Security dialog', async () => {
-    // SecurityDialog hides the passkey section for admins when
-    // !config.passkeyRequired (frontend SecurityDialog.tsx:265). In dev the
-    // admin cannot manage passkeys via the UI at all.
-    //
-    // Flow when enabled:
-    //   1. Use adminPage fixture (already logged in as admin)
-    //   2. Open Security dialog from NavUser dropdown
-    //   3. Enter "Laptop" in #sec-passkey-name, click Register passkey
-    //      — admin variant of the endpoint at /api/admin/passkeys/register
-    //   4. Assert Laptop appears in list
-    //   5. Revoke via Trash2 icon on the row
-    //   6. Assert list is empty (or still has any pre-existing passkeys)
+test.describe.serial('Passkey — admin passkey management', () => {
+  let admin: CreatedTestUser;
+  const NEW_PASSWORD = 'AdminMgmt42!Pw';
+
+  test.beforeAll(async ({ request, adminAuth, apiBase }) => {
+    test.skip(!PASSKEY_REQUIRED, 'requires E2E_PASSKEY_REQUIRED=true (beta backend)');
+    admin = await createTestUser(request, apiBase, adminAuth.token, {
+      plan: 'administrator',
+      usernamePrefix: 'e2e-passkey-admin-mgmt',
+    });
+  });
+
+  test.afterAll(async ({ request, adminAuth, apiBase }) => {
+    if (admin?.userId) await deleteTestUser(request, apiBase, adminAuth.token, admin.userId);
+  });
+
+  test('admin registers a second passkey and revokes it from Security dialog', async ({
+    page, passkeyAuthenticator,
+  }) => {
+    test.skip(!PASSKEY_REQUIRED, 'requires E2E_PASSKEY_REQUIRED=true (beta backend)');
+
+    // Onboard first — the admin ends up active with ONE passkey ("E2E Admin
+    // Key") registered by completeAdminOnboardingWithPasskey.
+    await completeAdminOnboardingWithPasskey(page, admin.username, admin.oneTimePassword, NEW_PASSWORD);
+    await expect(page.getByRole('heading', { name: /Dashboard/i })).toBeVisible({ timeout: 15000 });
+    expect((await passkeyAuthenticator.getCredentials()).length).toBe(1);
+
+    // Open the Security dialog from the NavUser dropdown. On beta this
+    // renders the admin passkey section (hidden on dev via
+    // SecurityDialog.tsx:265 when !passkeyRequired).
+    await openSecurityDialog(page);
+    const dialog = page.getByRole('dialog');
+
+    // The initial onboarding passkey should already be listed.
+    await expect(dialog.getByText('E2E Admin Key')).toBeVisible({ timeout: 10000 });
+
+    // Register a second passkey. Same WebAuthn excludeCredentials problem
+    // as the user multi-passkey test — the single fixture authenticator
+    // would see its own credential in the exclude list and refuse. Install
+    // a second (USB) authenticator so the new credential lands there.
+    const secondAuthenticator = await installVirtualAuthenticator(page, {
+      transport: 'usb',
+    });
+    try {
+      await registerPasskeyInSecurityDialog(page, 'Admin Laptop');
+      await expect(dialog.getByText('Admin Laptop')).toBeVisible();
+      await expect(dialog.getByText('E2E Admin Key')).toBeVisible();
+
+      // Total credentials split across the two authenticators = 2.
+      const totalCreds =
+        (await passkeyAuthenticator.getCredentials()).length +
+        (await secondAuthenticator.getCredentials()).length;
+      expect(totalCreds).toBe(2);
+
+      // Revoke "Admin Laptop" via Trash2 icon (last button on its row).
+      const laptopRow = dialog.locator('li').filter({ hasText: 'Admin Laptop' });
+      await laptopRow.getByRole('button').last().click();
+
+      // Second passkey gone, initial onboarding passkey still present.
+      // We deliberately leave "E2E Admin Key" in place — regular users
+      // can never revoke their last passkey (see SecurityDialog.tsx:65-70
+      // canRevokePasskey). Admins on passkeyRequired envs can revoke the
+      // last one, but that's a separate edge case worth its own test.
+      await expect(dialog.getByText('Admin Laptop')).toHaveCount(0, { timeout: 10000 });
+      await expect(dialog.getByText('E2E Admin Key')).toBeVisible();
+    } finally {
+      await secondAuthenticator.remove();
+    }
   });
 });

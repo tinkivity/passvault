@@ -33,7 +33,7 @@ export async function createTestUser(
   request: APIRequestContext,
   apiBase: string,
   token: string,
-  opts: { plan?: 'free' | 'pro'; usernamePrefix?: string } = {},
+  opts: { plan?: 'free' | 'pro' | 'administrator'; usernamePrefix?: string } = {},
 ): Promise<CreatedTestUser> {
   const prefix = opts.usernamePrefix ?? 'e2e-lifecycle';
   const username = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@passvault-test.local`;
@@ -207,4 +207,71 @@ export async function completeAdminFirstLogin(
   await expect(continueBtn).toBeVisible({ timeout: 15000 });
   await continueBtn.click();
   await page.waitForURL('**/login', { timeout: 15000 });
+}
+
+/**
+ * Drive the full admin first-login flow on a **passkey-required backend**
+ * (beta/prod). An admin account with `passkeyRequired=true` must:
+ *
+ *   1. OTP login → /change-password
+ *   2. Change password → "Password Changed" success → Continue to Login → /login
+ *   3. Log in again with the new password → backend returns
+ *      `requirePasskeySetup: true` because the admin is in status
+ *      `pending_passkey_setup` → frontend navigates to /passkey-setup
+ *   4. Register a passkey on the PasskeySetupPage → navigate to /ui
+ *   5. Router redirects admin to /ui/admin/dashboard
+ *
+ * This helper assumes a virtual authenticator is already installed on the
+ * page (via the passkey.fixture.ts fixture) so the WebAuthn ceremony in
+ * step 4 resolves without a human.
+ *
+ * NOT useful on dev — dev has `passkeyRequired=false`, which short-circuits
+ * the passkey-setup redirect in step 3 and lands the admin directly on
+ * /ui/admin/dashboard after step 2. Use `completeAdminFirstLogin` for dev.
+ *
+ * Requires `E2E_PASSKEY_REQUIRED=true` in the environment when the tests
+ * run against a beta backend, otherwise the flow collapses to the dev one.
+ */
+export async function completeAdminOnboardingWithPasskey(
+  page: Page,
+  username: string,
+  oneTimePassword: string,
+  newPassword: string,
+  passkeyLabel: string = 'E2E Admin Key',
+): Promise<void> {
+  // Phase 1: OTP login
+  await page.goto('/login');
+  await expect(page.locator('#username')).toBeVisible({ timeout: 15000 });
+  await page.locator('#username').fill(username);
+  await page.locator('#password').fill(oneTimePassword);
+  await page.locator('button[type="submit"]').click();
+
+  // Phase 2: change password
+  await page.waitForURL('**/change-password', { timeout: 15000 });
+  await page.locator('#new-password').fill(newPassword);
+  await page.locator('#confirm-password').fill(newPassword);
+  await page.locator('button[type="submit"]').click();
+
+  const continueBtn = page.getByRole('button', { name: /Continue to Login/i });
+  await expect(continueBtn).toBeVisible({ timeout: 15000 });
+  await continueBtn.click();
+  await page.waitForURL('**/login', { timeout: 15000 });
+
+  // Phase 3: re-login with new password → requirePasskeySetup → /passkey-setup
+  await page.locator('#username').fill(username);
+  await page.locator('#password').fill(newPassword);
+  await page.locator('button[type="submit"]').click();
+  await page.waitForURL('**/passkey-setup', { timeout: 15000 });
+
+  // Phase 4: register passkey via virtual authenticator. PasskeySetupPage
+  // uses the "Register passkey" button (see PasskeySetupPage.tsx:94) and
+  // an optional #passkey-name input (line 85). The virtual authenticator
+  // resolves navigator.credentials.create() automatically.
+  await page.locator('#passkey-name').fill(passkeyLabel);
+  await page.getByRole('button', { name: /^Register passkey$/i }).click();
+
+  // Phase 5: land on admin dashboard (PasskeySetupPage navigates to
+  // ROUTES.UI.ROOT which is /ui; the router then redirects admins to
+  // /ui/admin/dashboard).
+  await page.waitForURL(/\/ui\/admin\/dashboard/, { timeout: 20000 });
 }
