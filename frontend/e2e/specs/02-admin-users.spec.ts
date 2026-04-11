@@ -1,7 +1,37 @@
 import { test, expect } from '../fixtures/auth.fixture.js';
+import { createTestUser, deleteTestUser } from '../helpers/users.js';
+import type { APIRequestContext } from '@playwright/test';
+
+// Hoisted to module scope so the resolveTargetUser helper can read it.
+// Set by the "create user — OTP dialog appears" test in the serial chain.
+let createdUsername: string | undefined;
+
+/**
+ * Targets either the user created by the "create user" UI test (shared via
+ * module-scope `createdUsername`) or a freshly-created API user when the
+ * shared state isn't available.
+ *
+ * This matters for `playwright test --last-failed`: Playwright only re-runs
+ * the specific failing tests, so the upstream "create user" test never fires
+ * and `createdUsername` is undefined. Without this helper the dependent
+ * tests would silently skip via `test.skip(!createdUsername, ...)`. With it,
+ * each test self-provisions when running in isolation and cleans up after
+ * itself; when running as part of the full serial chain it reuses the
+ * shared user as before.
+ */
+async function resolveTargetUser(
+  request: APIRequestContext,
+  apiBase: string,
+  token: string,
+): Promise<{ username: string; userId: string | null; selfCreated: boolean }> {
+  if (createdUsername) {
+    return { username: createdUsername, userId: null, selfCreated: false };
+  }
+  const user = await createTestUser(request, apiBase, token, { usernamePrefix: 'e2e-02-rerun' });
+  return { username: user.username, userId: user.userId, selfCreated: true };
+}
 
 test.describe.serial('Admin — User Management', () => {
-  let createdUsername: string;
 
   test('navigate to dashboard — heading and stats render', async ({ adminPage }) => {
     await adminPage.goto('/ui/admin/dashboard');
@@ -79,76 +109,91 @@ test.describe.serial('Admin — User Management', () => {
     await adminPage.getByRole('button', { name: /Done/i }).click({ timeout: 5000 });
   });
 
-  test('view user detail — info displayed', async ({ adminPage }) => {
-    test.skip(!createdUsername, 'Depends on create user test');
+  test('view user detail — info displayed', async ({ adminPage, request, adminAuth, apiBase }) => {
+    const target = await resolveTargetUser(request, apiBase, adminAuth.token);
 
-    await adminPage.goto('/ui/admin/users');
+    try {
+      await adminPage.goto('/ui/admin/users');
 
-    // Filter by username to bypass TanStack pagination — dev DBs accumulate
-    // e2e-* users and new ones frequently end up on page 2+, where
-    // getByRole('row') won't find them. The filter input renders
-    // immediately; listUsers (PoW HIGH, 10-30s) fills the table behind it
-    // and the filter is re-applied whenever the data arrives.
-    const filter = adminPage.getByRole('textbox', { name: /Filter by username/i });
-    await expect(filter).toBeVisible({ timeout: 45000 });
-    await filter.fill(createdUsername);
+      // Filter by username to bypass TanStack pagination — dev DBs accumulate
+      // e2e-* users and new ones frequently end up on page 2+, where
+      // getByRole('row') won't find them. The filter input renders
+      // immediately; listUsers (PoW HIGH, 10-30s) fills the table behind it
+      // and the filter is re-applied whenever the data arrives.
+      const filter = adminPage.getByRole('textbox', { name: /Filter by username/i });
+      await expect(filter).toBeVisible({ timeout: 45000 });
+      await filter.fill(target.username);
 
-    const userRow = adminPage.getByRole('row').filter({ hasText: createdUsername });
-    await expect(userRow).toBeVisible({ timeout: 45000 });
-    await userRow.click();
+      const userRow = adminPage.getByRole('row').filter({ hasText: target.username });
+      await expect(userRow).toBeVisible({ timeout: 45000 });
+      await userRow.click();
 
-    // Should navigate to user detail
-    await adminPage.waitForURL('**/ui/admin/users/**', { timeout: 15000 });
+      // Should navigate to user detail
+      await adminPage.waitForURL('**/ui/admin/users/**', { timeout: 15000 });
 
-    // User info should be displayed (use paragraph to avoid breadcrumb duplicate)
-    await expect(adminPage.getByRole('paragraph').filter({ hasText: createdUsername })).toBeVisible({ timeout: 10000 });
-  });
-
-  test('edit user — save succeeds', async ({ adminPage }) => {
-    test.skip(!createdUsername, 'Depends on create user test');
-
-    await adminPage.goto('/ui/admin/users');
-
-    // Filter by username to bypass pagination (see view-user-detail test).
-    const filter = adminPage.getByRole('textbox', { name: /Filter by username/i });
-    await expect(filter).toBeVisible({ timeout: 45000 });
-    await filter.fill(createdUsername);
-
-    const userRow = adminPage.getByRole('row').filter({ hasText: createdUsername });
-    await expect(userRow).toBeVisible({ timeout: 45000 });
-    await userRow.click();
-    await adminPage.waitForURL('**/ui/admin/users/**', { timeout: 15000 });
-
-    // Click edit button
-    const editBtn = adminPage.getByRole('button', { name: /Edit/i }).first();
-    if (await editBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await editBtn.click();
-
-      // Try to update display name
-      const nameInput = adminPage.locator('#displayName, input[name="displayName"]').first();
-      if (await nameInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-        await nameInput.fill('E2E Updated User');
+      // User info should be displayed (use paragraph to avoid breadcrumb duplicate)
+      await expect(adminPage.getByRole('paragraph').filter({ hasText: target.username })).toBeVisible({ timeout: 10000 });
+    } finally {
+      if (target.selfCreated && target.userId) {
+        await deleteTestUser(request, apiBase, adminAuth.token, target.userId);
       }
-
-      // Save
-      await adminPage.getByRole('button', { name: /Save/i }).click();
-
-      // Should not show an error alert
-      await expect(adminPage.locator('[role="alert"]')).not.toBeVisible({ timeout: 5000 });
     }
   });
 
-  test('delete user — removed', async ({ adminPage }) => {
-    test.skip(!createdUsername, 'Depends on create user test');
+  test('edit user — save succeeds', async ({ adminPage, request, adminAuth, apiBase }) => {
+    const target = await resolveTargetUser(request, apiBase, adminAuth.token);
+
+    try {
+      await adminPage.goto('/ui/admin/users');
+
+      // Filter by username to bypass pagination (see view-user-detail test).
+      const filter = adminPage.getByRole('textbox', { name: /Filter by username/i });
+      await expect(filter).toBeVisible({ timeout: 45000 });
+      await filter.fill(target.username);
+
+      const userRow = adminPage.getByRole('row').filter({ hasText: target.username });
+      await expect(userRow).toBeVisible({ timeout: 45000 });
+      await userRow.click();
+      await adminPage.waitForURL('**/ui/admin/users/**', { timeout: 15000 });
+
+      // Click edit button
+      const editBtn = adminPage.getByRole('button', { name: /Edit/i }).first();
+      if (await editBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+        await editBtn.click();
+
+        // Try to update display name
+        const nameInput = adminPage.locator('#displayName, input[name="displayName"]').first();
+        if (await nameInput.isVisible({ timeout: 3000 }).catch(() => false)) {
+          await nameInput.fill('E2E Updated User');
+        }
+
+        // Save
+        await adminPage.getByRole('button', { name: /Save/i }).click();
+
+        // Should not show an error alert
+        await expect(adminPage.locator('[role="alert"]')).not.toBeVisible({ timeout: 5000 });
+      }
+    } finally {
+      if (target.selfCreated && target.userId) {
+        await deleteTestUser(request, apiBase, adminAuth.token, target.userId);
+      }
+    }
+  });
+
+  test('delete user — removed', async ({ adminPage, request, adminAuth, apiBase }) => {
+    // For delete, the whole test IS the cleanup: if we self-created a user
+    // here, the UI flow deletes it, and there's nothing left for afterEach
+    // to do. On success either way, no API-level cleanup is needed.
+    const target = await resolveTargetUser(request, apiBase, adminAuth.token);
 
     await adminPage.goto('/ui/admin/users');
 
     // Filter by username to bypass pagination (see view-user-detail test).
     const filter = adminPage.getByRole('textbox', { name: /Filter by username/i });
     await expect(filter).toBeVisible({ timeout: 45000 });
-    await filter.fill(createdUsername);
+    await filter.fill(target.username);
 
-    const userRow = adminPage.getByRole('row').filter({ hasText: createdUsername });
+    const userRow = adminPage.getByRole('row').filter({ hasText: target.username });
     await expect(userRow).toBeVisible({ timeout: 45000 });
     await userRow.click();
     await adminPage.waitForURL('**/ui/admin/users/**', { timeout: 15000 });
@@ -171,8 +216,14 @@ test.describe.serial('Admin — User Management', () => {
     // on page 2+ of the unfiltered list to begin with.
     const postDeleteFilter = adminPage.getByRole('textbox', { name: /Filter by username/i });
     await expect(postDeleteFilter).toBeVisible({ timeout: 15000 });
-    await postDeleteFilter.fill(createdUsername);
-    await expect(adminPage.getByRole('row').filter({ hasText: createdUsername }))
+    await postDeleteFilter.fill(target.username);
+    await expect(adminPage.getByRole('row').filter({ hasText: target.username }))
       .toHaveCount(0, { timeout: 10000 });
+
+    // Safety net: if the UI flow failed partway but we self-created the user,
+    // clean up via the API so the test doesn't leak an orphan on rerun.
+    if (target.selfCreated && target.userId) {
+      await deleteTestUser(request, apiBase, adminAuth.token, target.userId);
+    }
   });
 });
