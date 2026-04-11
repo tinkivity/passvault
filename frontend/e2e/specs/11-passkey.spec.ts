@@ -53,16 +53,15 @@ async function loginViaPasskey(page: Page, username: string): Promise<void> {
   await page.getByRole('button', { name: /Sign in with passkey/i }).click();
 }
 
-async function logoutViaHeader(page: Page): Promise<void> {
-  const headerLogout = page.locator(
-    'button[aria-label="Log out"], button[aria-label="Abmelden"]',
-  ).first();
-  if (await headerLogout.isVisible({ timeout: 5000 }).catch(() => false)) {
-    await headerLogout.click();
-  } else {
-    await page.locator('[data-slot="sidebar-menu-button"]').last().click();
-    await page.getByText('Log out').or(page.getByText('Abmelden')).first().click({ timeout: 5000 });
-  }
+async function logoutFromSidebar(page: Page): Promise<void> {
+  // For regular users there's no header logout button — it's only in the
+  // admin shell. Open the NavUser dropdown from the sidebar footer instead.
+  // The footer wraps a single button (the NavUser trigger). Targeting the
+  // footer is reliable because DropdownMenuTrigger's `render` prop composition
+  // in NavUser.tsx:47 overrides the inner SidebarMenuButton's data-slot, so
+  // [data-slot="sidebar-menu-button"] does NOT match the NavUser trigger.
+  await page.locator('[data-slot="sidebar-footer"]').getByRole('button').first().click();
+  await page.getByRole('menuitem', { name: /Log out|Abmelden/i }).click({ timeout: 10000 });
   await page.waitForURL('**/login', { timeout: 15000 });
 }
 
@@ -86,15 +85,13 @@ async function completeFirstLoginWithPasskey(
 }
 
 /**
- * Open the Security dialog from the user's nav dropdown. Works for both
- * users and admins — the entry is the same NavUser menu item.
+ * Open the Security dialog from the user's nav dropdown.
+ * See `logoutFromSidebar` for why we scope to sidebar-footer, not
+ * sidebar-menu-button.
  */
 async function openSecurityDialog(page: Page): Promise<void> {
-  // The dropdown trigger is the NavUser button at the bottom of the sidebar.
-  await page.locator('[data-slot="sidebar-menu-button"]').last().click();
-  // Click the "Security" menu item (has ShieldCheck icon).
-  await page.getByRole('menuitem', { name: /Security/i }).click();
-  // Wait for the dialog to open.
+  await page.locator('[data-slot="sidebar-footer"]').getByRole('button').first().click();
+  await page.getByRole('menuitem', { name: /Security/i }).click({ timeout: 10000 });
   await expect(page.getByRole('dialog')).toBeVisible({ timeout: 10000 });
 }
 
@@ -106,9 +103,15 @@ async function registerPasskeyInSecurityDialog(page: Page, passkeyName: string):
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// Group 1 + 2: User onboards with passkey, then logs in with passkey
+// Group 1: User onboards with passkey, then logs back in with passkey
+//
+// Consolidated into a single test on purpose. The `passkeyAuthenticator`
+// fixture is test-scoped — each test would otherwise get a fresh authenticator
+// with zero credentials, wiping the passkey registered in any previous test.
+// Keeping registration + relog-in together preserves the credential for the
+// whole ceremony.
 // ────────────────────────────────────────────────────────────────────────────
-test.describe.serial('Passkey — user onboarding and login (happy path)', () => {
+test.describe('Passkey — user onboarding and login (happy path)', () => {
   let user: CreatedTestUser;
 
   test.beforeAll(async ({ request, adminAuth, apiBase }) => {
@@ -122,27 +125,19 @@ test.describe.serial('Passkey — user onboarding and login (happy path)', () =>
     if (user?.userId) await deleteTestUser(request, apiBase, adminAuth.token, user.userId);
   });
 
-  test('registers a passkey on the onboarding page and lands on /ui', async ({
+  test('registers a passkey on /onboarding, then logs back in via passkey after logout', async ({
     page, passkeyAuthenticator,
   }) => {
-    // Pre-condition: authenticator is empty
+    // Part A — onboarding with passkey registration
     expect(await passkeyAuthenticator.getCredentials()).toHaveLength(0);
-
     await completeFirstLoginWithPasskey(page, user.username, user.oneTimePassword, 'E2E Test Key');
-
-    // Post-condition: exactly one credential stored in the virtual authenticator
     const creds = await passkeyAuthenticator.getCredentials();
     expect(creds).toHaveLength(1);
     expect(creds[0].isResidentCredential).toBe(true);
-  });
 
-  test('logs in via passkey after logout', async ({ page, passkeyAuthenticator }) => {
-    // The authenticator still holds the credential from the previous test.
-    expect((await passkeyAuthenticator.getCredentials()).length).toBe(1);
-
-    await logoutViaHeader(page);
+    // Part B — log out and log back in via passkey (reuses the same credential)
+    await logoutFromSidebar(page);
     await loginViaPasskey(page, user.username);
-
     await page.waitForURL(/\/ui(\/|$)/, { timeout: 20000 });
     await expect(page.getByText('PassVault').first()).toBeVisible({ timeout: 20000 });
   });
@@ -183,7 +178,7 @@ test.describe.serial('Passkey — password login blocked after registration', ()
 
     // Log out and try password login — backend should reject at
     // auth.ts:70-71 with INVALID_PASSKEY.
-    await logoutViaHeader(page);
+    await logoutFromSidebar(page);
     await loginViaForm(page, user.username, ONBOARD_PASSWORD);
 
     // Stay on /login and surface an error (role=alert or similar).
@@ -274,7 +269,7 @@ test.describe.serial('Passkey — failure modes', () => {
     await completeFirstLoginWithPasskey(page, user.username, user.oneTimePassword, 'Temp Key');
     expect((await passkeyAuthenticator.getCredentials()).length).toBe(1);
 
-    await logoutViaHeader(page);
+    await logoutFromSidebar(page);
 
     // Wipe the credential store mid-flow. The backend still believes the
     // user has a credential in DynamoDB, so when the authenticator fails to
