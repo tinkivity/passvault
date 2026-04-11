@@ -11,6 +11,7 @@ import {
 import { randomUUID } from 'crypto';
 import type { User, VaultSummary, PasskeyCredential } from '@passvault/shared';
 import { DYNAMODB_TABLE, LOGIN_EVENTS_TABLE, VAULTS_TABLE, PASSKEY_CREDENTIALS_TABLE } from '../config.js';
+import { encryptDisplayName, decryptDisplayName } from './crypto.js';
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
@@ -288,13 +289,14 @@ export async function getLoginCountSince(isoTimestamp: string): Promise<number> 
 // ---- Vault CRUD -----------------------------------------------------------
 
 export async function createVaultRecord(vaultId: string, userId: string, displayName: string, encryptionSalt: string): Promise<void> {
+  const encryptedDisplayName = await encryptDisplayName(displayName);
   await docClient.send(
     new PutCommand({
       TableName: VAULTS_TABLE,
       Item: {
         vaultId,
         userId,
-        displayName,
+        displayName: encryptedDisplayName,
         encryptionSalt,
         createdAt: new Date().toISOString(),
       },
@@ -310,7 +312,9 @@ export async function getVaultRecord(vaultId: string): Promise<{ vaultId: string
       Key: { vaultId },
     }),
   );
-  return (result.Item as { vaultId: string; userId: string; displayName: string; encryptionSalt: string; createdAt: string }) || null;
+  if (!result.Item) return null;
+  const item = result.Item as { vaultId: string; userId: string; displayName: string; encryptionSalt: string; createdAt: string };
+  return { ...item, displayName: await decryptDisplayName(item.displayName) };
 }
 
 export async function listVaultsByUser(userId: string): Promise<VaultSummary[]> {
@@ -322,18 +326,21 @@ export async function listVaultsByUser(userId: string): Promise<VaultSummary[]> 
       ExpressionAttributeValues: { ':uid': userId },
     }),
   );
-  return ((result.Items ?? []) as VaultSummary[]).sort(
-    (a, b) => a.createdAt.localeCompare(b.createdAt),
+  const items = (result.Items ?? []) as VaultSummary[];
+  const decrypted = await Promise.all(
+    items.map(async (v) => ({ ...v, displayName: await decryptDisplayName(v.displayName) })),
   );
+  return decrypted.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
 export async function updateVaultDisplayName(vaultId: string, displayName: string): Promise<void> {
+  const encryptedDisplayName = await encryptDisplayName(displayName);
   await docClient.send(
     new UpdateCommand({
       TableName: VAULTS_TABLE,
       Key: { vaultId },
       UpdateExpression: 'SET displayName = :dn',
-      ExpressionAttributeValues: { ':dn': displayName },
+      ExpressionAttributeValues: { ':dn': encryptedDisplayName },
     }),
   );
 }

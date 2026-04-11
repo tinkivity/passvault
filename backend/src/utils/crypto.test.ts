@@ -1,6 +1,26 @@
-import { describe, it, expect } from 'vitest';
-import { hashPassword, verifyPassword, generateOtp, generateSalt, generateNonce } from './crypto.js';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { randomBytes } from 'crypto';
+import {
+  hashPassword,
+  verifyPassword,
+  generateOtp,
+  generateSalt,
+  generateNonce,
+  encryptDisplayNameWithKey,
+  decryptDisplayNameWithKey,
+  encryptDisplayName,
+  decryptDisplayName,
+  __resetDisplayNameKeyCache,
+} from './crypto.js';
 import { LIMITS, SALT_LENGTH } from '@passvault/shared';
+
+vi.mock('../config.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../config.js')>();
+  return {
+    ...actual,
+    getJwtSecret: vi.fn(async () => 'test-jwt-secret-32bytes-of-entropy-please'),
+  };
+});
 
 // Real bcrypt calls — 12 rounds per hash, allow extra time
 describe('hashPassword / verifyPassword', { timeout: 30_000 }, () => {
@@ -88,5 +108,76 @@ describe('generateNonce', () => {
   it('produces unique values', () => {
     const nonces = new Set(Array.from({ length: 10 }, () => generateNonce(16)));
     expect(nonces.size).toBe(10);
+  });
+});
+
+describe('encryptDisplayNameWithKey / decryptDisplayNameWithKey', () => {
+  const key = randomBytes(32);
+
+  it('round-trips ASCII plaintext', () => {
+    const ciphertext = encryptDisplayNameWithKey('Personal Vault', key);
+    expect(ciphertext.startsWith('v1:')).toBe(true);
+    expect(decryptDisplayNameWithKey(ciphertext, key)).toBe('Personal Vault');
+  });
+
+  it('round-trips unicode plaintext', () => {
+    const name = 'Personal 🔐 金庫';
+    expect(decryptDisplayNameWithKey(encryptDisplayNameWithKey(name, key), key)).toBe(name);
+  });
+
+  it('round-trips empty string', () => {
+    expect(decryptDisplayNameWithKey(encryptDisplayNameWithKey('', key), key)).toBe('');
+  });
+
+  it('produces a different ciphertext each call (random IV)', () => {
+    const a = encryptDisplayNameWithKey('Same Name', key);
+    const b = encryptDisplayNameWithKey('Same Name', key);
+    expect(a).not.toBe(b);
+    expect(decryptDisplayNameWithKey(a, key)).toBe('Same Name');
+    expect(decryptDisplayNameWithKey(b, key)).toBe('Same Name');
+  });
+
+  it('rejects tampered ciphertext (flipped bit in body)', () => {
+    const ciphertext = encryptDisplayNameWithKey('Personal Vault', key);
+    // Flip a bit inside the base64url body
+    const body = ciphertext.slice(3);
+    const buf = Buffer.from(body, 'base64url');
+    buf[buf.length - 5] ^= 0x01;
+    const tampered = 'v1:' + buf.toString('base64url');
+    expect(() => decryptDisplayNameWithKey(tampered, key)).toThrow();
+  });
+
+  it('rejects payload without v1: prefix', () => {
+    expect(() => decryptDisplayNameWithKey('plainvalue', key)).toThrow(/unrecognized ciphertext format/);
+  });
+
+  it('rejects payload that is too short', () => {
+    expect(() => decryptDisplayNameWithKey('v1:' + Buffer.from('abc').toString('base64url'), key)).toThrow(/too short/);
+  });
+
+  it('rejects decrypt with a wrong key', () => {
+    const ciphertext = encryptDisplayNameWithKey('Personal Vault', key);
+    const otherKey = randomBytes(32);
+    expect(() => decryptDisplayNameWithKey(ciphertext, otherKey)).toThrow();
+  });
+});
+
+describe('encryptDisplayName / decryptDisplayName (high-level)', () => {
+  beforeEach(() => {
+    __resetDisplayNameKeyCache();
+  });
+
+  it('round-trips through the cached HKDF key', async () => {
+    const ciphertext = await encryptDisplayName('Hello World');
+    expect(ciphertext.startsWith('v1:')).toBe(true);
+    await expect(decryptDisplayName(ciphertext)).resolves.toBe('Hello World');
+  });
+
+  it('derives the same key across calls (cache works)', async () => {
+    const a = await encryptDisplayName('X');
+    const b = await encryptDisplayName('X');
+    // Different IV each time, but both must decrypt via the cached key.
+    await expect(decryptDisplayName(a)).resolves.toBe('X');
+    await expect(decryptDisplayName(b)).resolves.toBe('X');
   });
 });
