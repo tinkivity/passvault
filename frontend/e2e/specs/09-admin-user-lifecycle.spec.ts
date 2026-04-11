@@ -19,12 +19,26 @@ const ONBOARD_PASSWORD = 'E2eLifecycle42!Secure';
 // `user` record from `location.state` set by the row click in UsersPage.
 // Visiting /ui/admin/users/{id} directly renders a "User not found" stub
 // with no action buttons, so we must navigate through the list.
+//
+// Uses the username filter input to bypass TanStack pagination — dev DBs
+// accumulate e2e-* users (especially renamed retired ones that can't be
+// deleted), and a fresh test user frequently ends up on page 2+ of the
+// default view, where getByRole('row') won't find it.
 async function gotoUserDetail(
   page: import('@playwright/test').Page,
   user: { userId: string; username: string },
 ): Promise<void> {
   await page.goto('/ui/admin/users');
-  // listUsers is PoW HIGH, so the table render can take several seconds.
+
+  // Wait for the filter input — it renders immediately on mount, before
+  // listUsers returns. Filling it now is fine because TanStack re-applies
+  // the filter once the data arrives.
+  const filter = page.getByRole('textbox', { name: /Filter by username/i });
+  await expect(filter).toBeVisible({ timeout: 45000 });
+  await filter.fill(user.username);
+
+  // listUsers is PoW HIGH (10-30s). Playwright retries until the filtered
+  // row appears.
   const row = page.getByRole('row').filter({ hasText: user.username });
   await expect(row).toBeVisible({ timeout: 45000 });
   await row.click();
@@ -147,8 +161,12 @@ test.describe.serial('Admin lifecycle — expire / reactivate', () => {
 
   test('reactivate: user returns to active via list-row action', async ({ adminPage, request, adminAuth, apiBase }) => {
     // Reactivate lives in the row-level dropdown on the users list, not on
-    // the detail page. Navigate to the list and match by username.
+    // the detail page. Navigate to the list, filter by username to bypass
+    // TanStack pagination, and match the row.
     await adminPage.goto('/ui/admin/users');
+    const filter = adminPage.getByRole('textbox', { name: /Filter by username/i });
+    await expect(filter).toBeVisible({ timeout: 45000 });
+    await filter.fill(testUser.username);
     const userRow = adminPage.getByRole('row').filter({ hasText: testUser.username });
     await expect(userRow).toBeVisible({ timeout: 45000 });
 

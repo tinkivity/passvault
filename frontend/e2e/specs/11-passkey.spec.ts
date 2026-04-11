@@ -5,6 +5,7 @@ import {
   completeFirstLogin,
   type CreatedTestUser,
 } from '../helpers/users.js';
+import { installVirtualAuthenticator } from '../helpers/webauthn.js';
 
 /**
  * Passkey / WebAuthn e2e tests driven by a Chrome virtual authenticator
@@ -176,6 +177,12 @@ test.describe.serial('Passkey — password login blocked after registration', ()
     const creds = await passkeyAuthenticator.getCredentials();
     expect(creds).toHaveLength(1);
 
+    // Close the Security dialog before interacting with the sidebar —
+    // the dialog's overlay blocks clicks on the sidebar-footer button,
+    // so logoutFromSidebar would time out waiting for actionability.
+    await page.getByRole('dialog').getByRole('button', { name: /^Close$/i }).click();
+    await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 5000 });
+
     // Log out and try password login — backend should reject at
     // auth.ts:70-71 with INVALID_PASSKEY.
     await logoutFromSidebar(page);
@@ -225,24 +232,40 @@ test.describe.serial('Passkey — multi-passkey management in Security dialog', 
 
     await openSecurityDialog(page);
     await registerPasskeyInSecurityDialog(page, 'Laptop');
-    await registerPasskeyInSecurityDialog(page, 'Phone');
 
-    // Both passkeys are visible in the dialog list.
-    const dialog = page.getByRole('dialog');
-    await expect(dialog.getByText('Laptop')).toBeVisible();
-    await expect(dialog.getByText('Phone')).toBeVisible();
+    // Second registration needs a SECOND virtual authenticator. The frontend's
+    // registerPasskey() passes existingCredentialIds to excludeCredentials
+    // (passkey.ts:54), which the single fixture-provided authenticator sees in
+    // its own credential store — Chrome then rejects with InvalidStateError
+    // ("The authenticator was previously registered"). Installing a second
+    // authenticator gives Chrome's WebAuthn an option that doesn't own the
+    // excluded credential, so the new credential is created there.
+    const secondAuthenticator = await installVirtualAuthenticator(page);
+    try {
+      await registerPasskeyInSecurityDialog(page, 'Phone');
 
-    // Virtual authenticator should hold 2 credentials.
-    expect((await passkeyAuthenticator.getCredentials()).length).toBe(2);
+      // Both passkeys visible in the dialog list.
+      const dialog = page.getByRole('dialog');
+      await expect(dialog.getByText('Laptop')).toBeVisible();
+      await expect(dialog.getByText('Phone')).toBeVisible();
 
-    // Revoke "Laptop" — SecurityDialog uses a Trash2 icon button per row
-    // with no confirm dialog. Scope to the <li> containing "Laptop".
-    const laptopRow = dialog.locator('li').filter({ hasText: 'Laptop' });
-    await laptopRow.getByRole('button').last().click();
+      // Credentials are split across the two virtual authenticators.
+      const totalCreds =
+        (await passkeyAuthenticator.getCredentials()).length +
+        (await secondAuthenticator.getCredentials()).length;
+      expect(totalCreds).toBe(2);
 
-    // After revoke, Laptop is gone and Phone remains.
-    await expect(dialog.getByText('Laptop')).toHaveCount(0, { timeout: 10000 });
-    await expect(dialog.getByText('Phone')).toBeVisible();
+      // Revoke "Laptop" — SecurityDialog uses a Trash2 icon button per row
+      // with no confirm dialog. Scope to the <li> containing "Laptop".
+      const laptopRow = dialog.locator('li').filter({ hasText: 'Laptop' });
+      await laptopRow.getByRole('button').last().click();
+
+      // After revoke, Laptop is gone and Phone remains.
+      await expect(dialog.getByText('Laptop')).toHaveCount(0, { timeout: 10000 });
+      await expect(dialog.getByText('Phone')).toBeVisible();
+    } finally {
+      await secondAuthenticator.remove();
+    }
   });
 });
 
