@@ -66,10 +66,12 @@ test.describe.serial('Admin — User Management', () => {
     test.skip(!createdUsername, 'Depends on create user test');
 
     await adminPage.goto('/ui/admin/users');
-    await adminPage.waitForLoadState('networkidle');
 
-    // Click on the created user row
-    await adminPage.getByText(createdUsername).click();
+    // listUsers requires PoW HIGH (difficulty 20) which can take 10–30s in the
+    // browser worker; wait for the row to render instead of clicking blind.
+    const userRow = adminPage.getByRole('row').filter({ hasText: createdUsername });
+    await expect(userRow).toBeVisible({ timeout: 45000 });
+    await userRow.click();
 
     // Should navigate to user detail
     await adminPage.waitForURL('**/ui/admin/users/**', { timeout: 15000 });
@@ -82,10 +84,11 @@ test.describe.serial('Admin — User Management', () => {
     test.skip(!createdUsername, 'Depends on create user test');
 
     await adminPage.goto('/ui/admin/users');
-    await adminPage.waitForLoadState('networkidle');
 
-    // Navigate to user detail
-    await adminPage.getByText(createdUsername).click();
+    // Navigate to user detail (long timeout accounts for PoW HIGH on listUsers)
+    const userRow = adminPage.getByRole('row').filter({ hasText: createdUsername });
+    await expect(userRow).toBeVisible({ timeout: 45000 });
+    await userRow.click();
     await adminPage.waitForURL('**/ui/admin/users/**', { timeout: 15000 });
 
     // Click edit button
@@ -111,10 +114,11 @@ test.describe.serial('Admin — User Management', () => {
     test.skip(!createdUsername, 'Depends on create user test');
 
     await adminPage.goto('/ui/admin/users');
-    await adminPage.waitForLoadState('networkidle');
 
-    // Click on the user row to go to detail
-    await adminPage.getByText(createdUsername).click();
+    // Click on the user row to go to detail (long timeout accounts for PoW HIGH)
+    const userRow = adminPage.getByRole('row').filter({ hasText: createdUsername });
+    await expect(userRow).toBeVisible({ timeout: 45000 });
+    await userRow.click();
     await adminPage.waitForURL('**/ui/admin/users/**', { timeout: 15000 });
 
     // Open the delete action (may be in a dropdown or direct button)

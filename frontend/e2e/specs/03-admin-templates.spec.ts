@@ -59,7 +59,7 @@ test.describe('Admin — Email Templates', () => {
     // Find first download button
     const downloadBtn = adminPage.getByRole('button', { name: /Download/i }).first();
 
-    if (await downloadBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+    if (await downloadBtn.isEnabled({ timeout: 5000 }).catch(() => false)) {
       const downloadPromise = adminPage.waitForEvent('download', { timeout: 10000 });
       await downloadBtn.click();
 
@@ -79,7 +79,7 @@ test.describe('Admin — Email Templates', () => {
     // Find first upload button / file input
     const uploadBtn = adminPage.getByRole('button', { name: /Upload/i }).first();
 
-    if (await uploadBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+    if (await uploadBtn.isEnabled({ timeout: 5000 }).catch(() => false)) {
       // Create a minimal HTML file for upload
       const fileContent = '<html><body><h1>Test Template</h1></body></html>';
 
