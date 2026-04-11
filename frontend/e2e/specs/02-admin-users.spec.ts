@@ -84,8 +84,15 @@ test.describe.serial('Admin — User Management', () => {
 
     await adminPage.goto('/ui/admin/users');
 
-    // listUsers requires PoW HIGH (difficulty 20) which can take 10–30s in the
-    // browser worker; wait for the row to render instead of clicking blind.
+    // Filter by username to bypass TanStack pagination — dev DBs accumulate
+    // e2e-* users and new ones frequently end up on page 2+, where
+    // getByRole('row') won't find them. The filter input renders
+    // immediately; listUsers (PoW HIGH, 10-30s) fills the table behind it
+    // and the filter is re-applied whenever the data arrives.
+    const filter = adminPage.getByRole('textbox', { name: /Filter by username/i });
+    await expect(filter).toBeVisible({ timeout: 45000 });
+    await filter.fill(createdUsername);
+
     const userRow = adminPage.getByRole('row').filter({ hasText: createdUsername });
     await expect(userRow).toBeVisible({ timeout: 45000 });
     await userRow.click();
@@ -102,7 +109,11 @@ test.describe.serial('Admin — User Management', () => {
 
     await adminPage.goto('/ui/admin/users');
 
-    // Navigate to user detail (long timeout accounts for PoW HIGH on listUsers)
+    // Filter by username to bypass pagination (see view-user-detail test).
+    const filter = adminPage.getByRole('textbox', { name: /Filter by username/i });
+    await expect(filter).toBeVisible({ timeout: 45000 });
+    await filter.fill(createdUsername);
+
     const userRow = adminPage.getByRole('row').filter({ hasText: createdUsername });
     await expect(userRow).toBeVisible({ timeout: 45000 });
     await userRow.click();
@@ -132,7 +143,11 @@ test.describe.serial('Admin — User Management', () => {
 
     await adminPage.goto('/ui/admin/users');
 
-    // Click on the user row to go to detail (long timeout accounts for PoW HIGH)
+    // Filter by username to bypass pagination (see view-user-detail test).
+    const filter = adminPage.getByRole('textbox', { name: /Filter by username/i });
+    await expect(filter).toBeVisible({ timeout: 45000 });
+    await filter.fill(createdUsername);
+
     const userRow = adminPage.getByRole('row').filter({ hasText: createdUsername });
     await expect(userRow).toBeVisible({ timeout: 45000 });
     await userRow.click();
@@ -150,7 +165,14 @@ test.describe.serial('Admin — User Management', () => {
     // Should redirect back to users list or user should disappear
     await adminPage.waitForURL('**/ui/admin/users', { timeout: 15000 });
 
-    // The user should no longer appear
-    await expect(adminPage.getByText(createdUsername)).not.toBeVisible({ timeout: 10000 });
+    // The user should no longer appear. Re-filter on a fresh page load
+    // (the filter state resets on navigation) and assert zero matching
+    // rows — a bare getByText would be a false positive if the user was
+    // on page 2+ of the unfiltered list to begin with.
+    const postDeleteFilter = adminPage.getByRole('textbox', { name: /Filter by username/i });
+    await expect(postDeleteFilter).toBeVisible({ timeout: 15000 });
+    await postDeleteFilter.fill(createdUsername);
+    await expect(adminPage.getByRole('row').filter({ hasText: createdUsername }))
+      .toHaveCount(0, { timeout: 10000 });
   });
 });
