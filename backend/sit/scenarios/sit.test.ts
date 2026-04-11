@@ -7,6 +7,7 @@ import { vaultItemsScenarios } from './05-vault-items.js';
 import { userProfileScenarios } from './06-user-profile.js';
 import { adminAuditScenarios } from './07-admin-audit.js';
 import { emailTemplateScenarios } from './08-email-templates.js';
+import { authLockoutScenarios } from './09-auth-lockout.js';
 
 const ctx = createContext();
 
@@ -20,3 +21,4 @@ vaultItemsScenarios(ctx);
 userProfileScenarios(ctx);
 adminAuditScenarios(ctx);
 emailTemplateScenarios(ctx);
+authLockoutScenarios(ctx);
