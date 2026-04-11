@@ -24,13 +24,14 @@ interface AllResults {
 // Terminal (ASCII horizontal bar chart)
 // ---------------------------------------------------------------------------
 
-export function generateTerminalReport(results: AllResults, baselines: Baselines): string {
+export function generateTerminalReport(results: AllResults, baselines: Baselines, environment: string): string {
   const lines: string[] = [];
   const maxWidth = 50;
 
   lines.push('');
   lines.push('='.repeat(72));
   lines.push('  PassVault Performance Report');
+  lines.push(`  Environment: ${environment}`);
   lines.push('='.repeat(72));
 
   // Endpoint results
@@ -99,7 +100,7 @@ export function generateTerminalReport(results: AllResults, baselines: Baselines
 // HTML (self-contained with inline SVG)
 // ---------------------------------------------------------------------------
 
-export function generateHtmlReport(results: AllResults, baselines: Baselines): string {
+export function generateHtmlReport(results: AllResults, baselines: Baselines, environment: string): string {
   const barData = results.endpoints.map(r => ({
     label: r.name,
     actual: r.p95,
@@ -180,7 +181,7 @@ export function generateHtmlReport(results: AllResults, baselines: Baselines): s
 </head>
 <body>
 <h1>PassVault Performance Report</h1>
-<p class="meta">Generated: ${new Date().toISOString()} | Baselines v${baselines.version}</p>
+<p class="meta">Environment: ${environment} | Generated: ${new Date().toISOString()} | Baselines v${baselines.version}</p>
 
 <h2>Endpoint Response Times</h2>
 <div class="chart">${barSvg}</div>
@@ -206,7 +207,7 @@ ${lineSvg ? `<h2>Payload Size Scaling</h2><div class="chart">${lineSvg}</div>` :
 // Markdown (with inline SVG)
 // ---------------------------------------------------------------------------
 
-export function generateMarkdownReport(results: AllResults, baselines: Baselines): string {
+export function generateMarkdownReport(results: AllResults, baselines: Baselines, environment: string): string {
   const barData = results.endpoints.map(r => ({
     label: r.name,
     actual: r.p95,
@@ -218,7 +219,7 @@ export function generateMarkdownReport(results: AllResults, baselines: Baselines
   const lines: string[] = [];
   lines.push('# PassVault Performance Report');
   lines.push('');
-  lines.push(`> Generated: ${new Date().toISOString()} | Baselines v${baselines.version}`);
+  lines.push(`> Environment: ${environment} | Generated: ${new Date().toISOString()} | Baselines v${baselines.version}`);
   lines.push('');
   lines.push('## Endpoint Response Times (p95)');
   lines.push('');

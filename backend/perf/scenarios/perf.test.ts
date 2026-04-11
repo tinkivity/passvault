@@ -58,8 +58,10 @@ afterAll(async () => {
     payload: ctx.payloadResults,
   };
 
+  const environment = process.env.SIT_ENV ?? 'unknown';
+
   // Terminal report
-  const terminalReport = generateTerminalReport(allResults, baselines);
+  const terminalReport = generateTerminalReport(allResults, baselines, environment);
   console.log(terminalReport);
 
   // JSON results
@@ -70,13 +72,13 @@ afterAll(async () => {
 
   // HTML report
   const htmlPath = resolve(outputDir, 'perf-report.html');
-  writeFileSync(htmlPath, generateHtmlReport(allResults, baselines));
+  writeFileSync(htmlPath, generateHtmlReport(allResults, baselines, environment));
   console.log(`  HTML report:   ${htmlPath}`);
 
   // Markdown report
   const mdDir = resolve(outputDir, '..', '..', 'docs', 'perf');
   mkdirSync(mdDir, { recursive: true });
   const mdPath = resolve(mdDir, 'report.md');
-  writeFileSync(mdPath, generateMarkdownReport(allResults, baselines));
+  writeFileSync(mdPath, generateMarkdownReport(allResults, baselines, environment));
   console.log(`  MD report:     ${mdPath}`);
 });

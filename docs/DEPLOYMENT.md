@@ -69,7 +69,7 @@ ENVIRONMENT=dev ADMIN_EMAIL=you@example.com npx tsx scripts/init-admin.ts
 
 For complete instructions covering all environments, custom domains, SES email, monitoring, kill switch setup, and troubleshooting, see:
 
-**[cdk/DEPLOYMENT.md](cdk/DEPLOYMENT.md)**
+**[cdk/DEPLOYMENT.md](../cdk/DEPLOYMENT.md)**
 
 ---
 
