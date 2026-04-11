@@ -1,5 +1,7 @@
 import { test, expect } from '../fixtures/auth.fixture.js';
-import { createTestUser, deleteTestUser, getUserState } from '../helpers/users.js';
+import { createTestUser, deleteTestUser, getUserState, onboardTestUserViaAPI } from '../helpers/users.js';
+
+const ONBOARD_PASSWORD = 'E2eLifecycle42!Secure';
 
 /**
  * Admin user lifecycle actions — covers lock/unlock, expire/reactivate,
@@ -46,6 +48,8 @@ test.describe.serial('Admin lifecycle — lock / unlock', () => {
   test.beforeAll(async ({ request, adminAuth, apiBase }) => {
     const created = await createTestUser(request, apiBase, adminAuth.token, { usernamePrefix: 'e2e-lock' });
     testUser = { userId: created.userId, username: created.username };
+    // Lock button is only visible for users with status='active'.
+    await onboardTestUserViaAPI(request, apiBase, created.username, created.oneTimePassword, ONBOARD_PASSWORD);
   });
 
   test.afterAll(async ({ request, adminAuth, apiBase }) => {
@@ -86,6 +90,8 @@ test.describe.serial('Admin lifecycle — expire / reactivate', () => {
   test.beforeAll(async ({ request, adminAuth, apiBase }) => {
     const created = await createTestUser(request, apiBase, adminAuth.token, { usernamePrefix: 'e2e-expire' });
     testUser = { userId: created.userId, username: created.username };
+    // Expire button requires status='active' or 'locked'; onboard first.
+    await onboardTestUserViaAPI(request, apiBase, created.username, created.oneTimePassword, ONBOARD_PASSWORD);
   });
 
   test.afterAll(async ({ request, adminAuth, apiBase }) => {
@@ -148,15 +154,17 @@ test.describe('Admin lifecycle — retire', () => {
     await adminPage.getByRole('button', { name: /Retire user/i }).click();
     await adminPage.getByRole('button', { name: /Confirm retire/i }).click();
 
-    // Verify via API: the retired user's status flips and username is
-    // renamed (the backend prevents reuse by appending a suffix).
+    // The backend's listUsers service at admin.ts:247 filters out
+    // status='retired' rows, so the meaningful post-condition is that
+    // the user disappears from the admin list API entirely.
     await expect.poll(async () => {
       const state = await getUserState(request, apiBase, adminAuth.token, userId);
-      return state?.status;
-    }, { timeout: 15000 }).toBe('retired');
+      return state === null;
+    }, { timeout: 15000 }).toBe(true);
 
-    const state = await getUserState(request, apiBase, adminAuth.token, userId);
-    expect(state?.username).not.toBe(username);
+    // (We can't assert on the renamed username here because listUsers
+    // won't return the row — that would require a direct DynamoDB read.)
+    void username;
 
     // NOTE: retired users cannot be deleted via the admin delete endpoint.
     // This test deliberately leaves the row behind; dev cleanup scripts
@@ -173,6 +181,10 @@ test.describe.serial('Admin lifecycle — reset login', () => {
   test.beforeAll(async ({ request, adminAuth, apiBase }) => {
     const created = await createTestUser(request, apiBase, adminAuth.token, { usernamePrefix: 'e2e-reset' });
     testUser = { userId: created.userId, username: created.username };
+    // Reset Login button is hidden when status='pending_first_login' (a
+    // fresh account already IS in that state — there's nothing to reset).
+    // Onboard to 'active' so the button renders.
+    await onboardTestUserViaAPI(request, apiBase, created.username, created.oneTimePassword, ONBOARD_PASSWORD);
   });
 
   test.afterAll(async ({ request, adminAuth, apiBase }) => {
@@ -191,7 +203,8 @@ test.describe.serial('Admin lifecycle — reset login', () => {
     // The OTP dialog renders the new password.
     await expect(adminPage.getByRole('heading', { name: /One-Time Password/i })).toBeVisible({ timeout: 15000 });
 
-    // API: status remains pending_first_login (a fresh account is still at that state).
+    // API: after reset, the user reverts from 'active' (onboarded in beforeAll)
+    // back to 'pending_first_login' with a fresh OTP.
     const state = await getUserState(request, apiBase, adminAuth.token, testUser.userId);
     expect(state?.status).toBe('pending_first_login');
 
@@ -222,17 +235,18 @@ test.describe.serial('Admin lifecycle — refresh OTP', () => {
 
     await adminPage.getByRole('button', { name: /Refresh OTP/i }).click();
 
-    // OTP dialog renders with the new password. Assert the heading is
-    // visible and that a 12-character string made of the allowed charset
-    // appears on the dialog.
+    // OTP dialog renders with the new password. Assert the heading and
+    // then scope further matches to within the dialog so unrelated page
+    // text (sidebar, breadcrumb, etc.) cannot produce false matches.
     await expect(adminPage.getByRole('heading', { name: /One-Time Password/i })).toBeVisible({ timeout: 15000 });
 
-    // The OTP is rendered inside a code-style element. Look for any text
-    // that matches the generator invariant: 12 chars from the allowed set.
-    const otpPattern = /[A-Za-z0-9!@#$%^&*]{12}/;
-    await expect(
-      adminPage.locator('text=' + '/' + otpPattern.source + '/'),
-    ).toBeVisible({ timeout: 5000 });
+    // The OTP is rendered inside a <code> element by OtpDisplay.tsx.
+    // It starts masked (• bullet chars) until the user clicks Reveal, so
+    // assert on either the real 12-char OTP or the 12-char bullet mask.
+    const dialog = adminPage.getByRole('dialog');
+    const otpCode = dialog.locator('code').first();
+    await expect(otpCode).toBeVisible({ timeout: 5000 });
+    await expect(otpCode).toHaveText(/^[A-Za-z0-9!@#$%^&*\u2022]{12}$/);
 
     // Close the dialog via the copy → Done flow used by existing tests.
     await adminPage.context().grantPermissions(['clipboard-write', 'clipboard-read']);

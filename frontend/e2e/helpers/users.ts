@@ -88,6 +88,53 @@ export async function getUserState(
 }
 
 /**
+ * Onboard a freshly-created test user to `active` status via pure API calls
+ * (no browser). Performs OTP login + change-password so the user is ready
+ * for admin lifecycle tests that gate action buttons on status='active'
+ * (e.g. Lock, Expire, Reset Login in UserDetailPage).
+ *
+ * Includes a short retry around login to absorb username-index GSI
+ * propagation delay after createTestUser, which writes via the admin API
+ * path and can occasionally race a too-fast subsequent login.
+ */
+export async function onboardTestUserViaAPI(
+  request: APIRequestContext,
+  apiBase: string,
+  username: string,
+  oneTimePassword: string,
+  newPassword: string,
+): Promise<void> {
+  let token = '';
+  let lastBody: unknown = null;
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    const loginRes = await request.post(`${apiBase}/api/auth/login`, {
+      data: { username, password: oneTimePassword },
+    });
+    const body = await loginRes.json();
+    lastBody = body;
+    if (body.success && body.data?.token) {
+      token = body.data.token;
+      break;
+    }
+    if (attempt < 5) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+  }
+  if (!token) {
+    throw new Error(`onboardTestUserViaAPI login failed after 5 attempts: ${JSON.stringify(lastBody)}`);
+  }
+
+  const cpRes = await request.post(`${apiBase}/api/auth/change-password`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { newPassword },
+  });
+  const cpBody = await cpRes.json();
+  if (!cpBody.success) {
+    throw new Error(`onboardTestUserViaAPI change-password failed: ${JSON.stringify(cpBody)}`);
+  }
+}
+
+/**
  * Drive the full browser first-login flow for a regular user:
  *   /login → OTP → /onboarding → "Set a password instead" → /change-password
  *   → fill new password → submit → success screen → "Continue to Login" → /login
