@@ -93,7 +93,7 @@ aws ssm put-parameter \
 
 On success, the command prints `{"Version": 1, "Tier": "Standard"}`.
 
-**Important:** Without `--overwrite`, the command fails if the parameter already exists. This prevents accidental secret rotation, which would invalidate all active user sessions.
+**Important:** Without `--overwrite`, the command fails if the parameter already exists. Accidental rotation is disruptive — all active user sessions are invalidated **and** every encrypted vault `displayName` in DynamoDB becomes undecryptable until re-encrypted. For a planned rotation, follow §3a below.
 
 **Verify** (confirms existence without revealing the value):
 
@@ -103,6 +103,128 @@ aws ssm get-parameter \
   --region eu-central-1 \
   --query "Parameter.{Name:Name,Type:Type,Version:Version}"
 ```
+
+---
+
+## 3a. JWT Secret Rotation
+
+The JWT secret serves two purposes in PassVault:
+
+1. HMAC signing key for all session JWTs, passkey challenge tokens, and password-change tokens.
+2. KDF input material for the AES-256-GCM key that encrypts vault `displayName` values in `passvault-vaults-{env}` at rest (HKDF-SHA256, info label `passvault-vault-displayname-v1`).
+
+Rotating the secret therefore has two consequences, and both must be handled in the same operation: every live session becomes invalid, and every row in the vaults table must be re-encrypted under the new key before the old key is discarded.
+
+### Cadence
+
+- **Scheduled:** once per year, during a planned maintenance window.
+- **Event-driven (immediate):** suspected secret exposure — operator laptop lost, secret logged accidentally, departing admin with prior access, or a Lambda env snapshot leak.
+
+Quarterly rotation is **not** required for this system's risk profile. The operational cost (forced re-login, re-encryption) outweighs the security benefit at that cadence.
+
+### Pre-rotation checklist
+
+1. Confirm the current JWT secret is still reachable: `aws ssm get-parameter --name /passvault/{env}/jwt-secret --with-decryption` succeeds.
+2. Take an on-demand backup of the vaults table so you can roll back:
+   ```bash
+   aws dynamodb create-backup \
+     --table-name passvault-vaults-{env} \
+     --backup-name pre-jwt-rotation-$(date +%Y%m%d)
+   ```
+3. Sanity-check that the vault contents backup pipeline (S3) is healthy. Vault contents are encrypted client-side and therefore unaffected by this rotation, but you want the fallback ready.
+4. Announce the maintenance window to users — all sessions will be invalidated; users will be prompted to log in again.
+5. **Temporarily throttle vault writes** to avoid a concurrent rename racing the re-encryption script. The safest option is to set the vault Lambda's reserved concurrency to 0 for the duration:
+   ```bash
+   aws lambda put-function-concurrency \
+     --function-name passvault-vault-{env} \
+     --reserved-concurrent-executions 0
+   ```
+   Restore the original limit (see `shared/src/config.ts` for the per-env value) at the end.
+
+### Step-by-step procedure
+
+Keep secret material out of shell history and out of `ps`:
+
+```bash
+set +o history  # stop logging commands to history for this session
+
+# 1. Save the old secret to a shell variable (do NOT write to disk).
+OLD_JWT=$(aws ssm get-parameter \
+  --name /passvault/{env}/jwt-secret \
+  --with-decryption \
+  --query Parameter.Value --output text)
+
+# 2. Generate the new secret.
+NEW_JWT=$(openssl rand -hex 32)
+
+# 3. Run the rotation script. OLD_JWT and NEW_JWT are read from env vars
+#    (NOT argv) so they do not leak through `ps`.
+ENVIRONMENT={env} OLD_JWT="$OLD_JWT" NEW_JWT="$NEW_JWT" \
+  npx tsx scripts/rotate-jwt-secret.ts
+
+# 4. Force Lambda cold starts so every function picks up NEW_JWT.
+#    Redeploying the stack is the simplest way:
+cd cdk && cdk deploy PassVault-{Env} --context env={env}
+
+# 5. Smoke test: log in as admin, open the vault list, confirm names render.
+#    Then log in as a regular user and verify their vault list.
+
+# 6. Clear the secrets from the shell once you have verified success.
+unset OLD_JWT NEW_JWT
+set -o history
+
+# 7. Restore the vault Lambda's reserved concurrency from step 5 of the
+#    pre-rotation checklist.
+```
+
+The `scripts/rotate-jwt-secret.ts` script (see its file header for details):
+
+1. **Phase 1 — decrypt under old.** Scans `passvault-vaults-{env}` and decrypts every row's `displayName` into memory using `OLD_JWT`. If any row fails to decrypt, the script aborts **before** touching SSM so the rotation can be retried cleanly.
+2. **Phase 2 — overwrite SSM.** Writes `NEW_JWT` to `/passvault/{env}/jwt-secret` via `PutParameter --overwrite` and records `ssmUpdated: true` in its progress file.
+3. **Phase 3 — re-encrypt.** Rewrites each row's `displayName` as ciphertext under `NEW_JWT`, appending the vaultId to a local `.rotation-progress-{env}.json` file after every successful write. A conditional `attribute_exists(vaultId)` on each update prevents writes to rows that were deleted mid-rotation.
+4. **Phase 4 — canary.** Re-reads one row and verifies it decrypts under `NEW_JWT` to the expected plaintext. If the canary fails, the script exits non-zero so the operator sees the failure before clearing `OLD_JWT`.
+
+A `--dry-run` flag runs Phase 1 only (no SSM write, no DynamoDB update) — use it on any suspicious rotation to confirm all rows decrypt before committing.
+
+### Availability implications
+
+- **Sessions:** all active user sessions are invalidated the moment SSM is updated, regardless of whether re-encryption has completed. Users see "session expired" and must re-login. This is expected and visible.
+- **Vault names:** briefly inconsistent during Phase 3. Rows already rewritten decrypt under `NEW_JWT`; rows not yet rewritten still hold old ciphertext. If new Lambda cold starts pick up `NEW_JWT` before Phase 3 finishes, users may see decryption errors on un-rewritten rows — which is why step 5 of the pre-rotation checklist sets the vault Lambda's concurrency to 0 during the rotation.
+- **Vault contents:** unaffected. The `.enc` blobs in S3 are encrypted client-side with the user's password and do not depend on the JWT secret.
+
+Schedule the rotation during a low-traffic window to minimize the user-visible impact.
+
+### Risks
+
+- **Losing `OLD_JWT` before Phase 3 completes** → the un-rewritten rows become permanently undecryptable. Recover those rows from the on-demand backup taken in step 2 of the pre-rotation checklist. Vault *contents* remain recoverable via the user's password regardless.
+- **Operator exposure via shell history** → mitigated by `set +o history` and `unset` at the end of the procedure.
+- **Concurrent vault-rename** racing Phase 3 writes → mitigated by setting reserved concurrency to 0 in the pre-rotation checklist.
+- **Partial re-encryption on script crash** → mitigated by the progress file. Re-run the script with the same `OLD_JWT` and `NEW_JWT`; already-rewritten vaultIds are skipped. Important: do not regenerate `NEW_JWT` on retry — use the same value so the already-rewritten rows remain valid.
+
+### Detecting failures
+
+- The script's Phase 4 canary is the primary check — if the script exits zero, at least one row is confirmed to round-trip under the new key.
+- After the rotation, run for 24 hours:
+  ```
+  fields @timestamp, @message
+  | filter @message like /decryptDisplayName/ and @message like /Error/
+  | sort @timestamp desc
+  ```
+  in CloudWatch Logs Insights against the vault Lambda's log group. Any hits indicate rows the rotation missed or corrupted.
+- Manual spot check: admin console → Users → pick three users at random → confirm their vault lists render.
+
+### Repair procedures
+
+- **Script crashed mid-Phase 3, `OLD_JWT` still in shell:** re-run the same command. The progress file makes Phase 3 idempotent.
+- **Script exited after Phase 2 but some rows fail to decrypt under `NEW_JWT`, `OLD_JWT` still in shell:** re-run; rows not listed in the progress file will be re-processed.
+- **`NEW_JWT` written, `OLD_JWT` already discarded, some rows still under old key:** restore the entire `passvault-vaults-{env}` table from the on-demand backup taken in step 2 of the pre-rotation checklist, then re-run the rotation from scratch with a freshly captured `OLD_JWT` (which is the just-restored state) and a newly generated `NEW_JWT`.
+- **Canary fails:** do not `unset OLD_JWT`. Re-run the script; if the failure persists, restore the table from backup and investigate the single failing vaultId before retrying.
+
+### Rollback window
+
+Before Phase 2 writes SSM, the rotation is a no-op — abort at any time.
+
+Once SSM has been overwritten, rollback requires `OLD_JWT`. The runbook therefore **prohibits `unset OLD_JWT` until all post-rotation verification has passed** (steps 4–5 above). Keep the shell open.
 
 ---
 

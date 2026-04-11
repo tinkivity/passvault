@@ -513,6 +513,131 @@ The `--force` flag bypasses the existing-admin check, creating a new admin recor
 
 ---
 
+## Administrator: decrypting vault names from DynamoDB
+
+This section is for **PassVault operators**, not end users. Vault `displayName` values are stored in `passvault-vaults-{env}` as ciphertext so they cannot be read directly via the AWS console, a backup snapshot, or a DynamoDB export. This appendix documents how an operator can recover the cleartext vault names for support or incident response.
+
+### Threat model
+
+The at-rest encryption of `displayName` protects against:
+
+- An operator with **read-only** access to the vaults table (console viewer, backup reader) learning what users have named their vaults.
+- A leaked DynamoDB export, on-demand backup, or point-in-time-recovery snapshot exposing vault names.
+
+It does **not** protect against:
+
+- Compromise of the JWT secret in SSM Parameter Store (`/passvault/{env}/jwt-secret`). Anyone who can read that parameter can derive the same key and decrypt. Rotate the secret per the runbook in `cdk/DEPLOYMENT.md` if you suspect exposure.
+- Compromise of a running Lambda execution environment, which sees plaintext on read.
+- Metadata that is still plaintext: `vaultId`, `userId`, `createdAt`, and the client-side `encryptionSalt`.
+
+Note that **vault contents** (the `.enc` blobs in S3) are a separate, stronger layer: those are encrypted client-side with the user's password and are *not* recoverable via the JWT secret.
+
+### Ciphertext format
+
+Every `displayName` value written after this change follows this format:
+
+```
+v1:<base64url(iv ‖ ciphertext ‖ authTag)>
+```
+
+- `v1:` — literal 3-character format version tag.
+- `iv` — 12 random bytes, the AES-GCM nonce.
+- `ciphertext` — AES-256-GCM encryption of the UTF-8 plaintext.
+- `authTag` — 16-byte GCM authentication tag, placed last.
+
+The 32-byte AES key is derived from the JWT secret with:
+
+```
+key = HKDF-SHA256(
+  ikm  = jwt_secret,
+  salt = empty,
+  info = "passvault-vault-displayname-v1",
+  L    = 32,
+)
+```
+
+### IAM permissions required
+
+The caller's AWS principal needs:
+
+- `ssm:GetParameter` on `arn:aws:ssm:*:*:parameter/passvault/{env}/jwt-secret` (with `WithDecryption`).
+- `dynamodb:GetItem`, `dynamodb:Query`, and `dynamodb:Scan` on `arn:aws:dynamodb:*:*:table/passvault-vaults-{env}` (and the `byUser` GSI for `Query`).
+
+### Using the provided script
+
+A helper script at [scripts/decrypt-vault-name.ts](../scripts/decrypt-vault-name.ts) re-derives the key and prints cleartext vault rows:
+
+```bash
+# One vault by id
+ENVIRONMENT=dev npx tsx scripts/decrypt-vault-name.ts --vault-id <uuid>
+
+# All vaults owned by a user
+ENVIRONMENT=dev npx tsx scripts/decrypt-vault-name.ts --user-id <uuid>
+
+# Bulk dump every row in the table
+ENVIRONMENT=dev npx tsx scripts/decrypt-vault-name.ts --all
+```
+
+The script imports the same `decryptDisplayNameWithKey` helper the backend uses, so it cannot drift from production.
+
+### Manual decryption (no tsx)
+
+If the script is unavailable, the same decryption can be done from the shell plus a short Node or Python snippet:
+
+```bash
+# 1. Fetch the JWT secret
+JWT=$(aws ssm get-parameter \
+  --name /passvault/dev/jwt-secret \
+  --with-decryption \
+  --query Parameter.Value --output text)
+
+# 2. Fetch one vault row
+aws dynamodb get-item \
+  --table-name passvault-vaults-dev \
+  --key '{"vaultId":{"S":"<uuid>"}}' \
+  --query 'Item.displayName.S' --output text
+# -> v1:<base64url-blob>
+```
+
+Then decrypt with Node:
+
+```js
+const { hkdfSync, createDecipheriv } = require('crypto');
+const jwt = process.env.JWT;
+const payload = process.argv[2];  // "v1:..." from the command above
+
+const key = Buffer.from(
+  hkdfSync('sha256', jwt, Buffer.alloc(0), 'passvault-vault-displayname-v1', 32),
+);
+const blob = Buffer.from(payload.slice(3), 'base64url');
+const iv = blob.subarray(0, 12);
+const tag = blob.subarray(blob.length - 16);
+const ct = blob.subarray(12, blob.length - 16);
+const d = createDecipheriv('aes-256-gcm', key, iv);
+d.setAuthTag(tag);
+console.log(Buffer.concat([d.update(ct), d.final()]).toString('utf8'));
+```
+
+Or Python (`cryptography` package):
+
+```python
+import os, sys, base64
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+jwt = os.environ['JWT'].encode()
+payload = sys.argv[1]  # "v1:..."
+
+key = HKDF(algorithm=hashes.SHA256(), length=32, salt=b'',
+           info=b'passvault-vault-displayname-v1').derive(jwt)
+blob = base64.urlsafe_b64decode(payload[3:] + '==')
+iv, rest = blob[:12], blob[12:]
+print(AESGCM(key).decrypt(iv, rest, None).decode())
+```
+
+---
+
 ## Support
 
 If you encounter issues with file recovery:

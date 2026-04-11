@@ -75,10 +75,10 @@ E2E tests run in headless Chromium against a deployed stack. The test specs live
 
 ```bash
 # Recommended: use the wrapper script from repo root
-./scripts/e2etest.sh --env dev --profile AndreasDevAccess
+./scripts/e2etest.sh --env dev --profile <aws-profile>
 
 # Interactive debugging
-./scripts/e2etest.sh --env dev --profile AndreasDevAccess --ui
+./scripts/e2etest.sh --env dev --profile <aws-profile> --ui
 
 # View the last HTML report
 npx playwright show-report e2e-report

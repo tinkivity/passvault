@@ -46,6 +46,10 @@ cd cdk
 cdk bootstrap aws://ACCOUNT-ID/eu-central-1
 
 # 4. Create JWT secret in SSM (one-time per environment)
+#    Note: this secret is also the KDF input for vault displayName encryption
+#    at rest. Rotating it requires the runbook in cdk/DEPLOYMENT.md because
+#    every encrypted displayName in DynamoDB must be re-encrypted under the
+#    new key.
 aws ssm put-parameter \
   --name /passvault/dev/jwt-secret \
   --value "$(openssl rand -hex 32)" \

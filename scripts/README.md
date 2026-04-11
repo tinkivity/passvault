@@ -295,13 +295,13 @@ Runs the full qualification pipeline for the dev environment: build, unit tests,
 
 ```bash
 # Full qualification
-./scripts/qualify.sh --profile AndreasDevAccess
+./scripts/qualify.sh --profile <aws-profile>
 
 # Cleanup after debugging failures
-./scripts/qualify.sh --cleanup --profile AndreasDevAccess
+./scripts/qualify.sh --cleanup --profile <aws-profile>
 
 # Cleanup with specific state file
-./scripts/qualify.sh --cleanup .qualify-state-dev-20260406-120000.json --profile AndreasDevAccess
+./scripts/qualify.sh --cleanup .qualify-state-dev-20260406-120000.json --profile <aws-profile>
 ```
 
 **Options:**

@@ -22,7 +22,7 @@ The qualification pipeline is an automated full-stack verification for the dev e
 ## Running a Qualification
 
 ```bash
-./scripts/qualify.sh --profile AndreasDevAccess
+./scripts/qualify.sh --profile <aws-profile>
 ```
 
 ### Arguments
@@ -183,13 +183,13 @@ Fix the code locally. No cloud resources to worry about — nothing was deployed
 The script attempts automatic cleanup. If that fails, run manually:
 ```bash
 cd cdk && npx cdk destroy PassVault-Dev --context env=dev --force
-./scripts/post-destroy.sh --env dev --profile AndreasDevAccess
+./scripts/post-destroy.sh --env dev --profile <aws-profile>
 ```
 
 ### SIT or pentest failures (Steps 4-5)
 The stack is running. You can:
 1. Inspect CloudWatch logs: `/aws/lambda/passvault-*-dev`
-2. Re-run individual tests: `./scripts/sitest.sh --env dev --profile AndreasDevAccess`
+2. Re-run individual tests: `./scripts/sitest.sh --env dev --profile <aws-profile>`
 3. Hit endpoints directly using the API URL from the state file
 
 ### E2E failures (Step 6)
@@ -212,10 +212,10 @@ After fixing issues and verifying locally:
 
 ```bash
 # Automatic cleanup (reads state file, destroys everything)
-./scripts/qualify.sh --cleanup --profile AndreasDevAccess
+./scripts/qualify.sh --cleanup --profile <aws-profile>
 
 # Or specify the state file explicitly
-./scripts/qualify.sh --cleanup .qualify-state-dev-20260406-120000.json --profile AndreasDevAccess
+./scripts/qualify.sh --cleanup .qualify-state-dev-20260406-120000.json --profile <aws-profile>
 ```
 
 Cleanup performs:

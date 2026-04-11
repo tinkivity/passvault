@@ -129,19 +129,19 @@ Playwright tests verify user-facing flows in a headless Chromium browser against
 
 ```bash
 # Recommended: use the wrapper script (handles admin setup + cleanup)
-./scripts/e2etest.sh --env dev --profile AndreasDevAccess
+./scripts/e2etest.sh --env dev --profile <aws-profile>
 
 # Keep test user for debugging failures
-./scripts/e2etest.sh --env dev --profile AndreasDevAccess --keep
+./scripts/e2etest.sh --env dev --profile <aws-profile> --keep
 
 # Clean up after a --keep run
-./scripts/e2etest.sh --cleanup --env dev --profile AndreasDevAccess
+./scripts/e2etest.sh --cleanup --env dev --profile <aws-profile>
 
 # Interactive debugging with Playwright UI
-./scripts/e2etest.sh --env dev --profile AndreasDevAccess --ui
+./scripts/e2etest.sh --env dev --profile <aws-profile> --ui
 
 # Headed mode (visible browser)
-./scripts/e2etest.sh --env dev --profile AndreasDevAccess --headed
+./scripts/e2etest.sh --env dev --profile <aws-profile> --headed
 ```
 
 ### How authentication works in E2E
@@ -225,16 +225,16 @@ Performance tests measure API response times, concurrent user handling, and payl
 
 ```bash
 # Run against dev (recommended)
-./scripts/perftest.sh --env dev --profile AndreasDevAccess
+./scripts/perftest.sh --env dev --profile <aws-profile>
 
 # Run against beta
-./scripts/perftest.sh --env beta --profile AndreasDevAccess
+./scripts/perftest.sh --env beta --profile <aws-profile>
 
 # Keep test data after run (for manual inspection)
-./scripts/perftest.sh --env dev --profile AndreasDevAccess --keep
+./scripts/perftest.sh --env dev --profile <aws-profile> --keep
 
 # Clean up a previous --keep run
-./scripts/perftest.sh --cleanup --env dev --profile AndreasDevAccess
+./scripts/perftest.sh --cleanup --env dev --profile <aws-profile>
 
 # View the HTML report with charts
 open backend/perf/perf-report.html
@@ -333,10 +333,10 @@ The qualification script automates the complete verification pipeline for dev:
 
 ```bash
 # Full qualification
-./scripts/qualify.sh --profile AndreasDevAccess
+./scripts/qualify.sh --profile <aws-profile>
 
 # Cleanup after debugging failures
-./scripts/qualify.sh --cleanup --profile AndreasDevAccess
+./scripts/qualify.sh --cleanup --profile <aws-profile>
 ```
 
 **Pipeline:** Build → Unit tests → CDK deploy → SIT → Pentest → E2E → Performance → Evaluate

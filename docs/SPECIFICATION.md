@@ -844,9 +844,11 @@ Primary Key: vaultId (String)
 Attributes:
 - vaultId:     UUID (String) — PK
 - userId:      owner's userId (String) — GSI PK (byUser index)
-- displayName: human-readable vault name (String)
+- displayName: ENCRYPTED human-readable vault name (String, format: "v1:<base64url>")
 - createdAt:   ISO timestamp (String)
 ```
+
+**displayName encryption.** The stored value is AES-256-GCM ciphertext, base64url-encoded and prefixed with a literal `v1:` format tag. The 32-byte AES key is derived at Lambda cold-start from the JWT secret in SSM Parameter Store (`/passvault/{env}/jwt-secret`) via HKDF-SHA256 with info label `passvault-vault-displayname-v1`. Encryption/decryption happens in `backend/src/utils/dynamodb.ts` so service/handler/frontend code continues to deal in plaintext — the API contracts at §6.4 remain unchanged. See `cdk/DEPLOYMENT.md` for the rotation runbook, which re-encrypts every row when the JWT secret rotates.
 
 Global Secondary Index (GSI):
 - Index Name: byUser
