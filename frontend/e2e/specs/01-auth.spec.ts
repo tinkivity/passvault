@@ -107,6 +107,41 @@ test.describe('Authentication', () => {
     await page.waitForURL('**/login', { timeout: 15000 });
   });
 
+  test('vault sidebar never renders raw displayName ciphertext', async ({ page }) => {
+    test.skip(!hasCredentials, 'E2E_ADMIN_EMAIL and E2E_ADMIN_PASSWORD must be set');
+
+    const apiBase = process.env.E2E_API_BASE_URL ?? '';
+    const loginRes = await page.request.post(`${apiBase}/api/auth/login`, {
+      data: { username: email, password },
+    });
+    const body = await loginRes.json();
+    expect(body.success).toBe(true);
+
+    const d = body.data;
+    await page.goto('/login');
+    await page.waitForLoadState('domcontentloaded');
+    await page.evaluate((authState: Record<string, unknown>) => {
+      sessionStorage.setItem('pv_session', JSON.stringify(authState));
+    }, {
+      token: d.token, userId: d.userId, role: d.role, username: d.username,
+      firstName: d.firstName ?? null, lastName: d.lastName ?? null,
+      displayName: d.displayName ?? null, status: 'active',
+      plan: d.plan ?? null, loginEventId: d.loginEventId ?? null,
+      expiresAt: d.expiresAt ?? null, accountExpired: false,
+    });
+
+    await page.goto('/ui');
+    // Match /ui and /ui/anything — an empty vault list stays at exactly /ui.
+    await page.waitForURL(/\/ui(\/|$)/, { timeout: 20000 });
+    // Wait for the sidebar to be rendered before scanning the DOM.
+    await expect(page.getByText('PassVault').first()).toBeVisible({ timeout: 20000 });
+
+    // Any vault in the sidebar must be rendered as plaintext — the raw
+    // on-disk format `v1:<base64url>` must never leak to the UI.
+    const leaked = await page.locator('text=/^v1:[A-Za-z0-9_-]+$/').count();
+    expect(leaked, 'raw displayName ciphertext leaked into the sidebar').toBe(0);
+  });
+
   test('unauthenticated /ui redirects to login', async ({ page }) => {
     await page.goto('/ui');
     await page.waitForURL('**/login', { timeout: 20000 });
