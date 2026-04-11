@@ -19,6 +19,18 @@
  * Vault format: v2 split format — each vault produces two S3 files:
  *   vault-{vaultId}-index.enc  (encrypted VaultIndexFile)
  *   vault-{vaultId}-items.enc  (encrypted VaultItemsFile)
+ *
+ * displayName at rest: the vault `displayName` column is AES-256-GCM encrypted
+ * with a key derived from the JWT secret via HKDF-SHA256 (info label
+ * `passvault-vault-displayname-v1`). This script fetches the JWT secret from
+ * SSM Parameter Store at `/passvault/${ENV}/jwt-secret` and re-derives the same
+ * key the backend uses, so seeded rows are readable by `listVaultsByUser`.
+ *
+ * Required IAM permissions for the caller:
+ *   - ssm:GetParameter on /passvault/${ENV}/jwt-secret
+ *   - dynamodb:PutItem / Query on passvault-users-${ENV} (+ username-index)
+ *   - dynamodb:PutItem on passvault-vaults-${ENV}
+ *   - s3:PutObject on the files bucket
  */
 
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
@@ -28,11 +40,13 @@ import {
   QueryCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { SSMClient, GetParameterCommand } from '@aws-sdk/client-ssm';
 import bcrypt from 'bcryptjs';
-import { createCipheriv, randomBytes } from 'crypto';
+import { createCipheriv, hkdfSync, randomBytes } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import argon2 from 'argon2';
 import { getEnvironmentConfig } from '@passvault/shared';
+import { encryptDisplayNameWithKey } from '../backend/src/utils/crypto.js';
 import type {
   VaultItem,
   VaultIndexFile,
@@ -55,6 +69,7 @@ const REGION = config.region;
 const USERS_TABLE   = process.env.DYNAMODB_TABLE    ?? `passvault-users-${ENV}`;
 const VAULTS_TABLE  = process.env.VAULTS_TABLE_NAME ?? `passvault-vaults-${ENV}`;
 const FILES_BUCKET  = process.env.FILES_BUCKET;
+const SSM_PARAM     = process.env.JWT_SECRET_PARAM  ?? `/passvault/${ENV}/jwt-secret`;
 
 if (!FILES_BUCKET) {
   console.error(`\n✗ FILES_BUCKET env var is required.`);
@@ -71,6 +86,19 @@ const ARGON2_PARAMS = { memoryCost: 65536, timeCost: 3, parallelism: 4, hashLeng
 
 const dynamo = DynamoDBDocumentClient.from(new DynamoDBClient({ region: REGION }));
 const s3     = new S3Client({ region: REGION });
+const ssm    = new SSMClient({ region: REGION });
+
+// ── displayName encryption key ────────────────────────────────────────────────
+// Must match backend/src/utils/crypto.ts: HKDF-SHA256 of the JWT secret,
+// empty salt, info = 'passvault-vault-displayname-v1', 32-byte output.
+async function fetchDisplayNameKey(): Promise<Buffer> {
+  const res = await ssm.send(new GetParameterCommand({ Name: SSM_PARAM, WithDecryption: true }));
+  if (!res.Parameter?.Value) {
+    throw new Error(`JWT secret not found in SSM at ${SSM_PARAM}`);
+  }
+  const derived = hkdfSync('sha256', res.Parameter.Value, Buffer.alloc(0), 'passvault-vault-displayname-v1', 32);
+  return Buffer.from(derived);
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -712,7 +740,7 @@ const SEED_USERS: SeedUser[] = [
 
 interface CreatedUser { email: string; name: string; password: string; plan: string; expiresAt: string | null; vaultCount: number; itemCount: number; status: 'created' | 'skipped' }
 
-async function seedUser(user: SeedUser): Promise<CreatedUser> {
+async function seedUser(user: SeedUser, displayNameKey: Buffer): Promise<CreatedUser> {
   const name = [user.firstName, user.lastName].join(' ');
   const itemCount = user.vaults.reduce((sum, v) => sum + v.items.length, 0);
 
@@ -762,7 +790,13 @@ async function seedUser(user: SeedUser): Promise<CreatedUser> {
     await dynamo.send(
       new PutCommand({
         TableName: VAULTS_TABLE,
-        Item: { vaultId, userId, displayName: vault.displayName, encryptionSalt: vaultEncryptionSalt, createdAt: now },
+        Item: {
+          vaultId,
+          userId,
+          displayName: encryptDisplayNameWithKey(vault.displayName, displayNameKey),
+          encryptionSalt: vaultEncryptionSalt,
+          createdAt: now,
+        },
         ConditionExpression: 'attribute_not_exists(vaultId)',
       }),
     );
@@ -807,10 +841,14 @@ async function main() {
   const totalItems = SEED_USERS.reduce((sum, u) => sum + u.vaults.reduce((vs, v) => vs + v.items.length, 0), 0);
   console.log(`\n  Seeding ${SEED_USERS.length} users, ${totalItems} vault items (Argon2 key derivation — ~3s per vault)...\n`);
 
+  // Fetch the displayName encryption key once per run — HKDF output is constant
+  // for a given JWT secret, so every vault row reuses it.
+  const displayNameKey = await fetchDisplayNameKey();
+
   const results: CreatedUser[] = [];
   for (const user of SEED_USERS) {
     process.stdout.write(`  ${user.email} ... `);
-    const result = await seedUser(user);
+    const result = await seedUser(user, displayNameKey);
     results.push(result);
     console.log(
       result.status === 'created'

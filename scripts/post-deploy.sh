@@ -221,6 +221,11 @@ fi
 # ── Dev: seed test users ─────────────────────────────────────────────────────
 if [[ "$ENV" == "dev" ]]; then
   section "Test users ──────────────────────────────────────────────────────────────"
+  # seed-dev.ts fetches the JWT secret from SSM at /passvault/${ENV}/jwt-secret
+  # so it can re-derive the HKDF key used to encrypt vault displayNames at rest
+  # (must match the backend's backend/src/utils/crypto.ts). The caller's AWS
+  # credentials need ssm:GetParameter on that parameter in addition to the
+  # DynamoDB / S3 permissions used for the user + vault inserts.
   ENVIRONMENT="$ENV" \
   DYNAMODB_TABLE="$TABLE_NAME" \
   VAULTS_TABLE_NAME="passvault-vaults-${ENV}" \
