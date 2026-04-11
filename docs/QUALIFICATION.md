@@ -22,20 +22,61 @@ The qualification pipeline is an automated full-stack verification for the dev e
 ## Running a Qualification
 
 ```bash
-./scripts/qualify.sh --profile <aws-profile>
+./scripts/qualify.sh --profile <aws-profile>                           # dev (default)
+./scripts/qualify.sh --env beta --profile <aws-profile>                # beta, reads PlusAddress from stack
+./scripts/qualify.sh --env beta --yes --profile <aws-profile>          # beta in CI (skip confirm)
 ```
 
 ### Arguments
 
 | Argument | Required | Default | Description |
 |----------|----------|---------|-------------|
+| `--env <name>` | No | `dev` | Target environment: `dev`, `beta`, or `prod`. Stack name is derived automatically (`PassVault-Dev`, etc.). |
 | `--profile <name>` | No | (none) | AWS named profile for all AWS operations |
 | `--region <region>` | No | `eu-central-1` | AWS region |
-| `--resume` | No | (none) | Skip build/test/deploy; run SIT/pentest/E2E/perf against existing stack |
+| `--domain <d>` | No | (none) | Root domain. Required for fresh beta/prod deploys; passed through to `cdk deploy --context domain=<d>`. |
+| `--plus-address <addr>` | No | (none) | Mailbox that receives qualification mail (e.g. `you@example.com`). For beta/prod: if unset, qualify.sh reads the `PlusAddress` CfnOutput from the deployed stack; if neither is available, falls back to `@passvault-test.local`. |
+| `--yes` | No | (none) | Skip the "real mail will be sent" confirmation prompt (beta/prod). Use in CI. |
+| `--resume` | No | (none) | Skip build/test/deploy; run SIT/pentest/E2E/perf against an existing stack |
 | `--cleanup [file]` | No | (none) | Cleanup-only mode (see below) |
 | `-h, --help` | No | | Show usage |
 
-The script is hardcoded to the `dev` environment. There is no `--env` flag.
+## Test Email Routing
+
+Qualification creates ~15 test users per run. Each triggers an invitation
+email from the backend. By default, test users use `@passvault-test.local` — a
+reserved pseudo-TLD that hard-bounces at DNS and damages SES sender
+reputation. For dev this is safe (dev Lambdas have no `SENDER_EMAIL`, so no
+mail is sent); for beta/prod it is not.
+
+To route all qualification mail to a single mailbox you own, deploy the stack
+with `--context plusAddress=you@example.com` alongside `--context
+domain=example.com` (see [cdk/DEPLOYMENT.md §4b](../cdk/DEPLOYMENT.md)). The
+stack emits a `PlusAddress` CfnOutput. When `qualify.sh --env beta` starts, it
+discovers the output, exports `PASSVAULT_PLUS_ADDRESS` into the child scripts'
+environment, and all test users become `you+<tag>-<ts>@example.com`.
+
+**Before running qualify against a newly-verified SES domain**, run the
+send-email smoke test in [cdk/DEPLOYMENT.md §4a](../cdk/DEPLOYMENT.md) first.
+It's a one-shot `aws ses send-email` command that isolates SES identity
+problems from application-level issues and costs nothing to run.
+
+Inbox hygiene: add filters on `+sit-`, `+e2e-`, `+perf-` tags (and
+`+qualify-admin` for the bootstrap admin mail) to auto-archive the noise. A
+single qualification run produces roughly: 2× `+sit-pro-`, 2× `+sit-free-`,
+1× `+sit-lockout-`, 1× `+sit-lang-`, 5–7× `+e2e-*`, 1× `+perf-user-`, 1×
+`+qualify-admin-`.
+
+Beta/prod runs pause before sending real mail:
+
+```
+⚠  beta qualification will send real emails to you+*@example.com
+   (~15 messages: one invitation per test user, plus vault-export and digest)
+
+   Proceed? [y/N]
+```
+
+Pass `--yes` to bypass in CI. Dev runs are never prompted.
 
 ## Pipeline Steps
 

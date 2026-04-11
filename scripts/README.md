@@ -287,32 +287,45 @@ Runs performance tests (response times, concurrent users, payload scaling) again
 
 ## qualify.sh
 
-Runs the full qualification pipeline for the dev environment: build, unit tests, deploy, SIT, pentest, E2E browser tests, performance tests — then auto-destroys on success or preserves the stack on failure for debugging.
+Runs the full qualification pipeline for `dev`, `beta`, or `prod`: build, unit tests, deploy, SIT, pentest, E2E browser tests, performance tests — then auto-destroys on success or preserves the stack on failure for debugging.
 
 **When to run:** Before merging feature branches to main, before promoting to beta.
 
 **Usage:**
 
 ```bash
-# Full qualification
+# Dev qualification (default)
 ./scripts/qualify.sh --profile <aws-profile>
 
+# Beta qualification — reads PlusAddress + domain from the deployed stack
+./scripts/qualify.sh --env beta --profile <aws-profile>
+
+# Beta in CI (skip the "real mail will be sent" confirmation)
+./scripts/qualify.sh --env beta --yes --profile <aws-profile>
+
 # Cleanup after debugging failures
-./scripts/qualify.sh --cleanup --profile <aws-profile>
+./scripts/qualify.sh --cleanup --env beta --profile <aws-profile>
 
 # Cleanup with specific state file
-./scripts/qualify.sh --cleanup .qualify-state-dev-20260406-120000.json --profile <aws-profile>
+./scripts/qualify.sh --cleanup .qualify-state-beta-20260406-120000.json --profile <aws-profile>
 ```
 
 **Options:**
 
 | Flag | Description |
 |------|-------------|
+| `--env <name>` | Target environment: `dev` (default), `beta`, or `prod`. Stack name derived automatically. |
 | `--profile` | AWS named profile |
 | `--region` | AWS region (default: `eu-central-1`) |
+| `--domain <d>` | Root domain. Pass through to `cdk deploy` for fresh beta/prod deploys. |
+| `--plus-address <addr>` | Mailbox for qualification mail (beta/prod). If omitted, read from the stack's `PlusAddress` CfnOutput. When set, test users become `local+<tag>@<domain>`; otherwise falls back to `@passvault-test.local`. |
+| `--yes` | Skip the beta/prod "real mail will be sent" prompt (CI). |
+| `--resume` | Skip build/test/deploy; run tests against an existing stack. |
 | `--cleanup [file]` | Cleanup-only mode (auto-discovers state file if not specified) |
 
 **Pipeline:** Build → Unit tests → CDK deploy → SIT → Pentest → E2E → Performance → Evaluate
+
+**Email routing:** Dev always uses `@passvault-test.local` (no real mail sent — dev Lambdas have no `SENDER_EMAIL`). Beta/prod qualification reads the `PlusAddress` CfnOutput (deployed via `cdk deploy --context plusAddress=...`) and routes all ~15 test-user invitations to `local+<tag>@<domain>`. Before the first beta qualification against a newly-verified SES domain, run the send-email smoke test in [cdk/DEPLOYMENT.md §4a](../cdk/DEPLOYMENT.md) to isolate SES identity problems from application wiring.
 
 See [docs/QUALIFICATION.md](../docs/QUALIFICATION.md) for full documentation.
 
