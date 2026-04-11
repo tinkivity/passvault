@@ -13,12 +13,21 @@ import { createTestUser, deleteTestUser, getUserState } from '../helpers/users.j
  * to catch silent 500s from any admin endpoint touched during the test.
  */
 
-// Navigate to a user's detail page and wait for a stable element to render.
-// `listUsers` is PoW HIGH, so list requests can take several seconds — we
-// wait generously.
-async function gotoUserDetail(page: import('@playwright/test').Page, userId: string): Promise<void> {
-  await page.goto(`/ui/admin/users/${userId}`);
-  await expect(page.getByRole('button', { name: /Refresh OTP/i })).toBeVisible({ timeout: 45000 });
+// Navigate to a user's detail page. Important: UserDetailPage reads the
+// `user` record from `location.state` set by the row click in UsersPage.
+// Visiting /ui/admin/users/{id} directly renders a "User not found" stub
+// with no action buttons, so we must navigate through the list.
+async function gotoUserDetail(
+  page: import('@playwright/test').Page,
+  user: { userId: string; username: string },
+): Promise<void> {
+  await page.goto('/ui/admin/users');
+  // listUsers is PoW HIGH, so the table render can take several seconds.
+  const row = page.getByRole('row').filter({ hasText: user.username });
+  await expect(row).toBeVisible({ timeout: 45000 });
+  await row.click();
+  await page.waitForURL(new RegExp(`/ui/admin/users/${user.userId}`), { timeout: 15000 });
+  await expect(page.getByRole('button', { name: /Refresh OTP/i })).toBeVisible({ timeout: 15000 });
 }
 
 // Helper: assert that the user-detail status badge text contains the given
@@ -32,19 +41,19 @@ async function expectStatusOnDetail(page: import('@playwright/test').Page, expec
 // Group 1: lock / unlock cycle
 // ────────────────────────────────────────────────────────────────────────────
 test.describe.serial('Admin lifecycle — lock / unlock', () => {
-  let userId: string;
+  let testUser: { userId: string; username: string };
 
   test.beforeAll(async ({ request, adminAuth, apiBase }) => {
     const created = await createTestUser(request, apiBase, adminAuth.token, { usernamePrefix: 'e2e-lock' });
-    userId = created.userId;
+    testUser = { userId: created.userId, username: created.username };
   });
 
   test.afterAll(async ({ request, adminAuth, apiBase }) => {
-    if (userId) await deleteTestUser(request, apiBase, adminAuth.token, userId);
+    if (testUser?.userId) await deleteTestUser(request, apiBase, adminAuth.token, testUser.userId);
   });
 
   test('lock: status transitions to locked', async ({ adminPage, request, adminAuth, apiBase }) => {
-    await gotoUserDetail(adminPage, userId);
+    await gotoUserDetail(adminPage, testUser);
 
     await adminPage.getByRole('button', { name: /^Lock$/i }).click();
 
@@ -52,18 +61,18 @@ test.describe.serial('Admin lifecycle — lock / unlock', () => {
     await expect(adminPage.getByRole('button', { name: /^Unlock$/i })).toBeVisible({ timeout: 15000 });
 
     // API: GET /api/admin/users reports status=locked
-    const state = await getUserState(request, apiBase, adminAuth.token, userId);
+    const state = await getUserState(request, apiBase, adminAuth.token, testUser.userId);
     expect(state?.status).toBe('locked');
   });
 
   test('unlock: status reverts, Lock button reappears', async ({ adminPage, request, adminAuth, apiBase }) => {
-    await gotoUserDetail(adminPage, userId);
+    await gotoUserDetail(adminPage, testUser);
 
     await adminPage.getByRole('button', { name: /^Unlock$/i }).click();
 
     await expect(adminPage.getByRole('button', { name: /^Lock$/i })).toBeVisible({ timeout: 15000 });
 
-    const state = await getUserState(request, apiBase, adminAuth.token, userId);
+    const state = await getUserState(request, apiBase, adminAuth.token, testUser.userId);
     expect(state?.status).not.toBe('locked');
   });
 });
@@ -72,19 +81,19 @@ test.describe.serial('Admin lifecycle — lock / unlock', () => {
 // Group 2: expire / reactivate cycle
 // ────────────────────────────────────────────────────────────────────────────
 test.describe.serial('Admin lifecycle — expire / reactivate', () => {
-  let userId: string;
+  let testUser: { userId: string; username: string };
 
   test.beforeAll(async ({ request, adminAuth, apiBase }) => {
     const created = await createTestUser(request, apiBase, adminAuth.token, { usernamePrefix: 'e2e-expire' });
-    userId = created.userId;
+    testUser = { userId: created.userId, username: created.username };
   });
 
   test.afterAll(async ({ request, adminAuth, apiBase }) => {
-    if (userId) await deleteTestUser(request, apiBase, adminAuth.token, userId);
+    if (testUser?.userId) await deleteTestUser(request, apiBase, adminAuth.token, testUser.userId);
   });
 
   test('expire: user status becomes expired', async ({ adminPage, request, adminAuth, apiBase }) => {
-    await gotoUserDetail(adminPage, userId);
+    await gotoUserDetail(adminPage, testUser);
 
     await adminPage.getByRole('button', { name: /^Expire$/i }).click();
 
@@ -93,17 +102,15 @@ test.describe.serial('Admin lifecycle — expire / reactivate', () => {
     // rather than guessing the exact UI reflection.
     await adminPage.waitForTimeout(500);
 
-    const state = await getUserState(request, apiBase, adminAuth.token, userId);
+    const state = await getUserState(request, apiBase, adminAuth.token, testUser.userId);
     expect(state?.status).toBe('expired');
   });
 
   test('reactivate: user returns to active via list-row action', async ({ adminPage, request, adminAuth, apiBase }) => {
     // Reactivate lives in the row-level dropdown on the users list, not on
-    // the detail page. Navigate to the list first.
+    // the detail page. Navigate to the list and match by username.
     await adminPage.goto('/ui/admin/users');
-    const userRow = adminPage.getByRole('row').filter({ hasText: userId }).or(
-      adminPage.getByRole('row').filter({ hasText: 'e2e-expire' }),
-    ).first();
+    const userRow = adminPage.getByRole('row').filter({ hasText: testUser.username });
     await expect(userRow).toBeVisible({ timeout: 45000 });
 
     // Open the row actions dropdown and click Reactivate.
@@ -116,7 +123,7 @@ test.describe.serial('Admin lifecycle — expire / reactivate', () => {
 
     // API: GET /api/admin/users reports status=active
     await expect.poll(async () => {
-      const state = await getUserState(request, apiBase, adminAuth.token, userId);
+      const state = await getUserState(request, apiBase, adminAuth.token, testUser.userId);
       return state?.status;
     }, { timeout: 15000 }).toBe('active');
   });
@@ -135,7 +142,7 @@ test.describe('Admin lifecycle — retire', () => {
     });
     const { userId, username } = created;
 
-    await gotoUserDetail(adminPage, userId);
+    await gotoUserDetail(adminPage, { userId, username });
 
     // Retire is two-step: first click opens confirm, second commits.
     await adminPage.getByRole('button', { name: /Retire user/i }).click();
@@ -161,21 +168,21 @@ test.describe('Admin lifecycle — retire', () => {
 // Group 4: reset
 // ────────────────────────────────────────────────────────────────────────────
 test.describe.serial('Admin lifecycle — reset login', () => {
-  let userId: string;
+  let testUser: { userId: string; username: string };
 
   test.beforeAll(async ({ request, adminAuth, apiBase }) => {
     const created = await createTestUser(request, apiBase, adminAuth.token, { usernamePrefix: 'e2e-reset' });
-    userId = created.userId;
+    testUser = { userId: created.userId, username: created.username };
   });
 
   test.afterAll(async ({ request, adminAuth, apiBase }) => {
-    if (userId) await deleteTestUser(request, apiBase, adminAuth.token, userId);
+    if (testUser?.userId) await deleteTestUser(request, apiBase, adminAuth.token, testUser.userId);
   });
 
   test('reset: new OTP dialog appears, status returns to pending_first_login', async ({
     adminPage, request, adminAuth, apiBase,
   }) => {
-    await gotoUserDetail(adminPage, userId);
+    await gotoUserDetail(adminPage, testUser);
 
     // Reset is two-step: click opens confirm, confirm commits.
     await adminPage.getByRole('button', { name: /Reset Login/i }).click();
@@ -185,7 +192,7 @@ test.describe.serial('Admin lifecycle — reset login', () => {
     await expect(adminPage.getByRole('heading', { name: /One-Time Password/i })).toBeVisible({ timeout: 15000 });
 
     // API: status remains pending_first_login (a fresh account is still at that state).
-    const state = await getUserState(request, apiBase, adminAuth.token, userId);
+    const state = await getUserState(request, apiBase, adminAuth.token, testUser.userId);
     expect(state?.status).toBe('pending_first_login');
 
     // Close the dialog so teardown can navigate freely.
@@ -199,19 +206,19 @@ test.describe.serial('Admin lifecycle — reset login', () => {
 // Group 5: refresh OTP
 // ────────────────────────────────────────────────────────────────────────────
 test.describe.serial('Admin lifecycle — refresh OTP', () => {
-  let userId: string;
+  let testUser: { userId: string; username: string };
 
   test.beforeAll(async ({ request, adminAuth, apiBase }) => {
     const created = await createTestUser(request, apiBase, adminAuth.token, { usernamePrefix: 'e2e-otp' });
-    userId = created.userId;
+    testUser = { userId: created.userId, username: created.username };
   });
 
   test.afterAll(async ({ request, adminAuth, apiBase }) => {
-    if (userId) await deleteTestUser(request, apiBase, adminAuth.token, userId);
+    if (testUser?.userId) await deleteTestUser(request, apiBase, adminAuth.token, testUser.userId);
   });
 
   test('refresh OTP: dialog shows a freshly generated 12-char password', async ({ adminPage }) => {
-    await gotoUserDetail(adminPage, userId);
+    await gotoUserDetail(adminPage, testUser);
 
     await adminPage.getByRole('button', { name: /Refresh OTP/i }).click();
 

@@ -123,10 +123,13 @@ export async function completeFirstLogin(
   await page.locator('#confirm-password').fill(newPassword);
   await page.locator('button[type="submit"]').click();
 
-  // Step 4: success screen, click "Continue to Login" → lands on /login
-  await expect(page.getByRole('heading', { name: /Password Changed/i }))
-    .toBeVisible({ timeout: 15000 });
-  await page.getByRole('button', { name: /Continue to Login/i }).click();
+  // Step 4: success screen, click "Continue to Login" → lands on /login.
+  // PasswordChangePage uses shadcn `<CardTitle>` which renders as a `<div>`,
+  // NOT a heading, so we wait on the button instead (which is also the
+  // next action we'll take).
+  const continueBtn = page.getByRole('button', { name: /Continue to Login/i });
+  await expect(continueBtn).toBeVisible({ timeout: 15000 });
+  await continueBtn.click();
   await page.waitForURL('**/login', { timeout: 15000 });
 }
 
@@ -151,8 +154,10 @@ export async function completeAdminFirstLogin(
   await page.locator('#confirm-password').fill(newPassword);
   await page.locator('button[type="submit"]').click();
 
-  await expect(page.getByRole('heading', { name: /Password Changed/i }))
-    .toBeVisible({ timeout: 15000 });
-  await page.getByRole('button', { name: /Continue to Login/i }).click();
+  // PasswordChangePage's "Password Changed" renders via shadcn <CardTitle>
+  // which is a <div>, not a heading. Wait on the Continue button instead.
+  const continueBtn = page.getByRole('button', { name: /Continue to Login/i });
+  await expect(continueBtn).toBeVisible({ timeout: 15000 });
+  await continueBtn.click();
   await page.waitForURL('**/login', { timeout: 15000 });
 }
