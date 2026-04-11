@@ -180,7 +180,11 @@ test.describe.serial('Passkey — password login blocked after registration', ()
     // Close the Security dialog before interacting with the sidebar —
     // the dialog's overlay blocks clicks on the sidebar-footer button,
     // so logoutFromSidebar would time out waiting for actionability.
-    await page.getByRole('dialog').getByRole('button', { name: /^Close$/i }).click();
+    // Escape is the cleanest dismissal: the dialog has two "Close" buttons
+    // (footer Close + header X icon with data-slot="dialog-close"), both
+    // accessible-named "Close", so getByRole(...,name=Close) hits strict
+    // mode. Base UI dialogs close on Escape by default.
+    await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 5000 });
 
     // Log out and try password login — backend should reject at
@@ -233,14 +237,22 @@ test.describe.serial('Passkey — multi-passkey management in Security dialog', 
     await openSecurityDialog(page);
     await registerPasskeyInSecurityDialog(page, 'Laptop');
 
-    // Second registration needs a SECOND virtual authenticator. The frontend's
+    // Second registration needs a SECOND virtual authenticator because
     // registerPasskey() passes existingCredentialIds to excludeCredentials
-    // (passkey.ts:54), which the single fixture-provided authenticator sees in
-    // its own credential store — Chrome then rejects with InvalidStateError
-    // ("The authenticator was previously registered"). Installing a second
-    // authenticator gives Chrome's WebAuthn an option that doesn't own the
-    // excluded credential, so the new credential is created there.
-    const secondAuthenticator = await installVirtualAuthenticator(page);
+    // (frontend/src/services/passkey.ts:54), which the single fixture-provided
+    // authenticator sees in its own credential store — Chrome then rejects
+    // with InvalidStateError ("The authenticator was previously registered").
+    //
+    // Use transport: 'usb' — Chrome allows only one `internal` (platform)
+    // authenticator per environment, so we simulate a roaming key (realistic:
+    // user has platform key on their laptop + a USB key as their second).
+    // The frontend doesn't constrain authenticatorAttachment and the backend
+    // accepts any transport, so Chrome's WebAuthn backend picks whichever
+    // authenticator can fulfill the request — the USB one wins here because
+    // the internal one has the excluded credential.
+    const secondAuthenticator = await installVirtualAuthenticator(page, {
+      transport: 'usb',
+    });
     try {
       await registerPasskeyInSecurityDialog(page, 'Phone');
 
