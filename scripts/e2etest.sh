@@ -566,20 +566,57 @@ echo "  Building frontend for E2E..."
 echo "  Build complete."
 
 section "Static server"
+
+# Preflight: refuse to start if the target port is already held. Previous
+# versions of this script leaked vite preview children on exit (see below), and
+# starting a new vite with the default auto-port-bump behavior used to silently
+# drift to 5174, 5175, … — confusing Playwright (which points at 5173) and
+# stacking orphan processes across runs.
+if lsof -nPi "tcp:${VITE_PORT}" -sTCP:LISTEN >/dev/null 2>&1; then
+  ORPHAN_PIDS=$(lsof -ti "tcp:${VITE_PORT}" -sTCP:LISTEN 2>/dev/null | tr '\n' ' ')
+  echo "Error: TCP port ${VITE_PORT} is already in use (pids: ${ORPHAN_PIDS})." >&2
+  echo "       This is usually a leftover 'vite preview' from an earlier run." >&2
+  echo "       Kill it and retry:" >&2
+  echo "         lsof -ti tcp:${VITE_PORT} | xargs kill" >&2
+  exit 1
+fi
+
 echo "  Starting preview server on port $VITE_PORT..."
-(cd "$REPO_ROOT/frontend" && npx vite preview --port "$VITE_PORT" &>/dev/null) &
+# Bypass npx and invoke vite's entrypoint directly via `exec`. Three reasons:
+#   1. `exec` makes the backgrounded subshell replace itself with the node
+#      process, so $! is the real vite PID — not a subshell/npx middle layer
+#      that won't forward SIGTERM and leaves vite as an init-reparented orphan.
+#   2. `--strictPort` makes the server refuse to drift to the next port when
+#      :$VITE_PORT is in use, so any regression on point 1 fails loudly instead
+#      of silently stacking listeners on 5174/5175/…
+#   3. No `npx` fork, so `kill $VITE_PID` in on_exit is the only signal needed.
+VITE_BIN="$REPO_ROOT/node_modules/vite/bin/vite.js"
+if [[ ! -f "$VITE_BIN" ]]; then
+  echo "Error: vite entrypoint not found at $VITE_BIN" >&2
+  echo "       Run 'npm install' at the repo root." >&2
+  exit 1
+fi
+
+(cd "$REPO_ROOT/frontend" && exec node "$VITE_BIN" preview --port "$VITE_PORT" --strictPort >/dev/null 2>&1) &
 VITE_PID=$!
 
 for i in $(seq 1 30); do
   if curl -s "http://localhost:${VITE_PORT}" &>/dev/null; then
-    echo "  Server ready at http://localhost:${VITE_PORT}"
+    echo "  Server ready at http://localhost:${VITE_PORT} (pid $VITE_PID)"
     break
+  fi
+  # If vite already died (strictPort collision, bind failure, build error),
+  # surface that instead of waiting out the full 30s.
+  if ! kill -0 "$VITE_PID" 2>/dev/null; then
+    echo "Error: Preview server exited before reaching http://localhost:${VITE_PORT}." >&2
+    exit 1
   fi
   sleep 1
 done
 
 if ! curl -s "http://localhost:${VITE_PORT}" &>/dev/null; then
   echo "Error: Preview server failed to start within 30 seconds." >&2
+  kill "$VITE_PID" 2>/dev/null || true
   exit 1
 fi
 
