@@ -3,11 +3,28 @@ import { test, expect } from '../fixtures/auth.fixture.js';
 test.describe.serial('Admin — User Management', () => {
   let createdUsername: string;
 
-  test('navigate to dashboard — heading visible', async ({ adminPage }) => {
+  test('navigate to dashboard — heading and stats render', async ({ adminPage }) => {
     await adminPage.goto('/ui/admin/dashboard');
     await expect(
       adminPage.getByRole('heading', { name: 'Dashboard' }),
     ).toBeVisible({ timeout: 15000 });
+
+    // The dashboard swallows /api/admin/stats errors into admin.error and
+    // renders placeholders — so the heading alone is not enough to prove the
+    // endpoint worked. Assert that all three metric cards render a real
+    // value (non-skeleton) and that no destructive error text is shown.
+    await expect(
+      adminPage.locator('div').filter({ hasText: /^Users$/i }).first(),
+    ).toBeVisible({ timeout: 15000 });
+
+    // The metric values are rendered inside the metric cards as numbers or
+    // byte strings ("0 B", "1.2 MB"). Wait for the Users metric to show an
+    // actual numeric value rather than the Skeleton placeholder.
+    const usersMetricValue = adminPage.getByRole('link').filter({ hasText: /^\d+$/ }).first();
+    await expect(usersMetricValue).toBeVisible({ timeout: 15000 });
+
+    // No error banner should have appeared from a failed stats fetch.
+    await expect(adminPage.locator('p.text-destructive')).toHaveCount(0);
   });
 
   test('navigate to users — table visible', async ({ adminPage }) => {
