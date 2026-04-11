@@ -23,6 +23,11 @@ interface RequestOptions {
   body?: unknown;
   token?: string;
   powDifficulty?: number;
+  /**
+   * When true, do not transparently retry on 429. Set this in tests that
+   * deliberately want to observe a 429 response (e.g. brute-force lockout).
+   */
+  noRetry?: boolean;
 }
 
 interface RequestResult<T = unknown> {
@@ -35,6 +40,7 @@ async function doRequest<T = unknown>(
   method: string,
   path: string,
   opts: RequestOptions = {},
+  retriesLeft = 1,
 ): Promise<RequestResult<T>> {
   await pace();
 
@@ -63,11 +69,12 @@ async function doRequest<T = unknown>(
     body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
   });
 
-  // On 429, retry once after 2s backoff
-  if (res.status === 429) {
+  // Transparent 429 retry (capped): absorbs incidental rate-limit pushback
+  // but never loops forever. Tests that WANT to observe 429 must set noRetry.
+  if (res.status === 429 && retriesLeft > 0 && !opts.noRetry) {
     await new Promise(resolve => setTimeout(resolve, 2000));
     lastRequestTime = Date.now();
-    return doRequest(method, path, opts);
+    return doRequest(method, path, opts, retriesLeft - 1);
   }
 
   let data: T;
