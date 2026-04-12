@@ -1,8 +1,9 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 
-const { mockLambdaSend, mockDdbSend, MockPutCommand } = vi.hoisted(() => ({
+const { mockLambdaSend, mockDdbSend, mockSnsSend, MockPutCommand } = vi.hoisted(() => ({
   mockLambdaSend: vi.fn(),
   mockDdbSend: vi.fn(),
+  mockSnsSend: vi.fn(),
   MockPutCommand: vi.fn().mockImplementation((input: unknown) => ({ input })),
 }));
 
@@ -10,6 +11,11 @@ vi.mock('@aws-sdk/client-lambda', () => ({
   LambdaClient: vi.fn(() => ({ send: mockLambdaSend })),
   PutFunctionConcurrencyCommand: vi.fn(),
   DeleteFunctionConcurrencyCommand: vi.fn(),
+}));
+
+vi.mock('@aws-sdk/client-sns', () => ({
+  SNSClient: vi.fn(() => ({ send: mockSnsSend })),
+  PublishCommand: vi.fn().mockImplementation((input: unknown) => ({ input })),
 }));
 
 vi.mock('@aws-sdk/client-dynamodb', () => ({
@@ -36,6 +42,7 @@ const ENV_VARS = {
   FUNCTION_ARNS: FN_ARNS,
   CONCURRENCY_LIMITS: '5,3',
   AUDIT_EVENTS_TABLE: 'passvault-audit-test',
+  ALERT_TOPIC_ARN: 'arn:aws:sns:eu-central-1:123:passvault-beta-kill-switch',
 };
 
 // ---------------------------------------------------------------------------
@@ -47,9 +54,11 @@ describe('kill-switch re-enable handler', () => {
     Object.assign(process.env, ENV_VARS);
     mockLambdaSend.mockReset();
     mockDdbSend.mockReset();
+    mockSnsSend.mockReset();
     MockPutCommand.mockClear();
     mockLambdaSend.mockResolvedValue({});
     mockDdbSend.mockResolvedValue({});
+    mockSnsSend.mockResolvedValue({});
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
   });
@@ -113,5 +122,25 @@ describe('kill-switch re-enable handler', () => {
     await handler({});
 
     expect(MockPutCommand).not.toHaveBeenCalled();
+  });
+
+  it('publishes recovery notification to SNS', async () => {
+    await handler({ scheduleName: 'passvault-reenable-12345' });
+
+    expect(mockSnsSend).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips SNS notification when ALERT_TOPIC_ARN is not set', async () => {
+    delete process.env.ALERT_TOPIC_ARN;
+
+    await handler({});
+
+    expect(mockSnsSend).not.toHaveBeenCalled();
+  });
+
+  it('does not throw when SNS publish fails', async () => {
+    mockSnsSend.mockRejectedValueOnce(new Error('SNS unavailable'));
+
+    await expect(handler({})).resolves.toBeUndefined();
   });
 });

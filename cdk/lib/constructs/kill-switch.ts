@@ -83,6 +83,7 @@ export class KillSwitchConstruct extends Construct {
         FUNCTION_ARNS: functionArns,
         CONCURRENCY_LIMITS: concurrencyLimits,
         AUDIT_EVENTS_TABLE: props.auditEventsTable.tableName,
+        ALERT_TOPIC_ARN: alertTopic.topicArn,
       },
       bundling: {
         externalModules: [],
@@ -101,6 +102,7 @@ export class KillSwitchConstruct extends Construct {
       );
     }
     props.auditEventsTable.grantWriteData(this.reEnableFn);
+    alertTopic.grantPublish(this.reEnableFn);
 
     // -------------------------------------------------------------------------
     // IAM role for EventBridge Scheduler to invoke the re-enable Lambda
