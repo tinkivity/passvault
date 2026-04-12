@@ -171,6 +171,7 @@ export async function login(request: LoginRequest, acceptLanguage?: string): Pro
     displayName: user.displayName ?? null,
     expiresAt: user.expiresAt ?? null,
     preferredLanguage: user.preferredLanguage,
+    avatarBase64: user.avatarBase64 ?? null,
   };
 
   if (user.status === 'pending_first_login') {

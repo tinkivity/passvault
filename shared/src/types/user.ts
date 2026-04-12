@@ -48,4 +48,5 @@ export interface User {
   emailChangeLockToken?: string;                   // UUID token sent to old email
   emailChangeLockTokenExpiresAt?: string;          // ISO 8601; 1h from request
   preferredLanguage?: PreferredLanguage;
+  avatarBase64?: string | null;
 }

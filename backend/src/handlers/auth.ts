@@ -1,4 +1,5 @@
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from 'aws-lambda';
+import type { UploadAvatarRequest } from '@passvault/shared';
 import { API_PATHS, POW_CONFIG, ERRORS } from '@passvault/shared';
 import { success, error } from '../utils/response.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -22,6 +23,7 @@ import { updateLoginEventLogout, updateUser } from '../utils/dynamodb.js';
 import { verifyUnsubscribeToken } from '../utils/jwt.js';
 import * as passkey from './passkey.shared.js';
 import { parseBody } from '../utils/request.js';
+import { validateAvatarUpload, processAvatar } from '../utils/avatar.js';
 
 const MEDIUM = POW_CONFIG.DIFFICULTY.MEDIUM;
 
@@ -43,6 +45,8 @@ router.post(API_PATHS.AUTH_EMAIL_CHANGE,               [pow(MEDIUM), auth(), val
 router.post(API_PATHS.AUTH_VERIFY_EMAIL_CHANGE,        [pow(MEDIUM), honeypot(), validate(VerifyEmailChangeSchema)],    handleVerifyEmailChange);
 router.post(API_PATHS.AUTH_LOCK_SELF,                  [pow(MEDIUM), honeypot(), validate(LockSelfSchema)],             handleLockSelf);
 router.post(API_PATHS.AUTH_UNSUBSCRIBE,               [],                                                               handleUnsubscribe);
+router.put (API_PATHS.AUTH_AVATAR,                     [auth()],                                                         handleUploadAvatar);
+router.delete(API_PATHS.AUTH_AVATAR,                   [auth()],                                                         handleDeleteAvatar);
 
 export const handler = (event: APIGatewayProxyEvent) => router.dispatch(event);
 
@@ -199,4 +203,47 @@ async function handleUnsubscribe(event: APIGatewayProxyEvent): Promise<APIGatewa
 
   await updateUser(userId, { notificationPrefs: { vaultBackup: 'none' } });
   return success({ success: true, message: 'You have been unsubscribed from vault backup emails.' });
+}
+
+async function handleUploadAvatar(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  const { user, errorResponse } = await requireAuth(event);
+  if (errorResponse) return errorResponse;
+
+  if (user!.status !== 'active' && user!.status !== 'expired') {
+    return error(ERRORS.FORBIDDEN, 403);
+  }
+
+  const parsed = parseBody(event);
+  if ('parseError' in parsed) return parsed.parseError;
+  const { imageBase64, mimeType } = parsed.body as unknown as UploadAvatarRequest;
+
+  if (!imageBase64 || typeof imageBase64 !== 'string') {
+    return error('Missing imageBase64', 400);
+  }
+  if (!mimeType || typeof mimeType !== 'string') {
+    return error(ERRORS.AVATAR_INVALID_TYPE, 400);
+  }
+
+  const validationError = validateAvatarUpload(mimeType, imageBase64.length);
+  if (validationError) {
+    return error(validationError, 400);
+  }
+
+  let resizedBase64: string;
+  try {
+    resizedBase64 = await processAvatar(imageBase64, mimeType);
+  } catch {
+    return error('Failed to process image', 400);
+  }
+
+  await updateUser(user!.userId, { avatarBase64: resizedBase64 });
+  return success({ avatarBase64: resizedBase64 });
+}
+
+async function handleDeleteAvatar(event: APIGatewayProxyEvent): Promise<APIGatewayProxyResult> {
+  const { user, errorResponse } = await requireAuth(event);
+  if (errorResponse) return errorResponse;
+
+  await updateUser(user!.userId, { avatarBase64: null });
+  return success({ success: true });
 }

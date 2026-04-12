@@ -55,6 +55,11 @@ vi.mock('../utils/audit.js', () => ({
   recordAuditEvent: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('../utils/avatar.js', () => ({
+  validateAvatarUpload: vi.fn().mockReturnValue(null),
+  processAvatar: vi.fn().mockResolvedValue('resized-base64-data'),
+}));
+
 import { handler } from './auth.js';
 import { login, changePassword } from '../services/auth.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -377,5 +382,119 @@ describe('POST /auth/passkey/register', () => {
       attestation: { id: 'cred-1', rawId: 'cred-1', response: {}, type: 'public-key', clientExtensionResults: {} },
     }));
     expect(res.statusCode).toBe(200);
+  });
+});
+
+// ── Avatar endpoints ─────────────────────────────────────────────��───────────
+
+import { validateAvatarUpload, processAvatar } from '../utils/avatar.js';
+const mockValidateAvatarUpload = vi.mocked(validateAvatarUpload);
+const mockProcessAvatar = vi.mocked(processAvatar);
+const mockUpdateUser = vi.mocked(updateUser);
+
+describe('PUT /api/auth/avatar', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockValidatePow.mockReturnValue({ valid: true, errorResponse: null });
+    mockValidateHoneypot.mockReturnValue({ valid: true, errorResponse: null });
+    mockValidateAvatarUpload.mockReturnValue(null);
+    mockProcessAvatar.mockResolvedValue('resized-base64-data');
+  });
+
+  it('returns resized base64 on valid upload', async () => {
+    mockRequireAuth.mockResolvedValue({ user: activeUser, errorResponse: null });
+    const res = await handler(makeEvent(API_PATHS.AUTH_AVATAR, 'PUT', {
+      imageBase64: 'dGVzdA==',
+      mimeType: 'image/jpeg',
+    }));
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.data.avatarBase64).toBe('resized-base64-data');
+    expect(mockUpdateUser).toHaveBeenCalledWith('user-1', { avatarBase64: 'resized-base64-data' });
+  });
+
+  it('returns 401 when not authenticated', async () => {
+    mockRequireAuth.mockResolvedValue({
+      user: null,
+      errorResponse: { statusCode: 401, body: '{"error":"Unauthorized"}', headers: {} },
+    });
+    const res = await handler(makeEvent(API_PATHS.AUTH_AVATAR, 'PUT', {
+      imageBase64: 'dGVzdA==',
+      mimeType: 'image/jpeg',
+    }));
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('returns 400 for invalid MIME type', async () => {
+    mockRequireAuth.mockResolvedValue({ user: activeUser, errorResponse: null });
+    mockValidateAvatarUpload.mockReturnValue('Avatar must be PNG or JPEG');
+    const res = await handler(makeEvent(API_PATHS.AUTH_AVATAR, 'PUT', {
+      imageBase64: 'dGVzdA==',
+      mimeType: 'image/gif',
+    }));
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 400 for oversized payload', async () => {
+    mockRequireAuth.mockResolvedValue({ user: activeUser, errorResponse: null });
+    mockValidateAvatarUpload.mockReturnValue('Avatar exceeds maximum size of 1MB');
+    const res = await handler(makeEvent(API_PATHS.AUTH_AVATAR, 'PUT', {
+      imageBase64: 'A'.repeat(2_000_000),
+      mimeType: 'image/jpeg',
+    }));
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 400 for empty imageBase64', async () => {
+    mockRequireAuth.mockResolvedValue({ user: activeUser, errorResponse: null });
+    const res = await handler(makeEvent(API_PATHS.AUTH_AVATAR, 'PUT', {
+      imageBase64: '',
+      mimeType: 'image/jpeg',
+    }));
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 400 when processAvatar throws', async () => {
+    mockRequireAuth.mockResolvedValue({ user: activeUser, errorResponse: null });
+    mockProcessAvatar.mockRejectedValue(new Error('corrupt image'));
+    const res = await handler(makeEvent(API_PATHS.AUTH_AVATAR, 'PUT', {
+      imageBase64: 'dGVzdA==',
+      mimeType: 'image/jpeg',
+    }));
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 403 for non-active user', async () => {
+    mockRequireAuth.mockResolvedValue({ user: { ...mockUser, status: 'pending_first_login' }, errorResponse: null });
+    const res = await handler(makeEvent(API_PATHS.AUTH_AVATAR, 'PUT', {
+      imageBase64: 'dGVzdA==',
+      mimeType: 'image/jpeg',
+    }));
+    expect(res.statusCode).toBe(403);
+  });
+});
+
+describe('DELETE /api/auth/avatar', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockValidatePow.mockReturnValue({ valid: true, errorResponse: null });
+    mockValidateHoneypot.mockReturnValue({ valid: true, errorResponse: null });
+  });
+
+  it('clears avatar and returns success', async () => {
+    mockRequireAuth.mockResolvedValue({ user: activeUser, errorResponse: null });
+    const res = await handler(makeEvent(API_PATHS.AUTH_AVATAR, 'DELETE'));
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body).data.success).toBe(true);
+    expect(mockUpdateUser).toHaveBeenCalledWith('user-1', { avatarBase64: null });
+  });
+
+  it('returns 401 when not authenticated', async () => {
+    mockRequireAuth.mockResolvedValue({
+      user: null,
+      errorResponse: { statusCode: 401, body: '{"error":"Unauthorized"}', headers: {} },
+    });
+    const res = await handler(makeEvent(API_PATHS.AUTH_AVATAR, 'DELETE'));
+    expect(res.statusCode).toBe(401);
   });
 });

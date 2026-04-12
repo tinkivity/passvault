@@ -16,6 +16,7 @@ export const API_PATHS = {
   AUTH_VERIFY_EMAIL_CHANGE: '/api/auth/verify-email-change',
   AUTH_LOCK_SELF: '/api/auth/lock-self',
   AUTH_UNSUBSCRIBE: '/api/auth/unsubscribe',
+  AUTH_AVATAR: '/api/auth/avatar',
   AUTH_PASSKEYS: '/api/auth/passkeys',
   AUTH_PASSKEY_REVOKE: '/api/auth/passkeys/{credentialId}',
   ADMIN_LOGIN: '/api/admin/login',
@@ -119,6 +120,8 @@ export const ERRORS = {
   EMAIL_CHANGE_TOKEN_INVALID: 'Invalid or expired email change token',
   EMAIL_CHANGE_LOCK_TOKEN_INVALID: 'Invalid or expired lock token',
   EMAIL_CHANGE_PENDING: 'An email change is already pending',
+  AVATAR_TOO_LARGE: 'Avatar exceeds maximum size of 1MB',
+  AVATAR_INVALID_TYPE: 'Avatar must be PNG or JPEG',
 } as const;
 
 // Email template configuration
@@ -164,4 +167,7 @@ export const LIMITS = {
   MAX_PASSKEYS_USER: 10,
   MAX_PASSKEYS_ADMIN: 2,
   MAX_PASSKEY_NAME_LENGTH: 64,
+  AVATAR_MAX_UPLOAD_BYTES: 1_048_576,
+  AVATAR_DIMENSION: 256,
+  AVATAR_QUALITY: 80,
 } as const;

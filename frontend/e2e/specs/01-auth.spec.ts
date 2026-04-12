@@ -59,6 +59,7 @@ test.describe('Authentication', () => {
       displayName: d.displayName ?? null, status: 'active',
       plan: d.plan ?? null, loginEventId: d.loginEventId ?? null,
       expiresAt: d.expiresAt ?? null, accountExpired: false,
+      avatarBase64: (d.avatarBase64 as string) ?? null,
     });
 
     await page.goto('/ui/admin/dashboard');
@@ -90,6 +91,7 @@ test.describe('Authentication', () => {
       displayName: d.displayName ?? null, status: 'active',
       plan: d.plan ?? null, loginEventId: d.loginEventId ?? null,
       expiresAt: d.expiresAt ?? null, accountExpired: false,
+      avatarBase64: (d.avatarBase64 as string) ?? null,
     });
 
     await page.goto('/ui/admin/dashboard');
@@ -129,6 +131,7 @@ test.describe('Authentication', () => {
       displayName: d.displayName ?? null, status: 'active',
       plan: d.plan ?? null, loginEventId: d.loginEventId ?? null,
       expiresAt: d.expiresAt ?? null, accountExpired: false,
+      avatarBase64: (d.avatarBase64 as string) ?? null,
     });
 
     await page.goto('/ui');

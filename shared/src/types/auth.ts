@@ -22,6 +22,7 @@ export interface LoginResponse {
   displayName?: string | null;
   expiresAt?: string | null;
   preferredLanguage?: string;
+  avatarBase64?: string | null;
 }
 
 export interface UpdateProfileRequest {
@@ -130,4 +131,9 @@ export interface PasskeyListResponse {
 
 export interface PasskeyRevokeResponse {
   success: boolean;
+}
+
+export interface UploadAvatarRequest {
+  imageBase64: string;
+  mimeType: 'image/png' | 'image/jpeg';
 }

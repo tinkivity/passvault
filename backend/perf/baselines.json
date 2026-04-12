@@ -11,7 +11,9 @@
       "admin_users": { "p95": 2000 },
       "admin_stats": { "p95": 2000 },
       "admin_templates": { "p95": 3000 },
-      "admin_export": { "p95": 5000 }
+      "admin_export": { "p95": 5000 },
+      "avatar_upload": { "p95": 2000 },
+      "avatar_delete": { "p95": 800 }
     },
     "concurrent": { "max_per_user_ms": 3000, "allow_429": false },
     "payload": {
@@ -31,7 +33,9 @@
       "admin_users": { "p95": 3500 },
       "admin_stats": { "p95": 3000 },
       "admin_templates": { "p95": 4000 },
-      "admin_export": { "p95": 5500 }
+      "admin_export": { "p95": 5500 },
+      "avatar_upload": { "p95": 2500 },
+      "avatar_delete": { "p95": 1500 }
     },
     "concurrent": { "max_per_user_ms": 14000, "allow_429": false },
     "payload": {
@@ -51,7 +55,9 @@
       "admin_users": { "p95": 2500 },
       "admin_stats": { "p95": 2500 },
       "admin_templates": { "p95": 3500 },
-      "admin_export": { "p95": 5500 }
+      "admin_export": { "p95": 5500 },
+      "avatar_upload": { "p95": 2200 },
+      "avatar_delete": { "p95": 1200 }
     },
     "concurrent": { "max_per_user_ms": 8000, "allow_429": false },
     "payload": {

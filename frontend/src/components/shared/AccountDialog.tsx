@@ -1,9 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Camera } from 'lucide-react';
 import { useAuth } from '../../hooks/useAuth.js';
 import { config } from '../../config.js';
 import { api } from '../../services/api.js';
 import { useAuthContext } from '../../context/AuthContext.js';
+import { puppySrc } from '../../utils/puppy-hash.js';
+import { LIMITS } from '@passvault/shared';
 import {
   Dialog,
   DialogContent,
@@ -11,6 +14,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -29,8 +33,10 @@ interface AccountDialogProps {
 }
 
 export function AccountDialog({ open, onOpenChange }: AccountDialogProps) {
-  const { username, firstName, lastName, displayName, expiresAt, accountExpired, updateProfile, loading } = useAuth();
+  const { username, firstName, lastName, displayName, expiresAt, accountExpired, updateProfile, uploadAvatar, deleteAvatar, avatarBase64, userId, loading } = useAuth();
   const { token } = useAuthContext();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
   const { t, i18n } = useTranslation();
 
   const [form, setForm] = useState({
@@ -63,6 +69,59 @@ export function AccountDialog({ open, onOpenChange }: AccountDialogProps) {
       setEmailChangeError(null);
     }
   }, [open, firstName, lastName, displayName, username]);
+
+  const displayAvatarSrc = avatarBase64
+    ? `data:image/jpeg;base64,${avatarBase64}`
+    : puppySrc(userId ?? '');
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    // Reset the input so re-selecting the same file triggers onChange
+    e.target.value = '';
+
+    const validTypes = ['image/png', 'image/jpeg'];
+    if (!validTypes.includes(file.type)) {
+      setError(t('avatarInvalidType', { ns: 'auth' }));
+      return;
+    }
+    if (file.size > LIMITS.AVATAR_MAX_UPLOAD_BYTES) {
+      setError(t('avatarTooLarge', { ns: 'auth' }));
+      return;
+    }
+
+    setAvatarUploading(true);
+    setError(null);
+    try {
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          // Strip the data:image/...;base64, prefix
+          resolve(result.split(',')[1]);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      await uploadAvatar(base64, file.type as 'image/png' | 'image/jpeg');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('failedToSave'));
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
+  const handleRemovePhoto = async () => {
+    setAvatarUploading(true);
+    setError(null);
+    try {
+      await deleteAvatar();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('failedToSave'));
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
 
   const handleLanguageChange = (lang: string) => {
     setForm(f => ({ ...f, language: lang }));
@@ -119,6 +178,47 @@ export function AccountDialog({ open, onOpenChange }: AccountDialogProps) {
           <DialogTitle>{t('account')}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSave} className="grid gap-4 pt-2">
+          {/* Avatar */}
+          <div className="flex flex-col items-center gap-2">
+            <div
+              className="relative cursor-pointer group"
+              onClick={() => fileInputRef.current?.click()}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click(); }}
+            >
+              <Avatar className="h-20 w-20 rounded-full">
+                <AvatarImage src={displayAvatarSrc} className="rounded-full" />
+                <AvatarFallback className="rounded-full text-lg">
+                  {(displayName ?? firstName ?? username ?? '?')[0]?.toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+              <div className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                <Camera className="h-5 w-5 text-white" />
+              </div>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg"
+              className="hidden"
+              onChange={handleFileSelect}
+            />
+            {avatarUploading && (
+              <p className="text-xs text-muted-foreground">{t('uploadingPhoto')}</p>
+            )}
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => fileInputRef.current?.click()} disabled={avatarUploading}>
+                {t('changePhoto')}
+              </Button>
+              {avatarBase64 && (
+                <Button type="button" variant="ghost" size="sm" onClick={handleRemovePhoto} disabled={avatarUploading}>
+                  {t('removePhoto')}
+                </Button>
+              )}
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <Label htmlFor="account-first-name">{t('firstName')}</Label>

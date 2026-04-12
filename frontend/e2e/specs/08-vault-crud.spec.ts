@@ -52,7 +52,7 @@ test.describe.serial('Vault — displayName round-trip', () => {
         token: t, userId: 'unused', role: 'admin', username: 'e2e',
         firstName: null, lastName: null, displayName: null,
         status: 'active', plan: 'pro', loginEventId: null,
-        expiresAt: null, accountExpired: false,
+        expiresAt: null, accountExpired: false, avatarBase64: null,
       }));
     }, token);
   }

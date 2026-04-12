@@ -113,5 +113,8 @@
   "copied": "Copi\u00e9 !",
   "showingRange": "{{from}}-{{to}} sur {{total}}",
   "help": "Aide",
-  "helpComingSoon": "Aide — bient\u00f4t disponible"
+  "helpComingSoon": "Aide — bient\u00f4t disponible",
+  "changePhoto": "Changer la photo",
+  "removePhoto": "Supprimer la photo",
+  "uploadingPhoto": "T\u00e9l\u00e9chargement de la photo\u2026"
 }

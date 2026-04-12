@@ -113,5 +113,8 @@
   "copied": "Kopiert!",
   "showingRange": "{{from}}-{{to}} von {{total}}",
   "help": "Hilfe",
-  "helpComingSoon": "Hilfe — demnächst verfügbar"
+  "helpComingSoon": "Hilfe — demnächst verfügbar",
+  "changePhoto": "Foto ändern",
+  "removePhoto": "Foto entfernen",
+  "uploadingPhoto": "Foto wird hochgeladen\u2026"
 }

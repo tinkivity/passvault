@@ -96,6 +96,22 @@ const endpoints: EndpointSpec[] = [
     powDifficulty: () => pow(HIGH),
     token: (ctx) => ctx.adminToken,
   },
+  {
+    name: 'avatar_upload',
+    method: 'PUT',
+    path: API_PATHS.AUTH_AVATAR,
+    token: (ctx) => ctx.testUserToken,
+    body: () => ({
+      imageBase64: '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAUAQEAAAAAAAAAAAAAAAAAAAAA/8QAFBEBAAAAAAAAAAAAAAAAAAAAAP/aAAwDAQACEQMRAD8AKwA//9k=',
+      mimeType: 'image/jpeg',
+    }),
+  },
+  {
+    name: 'avatar_delete',
+    method: 'DELETE',
+    path: API_PATHS.AUTH_AVATAR,
+    token: (ctx) => ctx.testUserToken,
+  },
 ];
 
 export function responseTimeScenarios(ctx: PerfContext) {

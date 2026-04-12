@@ -481,3 +481,27 @@ describe('login — user status checks (dev/beta)', () => {
   });
 });
 
+// ── login() — avatarBase64 in response ──────────────────────────────────────
+
+describe('login — avatarBase64 in response', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    config.features.passkeyRequired = false;
+    mockListPasskeyCredentials.mockResolvedValue([]);
+  });
+
+  it('includes avatarBase64 when set on user record', async () => {
+    mockGetUserByUsername.mockResolvedValue(makeUser({ status: 'active', avatarBase64: 'abc123' }));
+    mockVerifyPw.mockResolvedValue(true);
+    const result = await login({ username: 'alice', password: 'correct' });
+    expect(result.response?.avatarBase64).toBe('abc123');
+  });
+
+  it('returns avatarBase64: null when not set', async () => {
+    mockGetUserByUsername.mockResolvedValue(makeUser({ status: 'active' }));
+    mockVerifyPw.mockResolvedValue(true);
+    const result = await login({ username: 'alice', password: 'correct' });
+    expect(result.response?.avatarBase64).toBeNull();
+  });
+});
+

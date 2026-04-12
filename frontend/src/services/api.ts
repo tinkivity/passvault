@@ -14,6 +14,7 @@ import type {
   PasskeyVerifyResponse,
   PasskeyRegisterRequest,
   PasskeyRegisterResponse,
+  UploadAvatarRequest,
   VaultGetResponse,
   VaultGetIndexResponse,
   VaultGetItemsResponse,
@@ -238,6 +239,21 @@ export class ApiClient {
     return this.request(API_PATHS.AUTH_LOGOUT, {
       method: 'POST',
       body: { eventId },
+      token,
+    });
+  }
+
+  async uploadAvatar(req: UploadAvatarRequest, token: string): Promise<{ avatarBase64: string }> {
+    return this.request<{ avatarBase64: string }>(API_PATHS.AUTH_AVATAR, {
+      method: 'PUT',
+      body: req,
+      token,
+    });
+  }
+
+  async deleteAvatar(token: string): Promise<void> {
+    return this.request(API_PATHS.AUTH_AVATAR, {
+      method: 'DELETE',
       token,
     });
   }
