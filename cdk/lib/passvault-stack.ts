@@ -71,15 +71,7 @@ export class PassVaultStack extends cdk.Stack {
     const frontendUrl = frontend
       ? `https://${frontend.customDomain ?? frontend.distribution.distributionDomainName}`
       : '';
-    for (const fn of [
-      backend.challengeFn,
-      backend.authFn,
-      backend.adminAuthFn,
-      backend.adminMgmtFn,
-      backend.vaultFn,
-      backend.healthFn,
-      backend.digestFn,
-    ]) {
+    for (const fn of [...backend.allApiFunctions, backend.digestFn]) {
       fn.addEnvironment('FRONTEND_ORIGIN', frontendOrigin);
       fn.addEnvironment('FRONTEND_URL', frontendUrl);
     }
@@ -90,14 +82,7 @@ export class PassVaultStack extends cdk.Stack {
       monitoring = new MonitoringConstruct(this, 'Monitoring', {
         config,
         api: backend.api,
-        lambdaFunctions: [
-          backend.challengeFn,
-          backend.authFn,
-          backend.adminAuthFn,
-          backend.adminMgmtFn,
-          backend.vaultFn,
-          backend.healthFn,
-        ],
+        lambdaFunctions: backend.allApiFunctions,
         usersTable: storage.usersTable,
       });
     }
@@ -136,17 +121,8 @@ export class PassVaultStack extends cdk.Stack {
       const originalConcurrency =
         config.environment === 'prod' ? [5, 3, 3, 2, 5, 2] : [0, 0, 0, 0, 0, 0];
 
-      const killSwitchFunctions = [
-        backend.challengeFn,
-        backend.authFn,
-        backend.adminAuthFn,
-        backend.adminMgmtFn,
-        backend.vaultFn,
-        backend.healthFn,
-      ];
-
       new KillSwitchConstruct(this, 'KillSwitch', {
-        lambdaFunctions: killSwitchFunctions,
+        lambdaFunctions: backend.allApiFunctions,
         originalConcurrency,
         alertTopic: killSwitchTopic,
         logRetentionDays: config.monitoring.logRetentionDays as logs.RetentionDays,
@@ -156,7 +132,7 @@ export class PassVaultStack extends cdk.Stack {
       });
 
       new cdk.CfnOutput(this, 'KillSwitchFunctionNames', {
-        value: killSwitchFunctions.map(fn => fn.functionName).join(','),
+        value: backend.allApiFunctions.map(fn => fn.functionName).join(','),
         description: 'Comma-separated Lambda function names controlled by the kill switch',
       });
       new cdk.CfnOutput(this, 'KillSwitchExpectedConcurrency', {
