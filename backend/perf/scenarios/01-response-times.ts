@@ -8,11 +8,16 @@ import { request, pow } from '../../sit/lib/client.js';
 import { API_PATHS, POW_CONFIG } from '@passvault/shared';
 import { benchmark } from '../lib/measure.js';
 import type { PerfContext } from '../lib/context.js';
-import baselines from '../baselines.json';
+import { resolveBaselines } from '../lib/baselines.js';
+
+const baselines = resolveBaselines(process.env.SIT_ENV ?? 'dev');
 
 const HIGH = POW_CONFIG.DIFFICULTY.HIGH;
 const MEDIUM = POW_CONFIG.DIFFICULTY.MEDIUM;
-const ITERATIONS = 10;
+// 20 iterations makes p95 statistically meaningful: p95 of 20 = the 19th value
+// (sorted), so one outlier spike is excluded. With 10 samples, p95 = max, and
+// a single cold start or network hiccup would fail the test.
+const ITERATIONS = 20;
 
 interface EndpointSpec {
   name: string;
@@ -96,8 +101,8 @@ const endpoints: EndpointSpec[] = [
 export function responseTimeScenarios(ctx: PerfContext) {
   describe('01 - Response Times', () => {
     for (const ep of endpoints) {
-      it(`${ep.name} p95 <= ${baselines.endpoints[ep.name as keyof typeof baselines.endpoints]?.p95 ?? '?'}ms`, async () => {
-        const baselineP95 = baselines.endpoints[ep.name as keyof typeof baselines.endpoints]?.p95;
+      it(`${ep.name} p95 <= ${baselines.endpoints[ep.name]?.p95 ?? '?'}ms`, async () => {
+        const baselineP95 = baselines.endpoints[ep.name]?.p95;
         expect(baselineP95).toBeDefined();
 
         const resolvedPath = typeof ep.path === 'function' ? ep.path(ctx) : ep.path;

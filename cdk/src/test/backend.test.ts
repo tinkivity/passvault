@@ -12,11 +12,15 @@ function makeStack() {
   });
 }
 
-function makeTemplate(config: typeof devConfig) {
+function makeBackend(config: typeof devConfig) {
   const stack = makeStack();
   const storage = new StorageConstruct(stack, 'Storage', config);
-  new BackendConstruct(stack, 'Backend', { config, storage });
-  return Template.fromStack(stack);
+  const backend = new BackendConstruct(stack, 'Backend', { config, storage });
+  return { stack, backend, template: Template.fromStack(stack) };
+}
+
+function makeTemplate(config: typeof devConfig) {
+  return makeBackend(config).template;
 }
 
 describe('BackendConstruct (dev)', () => {
@@ -177,6 +181,38 @@ describe('BackendConstruct (dev)', () => {
         }),
       ]),
     });
+  });
+});
+
+describe('BackendConstruct — allApiFunctions completeness', () => {
+  it('allApiFunctions covers every API-facing Lambda (not digest)', () => {
+    const { backend, template } = makeBackend(devConfig);
+
+    // Count all passvault-*-dev Lambdas in the template
+    const allLambdas = template.findResources('AWS::Lambda::Function');
+    const passvaultFns = Object.values(allLambdas).filter((fn) => {
+      const name = fn.Properties?.FunctionName as string | undefined;
+      return name?.startsWith('passvault-') && name.endsWith('-dev');
+    });
+
+    // digestFn is the only non-API Lambda — subtract 1
+    const expectedApiCount = passvaultFns.length - 1;
+    expect(backend.allApiFunctions).toHaveLength(expectedApiCount);
+  });
+
+  it('allApiFunctions contains every individually-named API function', () => {
+    const { backend } = makeBackend(devConfig);
+
+    // Every public readonly *Fn except digestFn must be in allApiFunctions
+    const expectedFns = [
+      backend.challengeFn,
+      backend.authFn,
+      backend.adminAuthFn,
+      backend.adminMgmtFn,
+      backend.vaultFn,
+      backend.healthFn,
+    ];
+    expect(backend.allApiFunctions).toEqual(expectedFns);
   });
 });
 

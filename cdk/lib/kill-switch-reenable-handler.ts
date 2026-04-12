@@ -17,8 +17,16 @@ import {
   PutFunctionConcurrencyCommand,
   DeleteFunctionConcurrencyCommand,
 } from '@aws-sdk/client-lambda';
+import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { randomUUID } from 'crypto';
 
 const lambdaClient = new LambdaClient({});
+const snsClient = new SNSClient({});
+const ddbClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+
+const AUDIT_TTL_SECONDS = 7_776_000; // 90 days
 
 interface SchedulerPayload {
   scheduleName?: string;
@@ -60,4 +68,52 @@ export async function handler(event: SchedulerPayload): Promise<void> {
   );
 
   console.log('Kill switch DEACTIVATED — all Lambda functions restored to original concurrency');
+
+  const trigger = event.scheduleName ? 'automatic' : 'manual';
+  await writeAuditEvent(trigger);
+  await publishRecoveryNotification(trigger, functionArns.length);
+}
+
+async function publishRecoveryNotification(trigger: string, functionCount: number): Promise<void> {
+  const topicArn = process.env.ALERT_TOPIC_ARN;
+  if (!topicArn) return;
+  try {
+    await snsClient.send(new PublishCommand({
+      TopicArn: topicArn,
+      Subject: 'PassVault Kill Switch RECOVERED',
+      Message: [
+        'Kill switch has been deactivated. All Lambda functions restored to normal concurrency.',
+        '',
+        `Trigger: ${trigger}`,
+        `Functions restored: ${functionCount}`,
+        `Time: ${new Date().toISOString()}`,
+      ].join('\n'),
+    }));
+    console.log('Recovery notification published to SNS');
+  } catch (err) {
+    console.error('Failed to publish recovery notification (non-fatal):', err);
+  }
+}
+
+async function writeAuditEvent(trigger: string): Promise<void> {
+  const table = process.env.AUDIT_EVENTS_TABLE;
+  if (!table) return;
+  try {
+    const now = new Date();
+    await ddbClient.send(new PutCommand({
+      TableName: table,
+      Item: {
+        eventId: randomUUID(),
+        category: 'system',
+        action: 'kill_switch_deactivated',
+        userId: 'SYSTEM',
+        timestamp: now.toISOString(),
+        details: { trigger },
+        expiresAt: Math.floor(now.getTime() / 1000) + AUDIT_TTL_SECONDS,
+      },
+    }));
+    console.log(`Audit event recorded: kill_switch_deactivated (trigger=${trigger})`);
+  } catch (err) {
+    console.error('Failed to write audit event (non-fatal):', err);
+  }
 }

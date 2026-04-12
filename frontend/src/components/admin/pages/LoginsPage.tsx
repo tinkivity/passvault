@@ -425,15 +425,6 @@ export function LoginsPage() {
             defaultSorting={[{ id: 'timestamp', desc: true }]}
           />
         )}
-
-        {/* Footer count */}
-        {loaded && events.length > 0 && (
-          <div className="text-sm text-muted-foreground">
-            {hasFilters
-              ? `Showing ${displayedEvents.length} of ${events.length} ${events.length === 1 ? 'event' : 'events'}`
-              : `${events.length} ${events.length === 1 ? 'event' : 'events'}`}
-          </div>
-        )}
       </div>
     </div>
   );

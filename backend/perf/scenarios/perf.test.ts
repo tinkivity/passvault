@@ -22,7 +22,9 @@ import { concurrentScenarios } from './02-concurrent.js';
 import { payloadScenarios } from './03-payload-size.js';
 import { request, pow } from '../../sit/lib/client.js';
 import { API_PATHS, POW_CONFIG } from '@passvault/shared';
-import baselines from '../baselines.json';
+import { resolveBaselines } from '../lib/baselines.js';
+
+const baselines = resolveBaselines(process.env.SIT_ENV ?? 'dev');
 
 const HIGH = POW_CONFIG.DIFFICULTY.HIGH;
 const ctx = createPerfContext();

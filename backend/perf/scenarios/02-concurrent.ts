@@ -10,7 +10,9 @@ import { API_PATHS, POW_CONFIG } from '@passvault/shared';
 import { measure, stats } from '../lib/measure.js';
 import type { BenchmarkResult } from '../lib/measure.js';
 import type { PerfContext } from '../lib/context.js';
-import baselines from '../baselines.json';
+import { resolveBaselines } from '../lib/baselines.js';
+
+const baselines = resolveBaselines(process.env.SIT_ENV ?? 'dev');
 
 const HIGH = POW_CONFIG.DIFFICULTY.HIGH;
 const STREAMS = 5;

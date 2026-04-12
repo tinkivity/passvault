@@ -3,6 +3,7 @@ import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as sns from 'aws-cdk-lib/aws-sns';
+import * as sns_subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
 import { Construct } from 'constructs';
 import type { EnvironmentConfig } from '@passvault/shared';
 import { StorageConstruct } from './constructs/storage.js';
@@ -70,15 +71,7 @@ export class PassVaultStack extends cdk.Stack {
     const frontendUrl = frontend
       ? `https://${frontend.customDomain ?? frontend.distribution.distributionDomainName}`
       : '';
-    for (const fn of [
-      backend.challengeFn,
-      backend.authFn,
-      backend.adminAuthFn,
-      backend.adminMgmtFn,
-      backend.vaultFn,
-      backend.healthFn,
-      backend.digestFn,
-    ]) {
+    for (const fn of [...backend.allApiFunctions, backend.digestFn]) {
       fn.addEnvironment('FRONTEND_ORIGIN', frontendOrigin);
       fn.addEnvironment('FRONTEND_URL', frontendUrl);
     }
@@ -89,14 +82,7 @@ export class PassVaultStack extends cdk.Stack {
       monitoring = new MonitoringConstruct(this, 'Monitoring', {
         config,
         api: backend.api,
-        lambdaFunctions: [
-          backend.challengeFn,
-          backend.authFn,
-          backend.adminAuthFn,
-          backend.adminMgmtFn,
-          backend.vaultFn,
-          backend.healthFn,
-        ],
+        lambdaFunctions: backend.allApiFunctions,
         usersTable: storage.usersTable,
       });
     }
@@ -120,6 +106,12 @@ export class PassVaultStack extends cdk.Stack {
           topicName: `passvault-${config.environment}-kill-switch`,
           displayName: `PassVault ${config.environment} Kill Switch`,
         });
+        // Subscribe adminEmail directly so the admin is notified when the
+        // kill switch fires — even if no custom domain / SES notifier is
+        // configured. AWS sends a confirmation email on first deploy.
+        killSwitchTopic.addSubscription(
+          new sns_subscriptions.EmailSubscription(adminEmail),
+        );
       } else {
         // prod — monitoring must exist
         killSwitchTopic = monitoring!.alertTopic;
@@ -130,19 +122,22 @@ export class PassVaultStack extends cdk.Stack {
         config.environment === 'prod' ? [5, 3, 3, 2, 5, 2] : [0, 0, 0, 0, 0, 0];
 
       new KillSwitchConstruct(this, 'KillSwitch', {
-        lambdaFunctions: [
-          backend.challengeFn,
-          backend.authFn,
-          backend.adminAuthFn,
-          backend.adminMgmtFn,
-          backend.vaultFn,
-          backend.healthFn,
-        ],
+        lambdaFunctions: backend.allApiFunctions,
         originalConcurrency,
         alertTopic: killSwitchTopic,
         logRetentionDays: config.monitoring.logRetentionDays as logs.RetentionDays,
         environment: config.environment,
         reEnableMinutes: config.monitoring.killSwitchReEnableMinutes,
+        auditEventsTable: storage.auditEventsTable,
+      });
+
+      new cdk.CfnOutput(this, 'KillSwitchFunctionNames', {
+        value: backend.allApiFunctions.map(fn => fn.functionName).join(','),
+        description: 'Comma-separated Lambda function names controlled by the kill switch',
+      });
+      new cdk.CfnOutput(this, 'KillSwitchExpectedConcurrency', {
+        value: originalConcurrency.join(','),
+        description: 'Comma-separated original reserved concurrency values (0 = unreserved pool)',
       });
     }
 

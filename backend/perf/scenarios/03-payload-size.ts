@@ -9,14 +9,16 @@ import { request, pow } from '../../sit/lib/client.js';
 import { API_PATHS, POW_CONFIG } from '@passvault/shared';
 import { benchmark } from '../lib/measure.js';
 import type { PerfContext } from '../lib/context.js';
-import baselines from '../baselines.json';
+import { resolveBaselines } from '../lib/baselines.js';
+
+const baselines = resolveBaselines(process.env.SIT_ENV ?? 'dev');
 
 const HIGH = POW_CONFIG.DIFFICULTY.HIGH;
 
 interface PayloadSpec {
   name: string;
   sizeBytes: number;
-  baselineKey: keyof typeof baselines.payload;
+  baselineKey: string;
   roundTrip: boolean; // true = PUT + GET, false = PUT only
 }
 
@@ -67,7 +69,7 @@ export function payloadScenarios(ctx: PerfContext) {
               expect(getRes.status).toBe(200);
             }
           },
-          5, // fewer iterations for large payloads
+          20, // 20 iterations: ceil(20*0.95)-1 = 18, so p95 excludes the max. At N<20 p95 = max.
         );
 
         result.baseline = baselineMs;

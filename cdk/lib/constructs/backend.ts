@@ -34,6 +34,16 @@ export class BackendConstruct extends Construct {
   public readonly healthFn: lambda.Function;
   public readonly digestFn: lambda.Function;
 
+  /**
+   * All API Gateway-facing Lambda functions, in a stable order.
+   * Used by the kill switch (set concurrency to 0), CORS/env var loops,
+   * and monitoring constructs. Does NOT include digestFn (EventBridge-scheduled).
+   *
+   * When adding a new API-facing Lambda, add it here — the CDK test suite
+   * verifies this array stays in sync with the actual Lambda count.
+   */
+  public readonly allApiFunctions: lambda.Function[];
+
   constructor(scope: Construct, id: string, props: BackendConstructProps) {
     super(scope, id);
 
@@ -183,6 +193,16 @@ export class BackendConstruct extends Construct {
       logGroup: healthLogGroup,
       ...(isProd && { reservedConcurrentExecutions: 2 }),
     });
+
+    // Canonical list of all API-facing Lambdas (see JSDoc on allApiFunctions).
+    this.allApiFunctions = [
+      this.challengeFn,
+      this.authFn,
+      this.adminAuthFn,
+      this.adminMgmtFn,
+      this.vaultFn,
+      this.healthFn,
+    ];
 
     // SSM: pass parameter name (not value) to Lambdas that sign/verify tokens.
     // The Lambda fetches and decrypts the value at cold-start via the SSM API.
