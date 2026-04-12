@@ -3,6 +3,7 @@
 #
 # Usage:
 #   ./scripts/sitest.sh --env <dev|beta> [options]
+#   ./scripts/sitest.sh --rerun [state-file] --env <dev|beta> [--profile <name>]
 #   ./scripts/sitest.sh --cleanup [state-file] --env <dev|beta> [--profile <name>]
 #
 # Options:
@@ -12,8 +13,11 @@
 #   --stack <name>         CloudFormation stack name override
 #   --base-url <url>       API base URL override (skips CloudFormation lookup)
 #   --keep                 Keep SIT data after tests (default: cleanup)
+#   --rerun [state-file]   Re-run tests reusing admin from a previous --keep run.
+#                          State is preserved afterward (implies --keep).
 #   --cleanup [state-file] Skip tests; only clean up data from a previous --keep run.
 #                          If no file given, auto-discovers by --env.
+#   -- <vitest-args>       Extra args forwarded to vitest (e.g. -- --grep "Avatar")
 #   -h, --help             Show usage
 
 set -euo pipefail
@@ -27,9 +31,13 @@ BASE_URL=""
 KEEP=false
 CLEANUP=false
 CLEANUP_FILE=""
+RERUN=false
+RERUN_FILE=""
+VITEST_EXTRA_ARGS=""
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 USAGE="Usage: $0 --env <dev|beta> [--profile <name>] [--region <region>] [--stack <name>] [--base-url <url>] [--keep]
+       $0 --rerun [state-file] --env <dev|beta> [--profile <name>] [-- <vitest-args>]
        $0 --cleanup [state-file] --env <dev|beta> [--profile <name>] [--region <region>]"
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
@@ -41,6 +49,16 @@ while [[ $# -gt 0 ]]; do
     --stack)    STACK="$2";        shift 2 ;;
     --base-url) BASE_URL="$2";     shift 2 ;;
     --keep)     KEEP=true;         shift   ;;
+    --rerun)
+      RERUN=true
+      KEEP=true  # rerun always preserves state
+      if [[ $# -ge 2 && "$2" != --* ]]; then
+        RERUN_FILE="$2"
+        shift 2
+      else
+        shift
+      fi
+      ;;
     --cleanup)
       CLEANUP=true
       if [[ $# -ge 2 && "$2" != --* ]]; then
@@ -49,6 +67,11 @@ while [[ $# -gt 0 ]]; do
       else
         shift
       fi
+      ;;
+    --)
+      shift
+      VITEST_EXTRA_ARGS="$*"
+      break
       ;;
     -h|--help)
       echo "$USAGE"
@@ -62,9 +85,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ "$KEEP" == "true" && "$CLEANUP" == "true" ]]; then
-  echo "Error: --keep and --cleanup are mutually exclusive." >&2
-  echo "$USAGE" >&2
+if [[ "$CLEANUP" == "true" && "$RERUN" == "true" ]]; then
+  echo "Error: --cleanup and --rerun are mutually exclusive." >&2
   exit 1
 fi
 
@@ -155,6 +177,121 @@ if [[ "$CLEANUP" == "true" ]]; then
   echo "  State file removed: $(basename "$CLEANUP_FILE")"
   echo ""
   exit 0
+fi
+
+# ── Rerun mode ───────────────────────────────────────────────────────────────
+if [[ "$RERUN" == "true" ]]; then
+  # Auto-discover state file if not given explicitly
+  if [[ -z "$RERUN_FILE" ]]; then
+    if [[ -z "$ENV" ]]; then
+      echo "Error: --rerun without a state file requires --env." >&2
+      exit 1
+    fi
+    shopt -s nullglob
+    MATCHES=( "$REPO_ROOT"/.sit-state-"${ENV}"-*.json )
+    shopt -u nullglob
+    if [[ ${#MATCHES[@]} -eq 0 ]]; then
+      echo "Error: no SIT state file found for env '$ENV'. Run without --rerun first." >&2
+      exit 1
+    elif [[ ${#MATCHES[@]} -gt 1 ]]; then
+      echo "Multiple SIT state files found for env '$ENV':" >&2
+      for f in "${MATCHES[@]}"; do echo "  $(basename "$f")" >&2; done
+      echo "Specify which one: $0 --rerun <state-file> --env $ENV" >&2
+      exit 1
+    fi
+    RERUN_FILE="${MATCHES[0]}"
+  fi
+
+  if [[ ! -f "$RERUN_FILE" ]]; then
+    echo "Error: state file not found: $RERUN_FILE" >&2
+    exit 1
+  fi
+
+  # Read state
+  ENV=$(jq -r '.env' "$RERUN_FILE")
+  REGION=$(jq -r '.region // "eu-central-1"' "$RERUN_FILE")
+  TABLE=$(jq -r '.usersTable' "$RERUN_FILE")
+  FILES_BUCKET=$(jq -r '.filesBucket // empty' "$RERUN_FILE")
+  SIT_EMAIL=$(jq -r '.adminEmail' "$RERUN_FILE")
+  SIT_USER_ID=$(jq -r '.adminUserId' "$RERUN_FILE")
+  SIT_NAME=$(basename "$RERUN_FILE" .json | sed "s|^\.sit-state-${ENV}-||")
+  STACK_ENV="$(echo "$ENV" | tr '[:lower:]' '[:upper:]' | cut -c1)$(echo "$ENV" | cut -c2-)"
+  [[ -z "$STACK" ]] && STACK="PassVault-${STACK_ENV}"
+
+  if [[ -n "$PROFILE" ]]; then
+    export AWS_PROFILE="$PROFILE"
+  fi
+
+  _cfn_output() {
+    aws cloudformation describe-stacks \
+      --stack-name "$STACK" \
+      --region "$REGION" \
+      --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue | [0]" \
+      --output text
+  }
+
+  API_URL=$(_cfn_output ApiUrl 2>/dev/null || echo "")
+  [[ "$API_URL" == "None" ]] && API_URL=""
+  API_URL="${API_URL%/}"
+
+  if [[ -z "$API_URL" ]]; then
+    echo "Error: could not read ApiUrl from stack $STACK." >&2
+    exit 1
+  fi
+
+  # Discover plus-address
+  if [[ -z "${PASSVAULT_PLUS_ADDRESS:-}" ]]; then
+    DISCOVERED_PLUS=$(_cfn_output PlusAddress 2>/dev/null || echo "")
+    [[ "$DISCOVERED_PLUS" == "None" ]] && DISCOVERED_PLUS=""
+    [[ -n "$DISCOVERED_PLUS" ]] && export PASSVAULT_PLUS_ADDRESS="$DISCOVERED_PLUS"
+  fi
+
+  # Onboard the admin — get a fresh OTP by logging in
+  echo ""
+  echo "PassVault SIT Re-run"
+  echo "  Environment : $ENV"
+  echo "  Stack       : $STACK"
+  echo "  Admin       : $SIT_EMAIL"
+  echo "  API URL     : $API_URL"
+  [[ -n "$PROFILE" ]] && echo "  AWS profile : $PROFILE"
+  [[ -n "$VITEST_EXTRA_ARGS" ]] && echo "  Extra args  : $VITEST_EXTRA_ARGS"
+  echo ""
+
+  STATE_FILE="$RERUN_FILE"
+
+  # Need a fresh SIT_OTP — read it from the admin's DynamoDB record
+  SIT_OTP=$(aws dynamodb get-item \
+    --table-name "$TABLE" \
+    --region "$REGION" \
+    --key "{\"userId\": {\"S\": \"$SIT_USER_ID\"}}" \
+    --query 'Item.oneTimePassword.S' \
+    --output text 2>/dev/null || echo "")
+  [[ "$SIT_OTP" == "None" || -z "$SIT_OTP" ]] && SIT_OTP=""
+
+  echo "── Running tests (rerun) "
+  echo ""
+
+  SIT_BASE_URL="$API_URL" \
+  SIT_ENV="$ENV" \
+  SIT_ADMIN_EMAIL="$SIT_EMAIL" \
+  SIT_ADMIN_OTP="${SIT_OTP:-rerun-no-otp}" \
+  SIT_TABLE="$TABLE" \
+    npx vitest run --config "$REPO_ROOT/backend/sit/vitest.config.ts" $VITEST_EXTRA_ARGS || TEST_EXIT_CODE=$?
+
+  echo ""
+  echo "── Summary "
+  if [[ "${TEST_EXIT_CODE:-0}" -eq 0 ]]; then
+    echo "  All tests passed."
+  else
+    echo "  Tests failed with exit code ${TEST_EXIT_CODE:-1}."
+  fi
+  echo ""
+  echo "  State preserved: $(basename "$RERUN_FILE")"
+  echo "  Re-run again:  $0 --rerun --env $ENV"
+  [[ -n "$PROFILE" ]] && echo "    (add --profile $PROFILE if needed)"
+  echo "  Clean up:      $0 --cleanup --env $ENV"
+  echo ""
+  exit "${TEST_EXIT_CODE:-0}"
 fi
 
 # ── Normal mode: require --env ───────────────────────────────────────────────
@@ -353,7 +490,7 @@ SIT_ENV="$ENV" \
 SIT_ADMIN_EMAIL="$SIT_EMAIL" \
 SIT_ADMIN_OTP="$SIT_OTP" \
 SIT_TABLE="$TABLE" \
-  npx vitest run --config "$REPO_ROOT/backend/sit/vitest.config.ts" || TEST_EXIT_CODE=$?
+  npx vitest run --config "$REPO_ROOT/backend/sit/vitest.config.ts" $VITEST_EXTRA_ARGS || TEST_EXIT_CODE=$?
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
