@@ -658,22 +658,15 @@ All monitoring resources are deployed automatically by CDK for the prod stack. N
 
 ### Kill Switch Manual Recovery
 
-To restore service before the 4-hour auto-recovery window:
+Use the helper script for status checks and recovery:
 
 ```bash
-aws lambda put-function-concurrency --function-name passvault-challenge-prod --reserved-concurrent-executions 5
-aws lambda put-function-concurrency --function-name passvault-auth-prod     --reserved-concurrent-executions 3
-aws lambda put-function-concurrency --function-name passvault-admin-prod    --reserved-concurrent-executions 2
-aws lambda put-function-concurrency --function-name passvault-vault-prod    --reserved-concurrent-executions 5
-aws lambda put-function-concurrency --function-name passvault-health-prod   --reserved-concurrent-executions 2
+./scripts/killswitch.sh --env prod                # check status
+./scripts/killswitch.sh --env prod --reset         # restore concurrency
+./scripts/killswitch.sh --env prod --activate      # manually activate
 ```
 
-To check if the kill switch is active:
-
-```bash
-aws lambda get-function-concurrency --function-name passvault-auth-prod
-# If ReservedConcurrentExecutions is 0, the kill switch is active
-```
+The script reads function names and expected concurrency from CDK stack outputs. All state changes are recorded as `system` audit events.
 
 For full kill switch details, see [docs/BOTPROTECTION.md](../docs/BOTPROTECTION.md).
 

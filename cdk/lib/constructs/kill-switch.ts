@@ -5,14 +5,15 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import * as sns from 'aws-cdk-lib/aws-sns';
 import * as sns_subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as scheduler from 'aws-cdk-lib/aws-scheduler';
 import * as path from 'path';
 import { Construct } from 'constructs';
 
 interface KillSwitchConstructProps {
-  // The 5 application Lambda functions to throttle ([challenge, auth, admin, vault, health]).
+  // The application Lambda functions to throttle.
   lambdaFunctions: lambda.Function[];
-  // Original reserved concurrency values matching lambdaFunctions order (e.g. [5, 3, 2, 5, 2]).
+  // Original reserved concurrency values matching lambdaFunctions order (e.g. [5, 3, 3, 2, 5, 2]).
   // Use 0 for functions that had no reserved concurrency (restores to unreserved pool on re-enable).
   originalConcurrency: number[];
   // SNS topic the kill switch Lambda subscribes to. Publishing an ALARM message activates the switch.
@@ -23,6 +24,8 @@ interface KillSwitchConstructProps {
   environment: string;
   // Minutes after kill switch fires before Lambda concurrency is auto-restored.
   reEnableMinutes: number;
+  // Audit events table for recording kill switch activation/deactivation.
+  auditEventsTable: dynamodb.Table;
 }
 
 export class KillSwitchConstruct extends Construct {
@@ -79,6 +82,7 @@ export class KillSwitchConstruct extends Construct {
       environment: {
         FUNCTION_ARNS: functionArns,
         CONCURRENCY_LIMITS: concurrencyLimits,
+        AUDIT_EVENTS_TABLE: props.auditEventsTable.tableName,
       },
       bundling: {
         externalModules: [],
@@ -96,6 +100,7 @@ export class KillSwitchConstruct extends Construct {
         }),
       );
     }
+    props.auditEventsTable.grantWriteData(this.reEnableFn);
 
     // -------------------------------------------------------------------------
     // IAM role for EventBridge Scheduler to invoke the re-enable Lambda
@@ -132,6 +137,7 @@ export class KillSwitchConstruct extends Construct {
         SCHEDULER_ROLE_ARN: schedulerRole.roleArn,
         SCHEDULER_GROUP_NAME: schedulerGroupName,
         REENABLE_AFTER_MINUTES: String(reEnableMinutes),
+        AUDIT_EVENTS_TABLE: props.auditEventsTable.tableName,
       },
       bundling: {
         externalModules: [],
@@ -167,6 +173,8 @@ export class KillSwitchConstruct extends Construct {
         resources: [schedulerRole.roleArn],
       }),
     );
+
+    props.auditEventsTable.grantWriteData(this.killSwitchFn);
 
     // -------------------------------------------------------------------------
     // Subscribe kill switch Lambda to the alert topic

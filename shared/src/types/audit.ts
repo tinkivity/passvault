@@ -12,7 +12,8 @@ export type AuditAction =
   | 'vault_opened' | 'vault_saved' | 'vault_downloaded' | 'vault_imported'
   | 'vault_renamed' | 'vault_deleted' | 'vault_created'
   // system
-  | 'password_changed' | 'passkey_registered' | 'passkey_revoked' | 'email_changed';
+  | 'password_changed' | 'passkey_registered' | 'passkey_revoked' | 'email_changed'
+  | 'kill_switch_activated' | 'kill_switch_deactivated';
 
 export interface AuditEvent {
   eventId: string;

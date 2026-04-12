@@ -28,9 +28,15 @@ import {
   CreateScheduleCommand,
   FlexibleTimeWindowMode,
 } from '@aws-sdk/client-scheduler';
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { randomUUID } from 'crypto';
 
 const lambdaClient = new LambdaClient({});
 const schedulerClient = new SchedulerClient({});
+const ddbClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+
+const AUDIT_TTL_SECONDS = 7_776_000; // 90 days
 
 interface SnsRecord {
   Sns: { Message: string };
@@ -52,8 +58,12 @@ export async function handler(event: { Records: SnsRecord[] }): Promise<void> {
       continue;
     }
 
-    console.log(`ALARM triggered: ${message['AlarmName'] ?? 'unknown'} — activating kill switch`);
+    const alarmName = String(message['AlarmName'] ?? 'unknown');
+    console.log(`ALARM triggered: ${alarmName} — activating kill switch`);
     await activateKillSwitch();
+
+    const trigger = alarmName === 'manual-killswitch' ? 'manual' : 'automatic';
+    await writeAuditEvent('kill_switch_activated', trigger, alarmName);
   }
 }
 
@@ -123,4 +133,27 @@ async function activateKillSwitch(): Promise<void> {
   }
 
   void firstName; // suppress unused warning
+}
+
+async function writeAuditEvent(action: string, trigger: string, alarmName: string): Promise<void> {
+  const table = process.env.AUDIT_EVENTS_TABLE;
+  if (!table) return;
+  try {
+    const now = new Date();
+    await ddbClient.send(new PutCommand({
+      TableName: table,
+      Item: {
+        eventId: randomUUID(),
+        category: 'system',
+        action,
+        userId: 'SYSTEM',
+        timestamp: now.toISOString(),
+        details: { trigger, alarmName },
+        expiresAt: Math.floor(now.getTime() / 1000) + AUDIT_TTL_SECONDS,
+      },
+    }));
+    console.log(`Audit event recorded: ${action} (trigger=${trigger})`);
+  } catch (err) {
+    console.error('Failed to write audit event (non-fatal):', err);
+  }
 }

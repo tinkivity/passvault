@@ -59,14 +59,33 @@ Honeypot is enabled in **all environments** (`honeypotEnabled: true`).
 
 ### Layer 5 — Concurrency Kill Switch (Auto-Trigger in prod, Manual in beta)
 
-**What it does:** Sets `reservedConcurrentExecutions: 0` on all 5 Lambda functions. API Gateway immediately returns 429 for all requests — no Lambda invocations, no backend processing. An EventBridge Scheduler rule automatically restores normal operation after a configurable delay.
+**What it does:** Sets `reservedConcurrentExecutions: 0` on all 6 Lambda functions. API Gateway immediately returns 429 for all requests — no Lambda invocations, no backend processing. An EventBridge Scheduler rule automatically restores normal operation after a configurable delay.
 
 The kill switch is deployed in **beta and prod**. Trigger and recovery times differ by environment:
 
 | Environment | Trigger | Re-enable delay | Original concurrency |
 |-------------|---------|-----------------|----------------------|
 | beta | Manual SNS publish | **3 minutes** | None (unreserved pool) |
-| prod | CloudWatch alarm (auto) | **4 hours** | challenge=5, auth=3, admin=2, vault=5, health=2 |
+| prod | CloudWatch alarm (auto) | **4 hours** | challenge=5, auth=3, admin-auth=3, admin-mgmt=2, vault=5, health=2 |
+
+All kill switch state changes (activation and deactivation) are recorded as `system` audit events in the audit table, with `trigger: automatic` (CloudWatch alarm / EventBridge timer) or `trigger: manual` (script / direct invocation).
+
+#### Helper script
+
+Use `scripts/killswitch.sh` for status checks, manual activation, and recovery:
+
+```bash
+# Check status — shows function concurrency table
+./scripts/killswitch.sh --env beta --profile my-profile
+
+# Activate — blocks all API traffic
+./scripts/killswitch.sh --env prod --activate
+
+# Reset — restore normal concurrency
+./scripts/killswitch.sh --env beta --reset
+```
+
+The script reads function names and expected concurrency values from CDK stack outputs (`KillSwitchFunctionNames`, `KillSwitchExpectedConcurrency`), so it always matches the deployed configuration.
 
 #### Prod — Automatic trigger
 
@@ -76,51 +95,32 @@ The alarm publishes to the SNS `alertTopic`. The kill switch Lambda fires, sets 
 
 **Manual recovery** (restore before the 4-hour auto-recovery window):
 ```bash
-aws lambda put-function-concurrency \
-  --function-name passvault-challenge-prod \
-  --reserved-concurrent-executions 5
+./scripts/killswitch.sh --env prod --reset
+```
 
-aws lambda put-function-concurrency \
-  --function-name passvault-auth-prod \
-  --reserved-concurrent-executions 3
-
-aws lambda put-function-concurrency \
-  --function-name passvault-admin-prod \
-  --reserved-concurrent-executions 2
-
-aws lambda put-function-concurrency \
-  --function-name passvault-vault-prod \
-  --reserved-concurrent-executions 5
-
-aws lambda put-function-concurrency \
-  --function-name passvault-health-prod \
-  --reserved-concurrent-executions 2
+Or manually with AWS CLI:
+```bash
+aws lambda put-function-concurrency --function-name passvault-challenge-prod --reserved-concurrent-executions 5
+aws lambda put-function-concurrency --function-name passvault-auth-prod --reserved-concurrent-executions 3
+aws lambda put-function-concurrency --function-name passvault-admin-auth-prod --reserved-concurrent-executions 3
+aws lambda put-function-concurrency --function-name passvault-admin-mgmt-prod --reserved-concurrent-executions 2
+aws lambda put-function-concurrency --function-name passvault-vault-prod --reserved-concurrent-executions 5
+aws lambda put-function-concurrency --function-name passvault-health-prod --reserved-concurrent-executions 2
 ```
 
 #### Beta — Manual trigger
 
-Beta has no CloudWatch alarm. To activate the kill switch manually (e.g. for testing), publish an SNS ALARM message to the `KillSwitchTopicArn` output from the CDK stack:
+Beta has no CloudWatch alarm. Activate the kill switch manually:
 
 ```bash
-# Get the topic ARN from the CDK output (shown after deploy):
-#   PassVault-Beta.KillSwitchTopicArn = arn:aws:sns:eu-central-1:ACCOUNT:passvault-beta-kill-switch
-
-aws sns publish \
-  --region eu-central-1 \
-  --topic-arn arn:aws:sns:eu-central-1:ACCOUNT:passvault-beta-kill-switch \
-  --message '{"NewStateValue":"ALARM","AlarmName":"manual-test"}'
+./scripts/killswitch.sh --env beta --activate
 ```
 
 The kill switch Lambda fires within seconds. All API requests will return 429. The EventBridge re-enable schedule fires **3 minutes** later and restores the Lambda functions to their normal unreserved state (`DeleteFunctionConcurrency`).
 
 **Manual recovery in beta** (restore immediately without waiting):
 ```bash
-# Beta functions have no reserved concurrency — delete the reservation to restore
-aws lambda delete-function-concurrency --function-name passvault-challenge-beta
-aws lambda delete-function-concurrency --function-name passvault-auth-beta
-aws lambda delete-function-concurrency --function-name passvault-admin-beta
-aws lambda delete-function-concurrency --function-name passvault-vault-beta
-aws lambda delete-function-concurrency --function-name passvault-health-beta
+./scripts/killswitch.sh --env beta --reset
 ```
 
 ---

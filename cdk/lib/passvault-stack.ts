@@ -129,20 +129,32 @@ export class PassVaultStack extends cdk.Stack {
       const originalConcurrency =
         config.environment === 'prod' ? [5, 3, 3, 2, 5, 2] : [0, 0, 0, 0, 0, 0];
 
+      const killSwitchFunctions = [
+        backend.challengeFn,
+        backend.authFn,
+        backend.adminAuthFn,
+        backend.adminMgmtFn,
+        backend.vaultFn,
+        backend.healthFn,
+      ];
+
       new KillSwitchConstruct(this, 'KillSwitch', {
-        lambdaFunctions: [
-          backend.challengeFn,
-          backend.authFn,
-          backend.adminAuthFn,
-          backend.adminMgmtFn,
-          backend.vaultFn,
-          backend.healthFn,
-        ],
+        lambdaFunctions: killSwitchFunctions,
         originalConcurrency,
         alertTopic: killSwitchTopic,
         logRetentionDays: config.monitoring.logRetentionDays as logs.RetentionDays,
         environment: config.environment,
         reEnableMinutes: config.monitoring.killSwitchReEnableMinutes,
+        auditEventsTable: storage.auditEventsTable,
+      });
+
+      new cdk.CfnOutput(this, 'KillSwitchFunctionNames', {
+        value: killSwitchFunctions.map(fn => fn.functionName).join(','),
+        description: 'Comma-separated Lambda function names controlled by the kill switch',
+      });
+      new cdk.CfnOutput(this, 'KillSwitchExpectedConcurrency', {
+        value: originalConcurrency.join(','),
+        description: 'Comma-separated original reserved concurrency values (0 = unreserved pool)',
       });
     }
 

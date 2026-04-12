@@ -346,6 +346,45 @@ See [docs/QUALIFICATION.md](../docs/QUALIFICATION.md) for full documentation.
 
 ---
 
+## killswitch.sh
+
+Checks, activates, or resets the Lambda concurrency kill switch for beta or prod.
+
+**When to run:** To check kill switch status, manually activate during an attack, or manually reset to restore service.
+
+**Usage:**
+
+```bash
+# Check status (default)
+./scripts/killswitch.sh --env beta
+./scripts/killswitch.sh --env prod --profile my-profile
+
+# Activate kill switch (blocks all API traffic)
+./scripts/killswitch.sh --env beta --activate
+./scripts/killswitch.sh --env prod --activate --yes  # skip confirmation
+
+# Reset (restore normal concurrency)
+./scripts/killswitch.sh --env beta --reset
+./scripts/killswitch.sh --env prod --reset
+```
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--env` | Target environment: `beta`, `prod` (required; dev rejected) |
+| `--profile` | AWS named profile |
+| `--region` | AWS region (default: `eu-central-1`) |
+| `--activate` | Publish SNS ALARM to trigger the kill switch |
+| `--reset` | Directly restore Lambda concurrency to expected values |
+| `--yes` | Skip confirmation prompt |
+
+**Not available for dev** — the kill switch is only deployed in beta and prod.
+
+Function names and expected concurrency values are read from CDK stack outputs (`KillSwitchFunctionNames`, `KillSwitchExpectedConcurrency`), so the script always matches the deployed configuration. All state changes are recorded as `system` audit events.
+
+---
+
 ## Test email routing and SES reputation
 
 All test scripts (`sitest.sh`, `pentest.sh`, `e2etest.sh`, `perftest.sh`) create temporary users that may trigger invitation or notification emails. On **dev**, these use `@passvault-test.local` addresses — no real email is sent because dev Lambdas have no `SENDER_EMAIL` configured.

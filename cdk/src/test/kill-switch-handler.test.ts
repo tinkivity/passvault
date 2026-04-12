@@ -1,8 +1,10 @@
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 
-const { mockLambdaSend, mockSchedulerSend } = vi.hoisted(() => ({
+const { mockLambdaSend, mockSchedulerSend, mockDdbSend, MockPutCommand } = vi.hoisted(() => ({
   mockLambdaSend: vi.fn(),
   mockSchedulerSend: vi.fn(),
+  mockDdbSend: vi.fn(),
+  MockPutCommand: vi.fn().mockImplementation((input: unknown) => ({ input })),
 }));
 
 vi.mock('@aws-sdk/client-lambda', () => ({
@@ -15,6 +17,15 @@ vi.mock('@aws-sdk/client-scheduler', () => ({
   SchedulerClient: vi.fn(() => ({ send: mockSchedulerSend })),
   CreateScheduleCommand: vi.fn(),
   FlexibleTimeWindowMode: { OFF: 'OFF' },
+}));
+
+vi.mock('@aws-sdk/client-dynamodb', () => ({
+  DynamoDBClient: vi.fn(() => ({})),
+}));
+
+vi.mock('@aws-sdk/lib-dynamodb', () => ({
+  DynamoDBDocumentClient: { from: vi.fn(() => ({ send: mockDdbSend })) },
+  PutCommand: MockPutCommand,
 }));
 
 import { handler } from '../../lib/kill-switch-handler.js';
@@ -34,6 +45,7 @@ const ENV_VARS = {
   SCHEDULER_ROLE_ARN: 'arn:aws:iam::123:role/scheduler-role',
   SCHEDULER_GROUP_NAME: 'passvault-kill-switch-prod',
   REENABLE_AFTER_MINUTES: '4',
+  AUDIT_EVENTS_TABLE: 'passvault-audit-test',
 };
 
 function snsEvent(state: string): { Records: { Sns: { Message: string } }[] } {
@@ -57,7 +69,10 @@ describe('kill-switch handler', () => {
     Object.assign(process.env, ENV_VARS);
     mockLambdaSend.mockReset();
     mockSchedulerSend.mockReset();
+    mockDdbSend.mockReset();
+    MockPutCommand.mockClear();
     mockSchedulerSend.mockResolvedValue({}); // CreateSchedule always succeeds by default
+    mockDdbSend.mockResolvedValue({}); // DDB PutCommand always succeeds by default
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
   });
@@ -153,5 +168,56 @@ describe('kill-switch handler', () => {
 
     // Should not throw — scheduling failure is non-fatal
     await expect(handler(snsEvent('ALARM'))).resolves.toBeUndefined();
+  });
+
+  // ── Audit event tests ─────────────────────────────────────────────────────
+
+  it('writes audit event with trigger=automatic for CloudWatch alarm', async () => {
+    mockLambdaSend.mockResolvedValueOnce({ ReservedConcurrentExecutions: 5 });
+    mockLambdaSend.mockResolvedValue({});
+
+    await handler(snsEvent('ALARM'));
+
+    expect(MockPutCommand).toHaveBeenCalledTimes(1);
+    const item = MockPutCommand.mock.calls[0][0].Item;
+    expect(item.action).toBe('kill_switch_activated');
+    expect(item.details.trigger).toBe('automatic');
+    expect(item.details.alarmName).toBe('TestAlarm');
+    expect(item.category).toBe('system');
+    expect(item.userId).toBe('SYSTEM');
+  });
+
+  it('writes audit event with trigger=manual for manual-killswitch alarm', async () => {
+    mockLambdaSend.mockResolvedValueOnce({ ReservedConcurrentExecutions: 5 });
+    mockLambdaSend.mockResolvedValue({});
+
+    const manualEvent = {
+      Records: [{
+        Sns: { Message: JSON.stringify({ NewStateValue: 'ALARM', AlarmName: 'manual-killswitch' }) },
+      }],
+    };
+    await handler(manualEvent);
+
+    const item = MockPutCommand.mock.calls[0][0].Item;
+    expect(item.details.trigger).toBe('manual');
+    expect(item.details.alarmName).toBe('manual-killswitch');
+  });
+
+  it('does not throw when audit write fails', async () => {
+    mockLambdaSend.mockResolvedValueOnce({ ReservedConcurrentExecutions: 5 });
+    mockLambdaSend.mockResolvedValue({});
+    mockDdbSend.mockRejectedValueOnce(new Error('DynamoDB unavailable'));
+
+    await expect(handler(snsEvent('ALARM'))).resolves.toBeUndefined();
+  });
+
+  it('skips audit write when AUDIT_EVENTS_TABLE is not set', async () => {
+    delete process.env.AUDIT_EVENTS_TABLE;
+    mockLambdaSend.mockResolvedValueOnce({ ReservedConcurrentExecutions: 5 });
+    mockLambdaSend.mockResolvedValue({});
+
+    await handler(snsEvent('ALARM'));
+
+    expect(MockPutCommand).not.toHaveBeenCalled();
   });
 });
