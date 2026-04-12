@@ -121,6 +121,8 @@
   "reactivate": "Reaktivieren",
   "downloadVault": "Tresor herunterladen",
   "emailVault": "Tresor per E-Mail",
+  "emailVaultSending": "Tresor-Export wird an {{username}} gesendet...",
+  "emailVaultSent": "Der Tresor-Export wurde an {{username}} gesendet.",
   "userDetails": "Benutzerdetails",
   "refreshOtpAction": "OTP aktualisieren",
   "deleteUserAction": "Benutzer l\u00f6schen",

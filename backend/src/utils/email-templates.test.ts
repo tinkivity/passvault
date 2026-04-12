@@ -73,3 +73,56 @@ describe('extractPlainText', () => {
     expect(result).not.toMatch(/\n{3,}/);
   });
 });
+
+describe('renderTemplate — conditional blocks', () => {
+  it('keeps content when variable is non-empty', () => {
+    const html = '{{#verifyUrl}}<a href="{{verifyUrl}}">Verify</a>{{/verifyUrl}}';
+    const result = renderTemplate(html, { verifyUrl: 'https://example.com' });
+    expect(result).toBe('<a href="https://example.com">Verify</a>');
+  });
+
+  it('strips content when variable is empty', () => {
+    const html = 'before{{#verifyUrl}}<a href="{{verifyUrl}}">Verify</a>{{/verifyUrl}}after';
+    const result = renderTemplate(html, { verifyUrl: '' });
+    expect(result).toBe('beforeafter');
+  });
+
+  it('strips content when variable is missing', () => {
+    const html = 'before{{#verifyUrl}}<a>Verify</a>{{/verifyUrl}}after';
+    const result = renderTemplate(html, {});
+    expect(result).toBe('beforeafter');
+  });
+
+  it('handles HTML-comment-wrapped conditional markers', () => {
+    const html = '<!-- {{#verifyUrl}} --><a>Link</a><!-- {{/verifyUrl}} -->';
+    const result = renderTemplate(html, { verifyUrl: 'yes' });
+    expect(result).toBe('<a>Link</a>');
+  });
+});
+
+describe('renderEmail — subject extraction', () => {
+  // renderEmail requires S3 (loadTemplate), so we test the subject extraction
+  // logic indirectly via renderTemplate + the title-matching regex.
+
+  it('extracts subject from <title> tag after variable substitution', () => {
+    const html = '<html><head><title>Welcome to {{appName}}</title></head><body></body></html>';
+    const rendered = renderTemplate(html, { appName: 'PassVault' });
+    const match = rendered.match(/<title>(.*?)<\/title>/i);
+    expect(match).not.toBeNull();
+    expect(match![1]).toBe('Welcome to PassVault');
+  });
+
+  it('extracts German title with HTML entities', () => {
+    const html = '<title>Konto zur&uuml;ckgesetzt — {{appName}}</title>';
+    const rendered = renderTemplate(html, { appName: 'PassVault' });
+    const match = rendered.match(/<title>(.*?)<\/title>/i);
+    expect(match![1]).toBe('Konto zur&uuml;ckgesetzt — PassVault');
+  });
+
+  it('extracts French title with accented characters', () => {
+    const html = '<title>Bienvenue sur {{appName}}</title>';
+    const rendered = renderTemplate(html, { appName: 'PassVault' });
+    const match = rendered.match(/<title>(.*?)<\/title>/i);
+    expect(match![1]).toBe('Bienvenue sur PassVault');
+  });
+});

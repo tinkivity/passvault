@@ -132,6 +132,8 @@
   "reactivate": "Reactivate",
   "downloadVault": "download vault",
   "emailVault": "email vault",
+  "emailVaultSending": "Sending vault export to {{username}}...",
+  "emailVaultSent": "Vault export has been emailed to {{username}}.",
   "userDetails": "user details",
   "refreshOtpAction": "refresh OTP",
   "deleteUserAction": "delete user",

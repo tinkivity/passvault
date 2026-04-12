@@ -20,7 +20,7 @@ import { hashPassword, verifyPassword, generateOtp, generateSalt } from '../util
 import { signToken } from '../utils/jwt.js';
 import { deleteLegacyVaultFile, deleteVaultSplitFiles } from '../utils/s3.js';
 import { sendHtmlEmail } from '../utils/ses.js';
-import { renderEmail } from '../utils/email-templates.js';
+import { renderEmail, formatAbsoluteTime, resolveGreeting } from '../utils/email-templates.js';
 import { resolveLanguage } from '../utils/language.js';
 import { verifyPasskeyToken } from './passkey.js';
 import { deleteVault, sendVaultEmail } from './vault.js';
@@ -217,14 +217,30 @@ export async function createUserInvitation(
       const lang = resolveLanguage(request.preferredLanguage);
       const baseUrl = process.env.FRONTEND_URL || '';
       const verifyUrl = registrationToken ? `${baseUrl}/verify-email?token=${registrationToken}` : '';
-      const { html, plainText } = await renderEmail('invitation', lang, {
-        userName: request.username,
+
+      const greeting = resolveGreeting({
+        username: request.username,
+        displayName: request.displayName,
+        firstName: request.firstName,
+        lastName: request.lastName,
+      });
+
+      // Absolute expiry timestamps with timezone for the user's language
+      const otpExpiresAtDate = new Date(Date.now() + config.session.otpExpiryMinutes * 60_000);
+      const linkExpiresAtDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      const otpExpiresAt = formatAbsoluteTime(otpExpiresAtDate, lang);
+      const linkExpiresAt = formatAbsoluteTime(linkExpiresAtDate, lang);
+
+      const { subject, html, plainText } = await renderEmail('invitation', lang, {
+        userName: greeting,
         otpCode: otp,
         otpExpiryMinutes: String(config.session.otpExpiryMinutes),
+        otpExpiresAt,
         verifyUrl,
         linkExpiryDays: '7',
+        linkExpiresAt,
       });
-      await sendHtmlEmail(request.username, 'Your PassVault account', html, plainText);
+      await sendHtmlEmail(request.username, subject, html, plainText);
       console.log(`Invitation email sent to ${request.username}`);
     } catch (err) {
       console.error(`Failed to send invitation email to ${request.username}:`, err);
@@ -307,12 +323,14 @@ export async function refreshOtp(
   if (process.env.SENDER_EMAIL && user.username.includes('@')) {
     try {
       const lang = resolveLanguage(user.preferredLanguage);
-      const { html, plainText } = await renderEmail('otp-refresh', lang, {
-        userName: user.username,
+      const otpExpiresAtDate = new Date(Date.now() + config.session.otpExpiryMinutes * 60_000);
+      const { subject, html, plainText } = await renderEmail('otp-refresh', lang, {
+        userName: resolveGreeting(user),
         otpCode: otp,
         otpExpiryMinutes: String(config.session.otpExpiryMinutes),
+        otpExpiresAt: formatAbsoluteTime(otpExpiresAtDate, lang),
       });
-      await sendHtmlEmail(user.username, 'Your PassVault account - new one-time password', html, plainText);
+      await sendHtmlEmail(user.username, subject, html, plainText);
     } catch (err) {
       console.error(`Failed to send refreshed OTP email to ${user.username}:`, err);
     }
@@ -375,11 +393,11 @@ export async function resetUser(
   if (process.env.SENDER_EMAIL && user.username.includes('@')) {
     try {
       const lang = resolveLanguage(user.preferredLanguage);
-      const { html, plainText } = await renderEmail('account-reset', lang, {
-        userName: user.username,
+      const { subject, html, plainText } = await renderEmail('account-reset', lang, {
+        userName: resolveGreeting(user),
         otpCode: otp,
       });
-      await sendHtmlEmail(user.username, 'Your PassVault account has been reset', html, plainText);
+      await sendHtmlEmail(user.username, subject, html, plainText);
     } catch (err) {
       console.error('Failed to send reset email:', err);
     }

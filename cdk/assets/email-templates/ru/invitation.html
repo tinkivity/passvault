@@ -58,7 +58,7 @@
                             {{otpCode}}
                           </p>
                           <p style="margin: 10px 0 0 0; font-size: 13px; color: #6e6e73; line-height: 1.5;">
-                            Действителен в течение {{otpExpiryMinutes}} минут
+                            Действителен в течение {{otpExpiryMinutes}} минут ({{otpExpiresAt}})
                           </p>
                         </td>
                       </tr>
@@ -95,7 +95,7 @@
                 </tr>
               </table>
               <p style="margin: 12px 0 0 0; font-size: 13px; color: #6e6e73;">
-                Ссылка действительна в течение {{linkExpiryDays}} дней.
+                Ссылка действительна в течение {{linkExpiryDays}} дней ({{linkExpiresAt}}).
               </p>
             </td>
           </tr>
@@ -159,7 +159,7 @@
 Для Вас создана учётная запись в {{appName}}. Используйте одноразовый пароль ниже для первого входа.
 
 Ваш одноразовый пароль: {{otpCode}}
-Действителен в течение {{otpExpiryMinutes}} минут.
+Действителен в течение {{otpExpiryMinutes}} минут ({{otpExpiresAt}}).
 
 После входа Вам будет предложено установить новый пароль и настроить учётную запись.
 

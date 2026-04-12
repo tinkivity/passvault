@@ -58,7 +58,7 @@
                             {{otpCode}}
                           </p>
                           <p style="margin: 10px 0 0 0; font-size: 13px; color: #6e6e73; line-height: 1.5;">
-                            G&uuml;ltig f&uuml;r {{otpExpiryMinutes}} Minuten
+                            G&uuml;ltig f&uuml;r {{otpExpiryMinutes}} Minuten ({{otpExpiresAt}})
                           </p>
                         </td>
                       </tr>
@@ -95,7 +95,7 @@
                 </tr>
               </table>
               <p style="margin: 12px 0 0 0; font-size: 13px; color: #6e6e73;">
-                Dieser Link ist {{linkExpiryDays}} Tage g&uuml;ltig.
+                Dieser Link ist {{linkExpiryDays}} Tage g&uuml;ltig ({{linkExpiresAt}}).
               </p>
             </td>
           </tr>
@@ -159,7 +159,7 @@ Hallo {{userName}},
 Ein Konto wurde fuer Sie bei {{appName}} erstellt. Verwenden Sie das untenstehende Einmalpasswort, um sich zum ersten Mal anzumelden.
 
 Ihr Einmalpasswort: {{otpCode}}
-Gueltig fuer {{otpExpiryMinutes}} Minuten.
+Gueltig fuer {{otpExpiryMinutes}} Minuten ({{otpExpiresAt}}).
 
 Nach der Anmeldung werden Sie aufgefordert, ein neues Passwort festzulegen und Ihr Konto einzurichten.
 

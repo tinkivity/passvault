@@ -58,7 +58,7 @@
                             {{otpCode}}
                           </p>
                           <p style="margin: 10px 0 0 0; font-size: 13px; color: #6e6e73; line-height: 1.5;">
-                            Expires in {{otpExpiryMinutes}} minutes
+                            Expires in {{otpExpiryMinutes}} minutes ({{otpExpiresAt}})
                           </p>
                         </td>
                       </tr>
@@ -95,7 +95,7 @@
                 </tr>
               </table>
               <p style="margin: 12px 0 0 0; font-size: 13px; color: #6e6e73;">
-                This link expires in {{linkExpiryDays}} days.
+                This link expires in {{linkExpiryDays}} days ({{linkExpiresAt}}).
               </p>
             </td>
           </tr>
@@ -159,7 +159,7 @@ Hello {{userName}},
 An account has been created for you on {{appName}}. Use the one-time password below to sign in for the first time.
 
 Your one-time password: {{otpCode}}
-Expires in {{otpExpiryMinutes}} minutes.
+Expires in {{otpExpiryMinutes}} minutes ({{otpExpiresAt}}).
 
 After signing in, you will be prompted to set a new password and configure your account.
 

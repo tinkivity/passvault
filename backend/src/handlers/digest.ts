@@ -12,7 +12,7 @@
 import { gzipSync } from 'zlib';
 import { listAllUsers, listVaultsByUser, updateUser } from '../utils/dynamodb.js';
 import { sendEmailWithAttachment } from '../utils/ses.js';
-import { renderEmail } from '../utils/email-templates.js';
+import { renderEmail, resolveGreeting } from '../utils/email-templates.js';
 import { resolveLanguage } from '../utils/language.js';
 import { signUnsubscribeToken } from '../utils/jwt.js';
 import { getVaultIndexFile, getVaultItemsFile } from '../utils/s3.js';
@@ -70,8 +70,8 @@ async function processVaultBackup(user: User, now: Date): Promise<void> {
   }
 
   const lang = resolveLanguage(user.preferredLanguage);
-  const { html, plainText } = await renderEmail('vault-backup', lang, {
-    userName: user.username,
+  const { subject, html, plainText } = await renderEmail('vault-backup', lang, {
+    userName: resolveGreeting(user),
     vaultName: vault.displayName,
     backupDate: date,
     unsubscribeUrl,
@@ -80,9 +80,9 @@ async function processVaultBackup(user: User, now: Date): Promise<void> {
 
   await sendEmailWithAttachment(
     user.username,
-    `PassVault: Vault backup — ${vault.displayName} (${date})`,
+    subject,
     plainText,
-    { filename, content: compressed.toString('binary'), contentType: 'application/gzip' },
+    { filename, content: compressed.toString('base64'), contentType: 'application/gzip' },
     html,
   );
   await updateUser(user.userId, { lastBackupSentAt: now.toISOString() });
