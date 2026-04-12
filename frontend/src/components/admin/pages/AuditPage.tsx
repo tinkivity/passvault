@@ -465,6 +465,7 @@ export function AuditPage() {
             loadingLabel={t('loadingAuditEvents')}
             emptyMessage={hasFilters ? t('noEventsMatchCurrentFilters') : t('noAuditEventsYet')}
             defaultSorting={[]}
+            hidePagination
           />
         )}
 

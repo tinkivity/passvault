@@ -37,6 +37,8 @@ interface DataTableProps<TData, TValue> {
   defaultPageSize?: number;
   defaultSorting?: SortingState;
   onRowClick?: (row: TData) => void;
+  /** Hide the built-in pagination footer (use when the parent provides its own). */
+  hidePagination?: boolean;
 }
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50];
@@ -51,6 +53,7 @@ export function DataTable<TData, TValue>({
   defaultPageSize = 10,
   defaultSorting = [],
   onRowClick,
+  hidePagination = false,
 }: DataTableProps<TData, TValue>) {
   const { t } = useTranslation();
   const [sorting, setSorting] = useState<SortingState>(defaultSorting);
@@ -148,7 +151,7 @@ export function DataTable<TData, TValue>({
       </div>
 
       {/* Pagination footer */}
-      {!loading && (
+      {!loading && !hidePagination && (
         <div className="flex items-center justify-between gap-4 text-sm text-muted-foreground">
           <span>
             {totalRows === 0

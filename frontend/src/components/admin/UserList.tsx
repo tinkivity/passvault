@@ -197,7 +197,7 @@ function getUserColumns(
   onEmailVault: (userId: string) => void,
   onShowUser: ((user: UserSummary) => void) | undefined,
   actionLoading: string | null,
-  isProd: boolean,
+  isDev: boolean,
   t: (key: string) => string,
 ): ColumnDef<UserSummary>[] {
   const cols: ColumnDef<UserSummary>[] = [
@@ -356,10 +356,10 @@ function getUserColumns(
                   </DropdownMenuItem>
                 )}
 
-                {/* 4. Email vault — disabled in dev/beta */}
+                {/* 4. Email vault — disabled in dev (no SENDER_EMAIL) */}
                 <DropdownMenuItem
-                  disabled={!isProd}
-                  onClick={() => { if (isProd) onEmailVault(user.userId); }}
+                  disabled={isDev}
+                  onClick={() => { if (!isDev) onEmailVault(user.userId); }}
                 >
                   <EnvelopeIcon className="mr-2 h-4 w-4" />
                   {t('admin:emailVault')}
@@ -440,8 +440,9 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser
   const [resetTarget, setResetTarget] = useState<UserSummary | null>(null);
   const [resetLoading, setResetLoading] = useState(false);
   const [vaultPickerUser, setVaultPickerUser] = useState<UserSummary | null>(null);
+  const [emailVaultState, setEmailVaultState] = useState<{ username: string; status: 'sending' | 'sent' | 'error'; error?: string } | null>(null);
 
-  const isProd = config.isProd;
+  const isDev = config.isDev;
 
   const handlePickVault = useCallback((user: UserSummary) => {
     setVaultPickerUser(user);
@@ -554,14 +555,21 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser
       setUnlockTarget,
       setExpireTarget,
       setReactivateTarget,
-      (userId) => { onEmailVault(userId).catch(() => {}); },
+      (userId) => {
+        const user = users.find(u => u.userId === userId);
+        const username = user?.username ?? userId;
+        setEmailVaultState({ username, status: 'sending' });
+        onEmailVault(userId)
+          .then(() => setEmailVaultState({ username, status: 'sent' }))
+          .catch((err) => setEmailVaultState({ username, status: 'error', error: err instanceof Error ? err.message : 'Failed to send' }));
+      },
       onRowClick,
       actionLoading,
-      isProd,
+      isDev,
       t,
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [onDownload, handlePickVault, onRowClick, onEmailVault, actionLoading, isProd, t],
+    [onDownload, handlePickVault, onRowClick, onEmailVault, users, actionLoading, isDev, t],
   );
 
 
@@ -989,6 +997,44 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser
               disabled={reactivateLoading}
             >
               {reactivateLoading ? t('admin:reactivatingUser') : t('admin:reactivate')}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Email vault progress / success / error */}
+      <Dialog
+        open={emailVaultState !== null}
+        onOpenChange={(open) => { if (!open && emailVaultState?.status !== 'sending') setEmailVaultState(null); }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t('admin:emailVault')}</DialogTitle>
+          </DialogHeader>
+          {emailVaultState?.status === 'sending' && (
+            <div className="flex items-center gap-3 py-4">
+              <ArrowPathIcon className="h-5 w-5 animate-spin text-muted-foreground shrink-0" />
+              <p className="text-sm text-muted-foreground">
+                {t('admin:emailVaultSending', { username: emailVaultState.username })}
+              </p>
+            </div>
+          )}
+          {emailVaultState?.status === 'sent' && (
+            <p className="text-sm text-muted-foreground py-2">
+              {t('admin:emailVaultSent', { username: emailVaultState.username })}
+            </p>
+          )}
+          {emailVaultState?.status === 'error' && (
+            <p className="text-sm text-destructive py-2">
+              {emailVaultState.error}
+            </p>
+          )}
+          <DialogFooter>
+            <Button
+              onClick={() => setEmailVaultState(null)}
+              disabled={emailVaultState?.status === 'sending'}
+            >
+              {t('common:ok')}
             </Button>
           </DialogFooter>
         </DialogContent>

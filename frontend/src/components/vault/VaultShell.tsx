@@ -100,12 +100,22 @@ export function VaultShell() {
     await api.sendVaultEmail(vaultId, token!);
   }, [token]);
 
+  // Vault timeout reset mechanism: bump a counter per vault to signal VaultTimeoutRing
+  const vaultResetCountersRef = useRef(new Map<string, number>());
+  const [vaultResetCounters, setVaultResetCounters] = useState(new Map<string, number>());
+
+  const resetVaultTimeout = useCallback((vid: string) => {
+    vaultResetCountersRef.current.set(vid, (vaultResetCountersRef.current.get(vid) ?? 0) + 1);
+    setVaultResetCounters(new Map(vaultResetCountersRef.current));
+  }, []);
+
   const handleCreateVault = useCallback(async (displayName: string, password: string) => {
     const newVault = await createVault(displayName);
     setVaults(prev => [...prev, newVault]);
     await deriveKey(newVault.vaultId, password, newVault.encryptionSalt);
+    resetVaultTimeout(newVault.vaultId);
     navigate(ROUTES.UI.ITEMS(newVault.vaultId));
-  }, [createVault, deriveKey, navigate]);
+  }, [createVault, deriveKey, resetVaultTimeout, navigate]);
 
   const handleImportVault = useCallback(async (displayName: string, fileData: VaultDownloadResponse, password: string) => {
     // deriveCryptoKey, decryptContent, encryptContent, clearCryptoKey imported statically at top
@@ -132,21 +142,13 @@ export function VaultShell() {
       await api.putVault(newVault.vaultId, { encryptedIndex, encryptedItems }, token!);
 
       // Key is already derived for the new vault — navigate directly to items
+      resetVaultTimeout(newVault.vaultId);
       navigate(ROUTES.UI.ITEMS(newVault.vaultId));
     } catch (err) {
       clearCryptoKey(tempId);
       throw err;
     }
-  }, [createVault, token, navigate]);
-
-  // Vault timeout reset mechanism: bump a counter per vault to signal VaultTimeoutRing
-  const vaultResetCountersRef = useRef(new Map<string, number>());
-  const [vaultResetCounters, setVaultResetCounters] = useState(new Map<string, number>());
-
-  const resetVaultTimeout = useCallback((vid: string) => {
-    vaultResetCountersRef.current.set(vid, (vaultResetCountersRef.current.get(vid) ?? 0) + 1);
-    setVaultResetCounters(new Map(vaultResetCountersRef.current));
-  }, []);
+  }, [createVault, resetVaultTimeout, token, navigate]);
 
   const handleDeleteVault = useCallback(async (vaultId: string) => {
     await deleteVault(vaultId);

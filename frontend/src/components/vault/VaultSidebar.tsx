@@ -275,7 +275,7 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
                           <MoreHorizontal className="h-4 w-4" />
                           <span className="sr-only">{t('vaultActions')}</span>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent side="right" align="start">
+                        <DropdownMenuContent side="right" align="start" className="min-w-[200px]">
                           {unlocked ? (
                             <>
                               <DropdownMenuItem onClick={() => { clearKey(vault.vaultId); navigate(ROUTES.UI.VAULT(vault.vaultId)); }}>
@@ -389,7 +389,7 @@ export function VaultSidebar({ vaults, plan, role, onLogout, onCreateVault, onRe
                       <DropdownMenuTrigger render={<SidebarMenuAction showOnHover />}>
                         <MoreHorizontal className="h-4 w-4" />
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent side="right" align="start">
+                      <DropdownMenuContent side="right" align="start" className="min-w-[200px]">
                         <DropdownMenuItem onClick={() => navigate(`${ROUTES.UI.ADMIN.USERS}?create=1`)}>
                           <UserPlus className="mr-2 h-4 w-4" />
                           {t('createUser')}

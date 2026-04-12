@@ -79,9 +79,25 @@ export function ImportVaultDialog({ open, onOpenChange, onImport }: ImportVaultD
     setPreview(null);
 
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
       try {
-        const parsed: unknown = JSON.parse(reader.result as string);
+        const buffer = reader.result as ArrayBuffer;
+        const bytes = new Uint8Array(buffer);
+
+        // Detect gzip by magic bytes (1f 8b)
+        let jsonText: string;
+        if (bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b) {
+          const ds = new DecompressionStream('gzip');
+          const writer = ds.writable.getWriter();
+          writer.write(bytes);
+          writer.close();
+          const decompressed = await new Response(ds.readable).text();
+          jsonText = decompressed;
+        } else {
+          jsonText = new TextDecoder().decode(bytes);
+        }
+
+        const parsed: unknown = JSON.parse(jsonText);
         if (!isVaultDownloadResponse(parsed)) {
           setError(t('invalidVaultFile'));
           return;
@@ -91,9 +107,11 @@ export function ImportVaultDialog({ open, onOpenChange, onImport }: ImportVaultD
         // Suggest a display name from the filename
         const suggested = file.name
           .replace(/^passvault-/, '')
+          .replace(/-\d{4}-\d{2}-\d{2}\.vault\.gz$/, '')
           .replace(/-\d{4}-\d{2}-\d{2}\.json$/, '')
-          .replace(/[_-]/g, ' ')
+          .replace(/\.vault\.gz$/, '')
           .replace(/\.json$/, '')
+          .replace(/[_-]/g, ' ')
           .trim();
         if (suggested) setDisplayName(suggested);
       } catch {
@@ -101,7 +119,7 @@ export function ImportVaultDialog({ open, onOpenChange, onImport }: ImportVaultD
       }
     };
     reader.onerror = () => setError(t('failedToReadFile'));
-    reader.readAsText(file);
+    reader.readAsArrayBuffer(file);
   };
 
   const handlePreview = async () => {
@@ -196,7 +214,7 @@ export function ImportVaultDialog({ open, onOpenChange, onImport }: ImportVaultD
               ref={fileInputRef}
               id="import-file"
               type="file"
-              accept=".json"
+              accept=".json,.gz"
               className="hidden"
               onChange={handleFileSelect}
             />

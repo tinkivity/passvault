@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Loader2, KeyRound, ShieldCheck } from 'lucide-react';
@@ -80,6 +80,18 @@ export function LoginPage() {
     setSavedPassword('');
   };
 
+  // Auto-trigger passkey verification when entering step 2
+  const passkeyTriggered = useRef(false);
+  useEffect(() => {
+    if (adminPasskeyStep && !passkeyTriggered.current) {
+      passkeyTriggered.current = true;
+      handleAdminPasskeyVerification().catch(() => {
+        // On failure (user cancelled, timeout, etc.) — allow retry via button
+        passkeyTriggered.current = false;
+      });
+    }
+  }, [adminPasskeyStep]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Step 2: Admin passkey verification
   if (adminPasskeyStep) {
     return (
@@ -95,13 +107,20 @@ export function LoginPage() {
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               <ErrorMessage message={error} />
-              <Button className="w-full" onClick={handleAdminPasskeyVerification} disabled={loading}>
-                {loading ? (
-                  <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('common:pleaseWait')}</>
-                ) : (
-                  <><KeyRound className="h-3.5 w-3.5" /> {t('verifyWithPasskey')}</>
-                )}
-              </Button>
+              {error && (
+                <Button className="w-full" onClick={handleAdminPasskeyVerification} disabled={loading}>
+                  {loading ? (
+                    <><Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('common:pleaseWait')}</>
+                  ) : (
+                    <><KeyRound className="h-3.5 w-3.5" /> {t('verifyWithPasskey')}</>
+                  )}
+                </Button>
+              )}
+              {!error && loading && (
+                <div className="flex items-center justify-center gap-2 py-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t('common:pleaseWait')}
+                </div>
+              )}
               <Button variant="ghost" className="w-full" onClick={handleCancelPasskeyStep} disabled={loading}>
                 {t('common:cancel')}
               </Button>
