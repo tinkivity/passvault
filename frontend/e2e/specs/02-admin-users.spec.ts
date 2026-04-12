@@ -1,5 +1,6 @@
 import { test, expect } from '../fixtures/auth.fixture.js';
 import { createTestUser, deleteTestUser } from '../helpers/users.js';
+import { testUserEmail } from '../helpers/test-emails.js';
 import type { APIRequestContext } from '@playwright/test';
 
 // Hoisted to module scope so the resolveTargetUser helper can read it.
@@ -81,8 +82,9 @@ test.describe.serial('Admin — User Management', () => {
       adminPage.getByRole('heading', { name: 'Create User' }),
     ).toBeVisible({ timeout: 10000 });
 
-    // Fill out the form — email address field
-    createdUsername = `e2e-test-${Date.now()}@example.com`;
+    // Fill out the form — email address field (must use testUserEmail for
+    // proper plus-address routing on beta — bare @example.com hard-bounces)
+    createdUsername = testUserEmail(`e2e-test-${Date.now()}`);
     await adminPage.locator('#new-username').fill(createdUsername);
 
     // Fill display name if present

@@ -14,6 +14,15 @@ make_test_email() {
   if [[ -n "$plus" && "$plus" =~ ^[^@[:space:]]+@[^@[:space:]]+$ ]]; then
     echo "${plus%@*}+${tag}@${plus#*@}"
   else
+    # On beta/prod, PASSVAULT_PLUS_ADDRESS must be set — falling back to
+    # @passvault-test.local would cause SES hard bounces and damage sender
+    # reputation. Fail loudly instead of silently creating bad addresses.
+    local env="${SIT_ENV:-${ENVIRONMENT:-}}"
+    if [[ "$env" == "beta" || "$env" == "prod" ]]; then
+      echo "FATAL: PASSVAULT_PLUS_ADDRESS is required on $env to avoid SES hard bounces." >&2
+      echo "  Set it to your verified plus-address (e.g. ops@example.com)." >&2
+      return 1
+    fi
     echo "${tag}@passvault-test.local"
   fi
 }
