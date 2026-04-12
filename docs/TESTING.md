@@ -240,16 +240,29 @@ Performance tests measure API response times, concurrent user handling, and payl
 open backend/perf/perf-report.html
 ```
 
-**Cannot run on prod.** Creates temporary users, runs 22 tests (4 setup + 10 response time + 1 concurrent + 7 payload), and cleans up all artifacts on exit.
+**Cannot run on prod.** Creates temporary users, runs 23 tests (5 setup + 10 response time + 1 concurrent + 7 payload), and cleans up all artifacts on exit.
 
 ### Performance scenarios
 
 | Scenario | Tests | What it measures |
 |----------|-------|-----------------|
 | 00 Setup | 5 | Admin login, create test user, onboard user, create vault with seed data, **warm all Lambdas** |
-| 01 Response Times | 10 | p50/p95/p99 latency per endpoint (10 iterations each) |
+| 01 Response Times | 10 | p50/p95/p99 latency per endpoint (**20 iterations** each) |
 | 02 Concurrent Access | 1 | 5 parallel vault read streams, no 429s |
-| 03 Payload Size | 7 | Vault PUT+GET with 1KB–500KB round-trips, 1MB PUT, 1.1MB rejection, data restore |
+| 03 Payload Size | 7 | Vault PUT+GET with 1KB–500KB round-trips, 1MB PUT, 1.1MB rejection, data restore (**10 iterations** each) |
+
+### Sample count and p95 accuracy
+
+The p95 percentile is computed as `sorted[Math.ceil(N * 0.95) - 1]`. With too few samples, p95 degenerates to the single maximum value:
+
+| Samples | p95 index | What p95 actually measures |
+|---------|-----------|---------------------------|
+| 5 | 4 (max) | Worst single request — useless |
+| 10 | 9 (max) | Worst single request — useless |
+| **20** | **18** | 19th of 20 — one outlier excluded |
+| 30 | 28 | 29th of 30 — two outliers excluded |
+
+Endpoint tests use **20 iterations** and payload tests use **10 iterations** (previously 10 and 5). With 20 samples, a single cold start, GC pause, or network hiccup is excluded from p95. With the old 10-sample runs, p95 was literally the max — one bad request failed the entire test regardless of how the other 9 performed.
 
 ### Lambda warmup
 

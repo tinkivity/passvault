@@ -14,7 +14,10 @@ const baselines = resolveBaselines(process.env.SIT_ENV ?? 'dev');
 
 const HIGH = POW_CONFIG.DIFFICULTY.HIGH;
 const MEDIUM = POW_CONFIG.DIFFICULTY.MEDIUM;
-const ITERATIONS = 10;
+// 20 iterations makes p95 statistically meaningful: p95 of 20 = the 19th value
+// (sorted), so one outlier spike is excluded. With 10 samples, p95 = max, and
+// a single cold start or network hiccup would fail the test.
+const ITERATIONS = 20;
 
 interface EndpointSpec {
   name: string;
