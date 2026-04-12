@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { postWithPoW, POW_DIFFICULTY } from '../helpers/pow.js';
 
 const email = process.env.E2E_ADMIN_EMAIL ?? '';
 const password = process.env.E2E_ADMIN_PASSWORD ?? '';
@@ -40,13 +41,13 @@ test.describe('Authentication', () => {
     const apiBase = process.env.E2E_API_BASE_URL ?? '';
 
     // Login via API and inject session (same approach as auth fixture)
-    const loginRes = await page.request.post(`${apiBase}/api/auth/login`, {
+    const { body } = await postWithPoW(page.request, apiBase, '/api/auth/login', {
       data: { username: email, password },
+      difficulty: POW_DIFFICULTY.MEDIUM,
     });
-    const body = await loginRes.json();
     expect(body.success).toBe(true);
 
-    const d = body.data;
+    const d = body.data as Record<string, unknown>;
     await page.goto('/login');
     await page.waitForLoadState('domcontentloaded');
 
@@ -71,13 +72,13 @@ test.describe('Authentication', () => {
     const apiBase = process.env.E2E_API_BASE_URL ?? '';
 
     // Login via API and inject session
-    const loginRes = await page.request.post(`${apiBase}/api/auth/login`, {
+    const { body } = await postWithPoW(page.request, apiBase, '/api/auth/login', {
       data: { username: email, password },
+      difficulty: POW_DIFFICULTY.MEDIUM,
     });
-    const body = await loginRes.json();
     expect(body.success).toBe(true);
 
-    const d = body.data;
+    const d = body.data as Record<string, unknown>;
     await page.goto('/login');
     await page.waitForLoadState('domcontentloaded');
 
@@ -111,13 +112,13 @@ test.describe('Authentication', () => {
     test.skip(!hasCredentials, 'E2E_ADMIN_EMAIL and E2E_ADMIN_PASSWORD must be set');
 
     const apiBase = process.env.E2E_API_BASE_URL ?? '';
-    const loginRes = await page.request.post(`${apiBase}/api/auth/login`, {
+    const { body } = await postWithPoW(page.request, apiBase, '/api/auth/login', {
       data: { username: email, password },
+      difficulty: POW_DIFFICULTY.MEDIUM,
     });
-    const body = await loginRes.json();
     expect(body.success).toBe(true);
 
-    const d = body.data;
+    const d = body.data as Record<string, unknown>;
     await page.goto('/login');
     await page.waitForLoadState('domcontentloaded');
     await page.evaluate((authState: Record<string, unknown>) => {

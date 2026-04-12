@@ -291,43 +291,14 @@ PERF_PASSWORD="Perf$(openssl rand -hex 12)!Pw"
 
 echo "  Onboarding perf admin (login + password change)..."
 
-# Login with OTP. sit-create-admin.ts writes the user to DynamoDB via a direct
-# PutCommand; the login endpoint reads via the username-index GSI which is
-# eventually consistent. If the GSI hasn't propagated yet, the login returns
-# a 401 with "Invalid username or password" — the same error as a bad password.
-# Retry a few times with backoff to absorb this.
-LOGIN_TOKEN=""
-LOGIN_RES=""
-for attempt in 1 2 3 4 5; do
-  LOGIN_RES=$(curl -s -X POST "$API_URL/api/auth/login" \
-    -H "Content-Type: application/json" \
-    -d "{\"username\":\"$PERF_EMAIL\",\"password\":\"$PERF_OTP\"}")
-  LOGIN_TOKEN=$(echo "$LOGIN_RES" | jq -r '.data.token // empty')
-  if [[ -n "$LOGIN_TOKEN" ]]; then
-    break
-  fi
-  if [[ "$attempt" -lt 5 ]]; then
-    echo "  Login attempt $attempt returned no token; retrying in 2s (likely GSI propagation)..."
-    sleep 2
-  fi
-done
+# Uses a TypeScript helper that handles PoW challenge/solve (required on beta/prod).
+ONBOARD_RES=$(E2E_API_BASE_URL="$API_URL" E2E_EMAIL="$PERF_EMAIL" E2E_OTP="$PERF_OTP" \
+  E2E_PASSWORD="$PERF_PASSWORD" npx tsx "$REPO_ROOT/scripts/e2e-onboard-admin.ts" 2>&1)
 
-if [[ -z "$LOGIN_TOKEN" ]]; then
-  echo "  ERROR: Failed to login perf admin with OTP after 5 attempts."
-  echo "  Response: $LOGIN_RES"
-  exit 1
-fi
-
-# Change password
-CP_RES=$(curl -s -X POST "$API_URL/api/auth/change-password" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $LOGIN_TOKEN" \
-  -d "{\"newPassword\":\"$PERF_PASSWORD\"}")
-
-CP_SUCCESS=$(echo "$CP_RES" | jq -r '.success // empty')
-if [[ "$CP_SUCCESS" != "true" ]]; then
-  echo "  ERROR: Failed to change perf admin password."
-  echo "  Response: $CP_RES"
+ONBOARD_SUCCESS=$(echo "$ONBOARD_RES" | tail -1 | jq -r '.success // empty' 2>/dev/null)
+if [[ "$ONBOARD_SUCCESS" != "true" ]]; then
+  echo "  ERROR: Failed to onboard perf admin."
+  echo "  Output: $ONBOARD_RES"
   exit 1
 fi
 

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { postWithPoW, deleteWithPoW, solvePowChallenge, POW_DIFFICULTY } from '../helpers/pow.js';
 
 /**
  * Vault CRUD — verifies that vault displayName values survive the backend's
@@ -22,19 +23,20 @@ test.describe.serial('Vault — displayName round-trip', () => {
 
   test.beforeAll(async ({ request }) => {
     test.skip(!hasCredentials, 'E2E_ADMIN_EMAIL and E2E_ADMIN_PASSWORD must be set');
-    const res = await request.post(`${apiBase}/api/auth/login`, {
+    const { body } = await postWithPoW(request, apiBase, '/api/auth/login', {
       data: { username: email, password },
+      difficulty: POW_DIFFICULTY.MEDIUM,
     });
-    const body = await res.json();
     if (!body.success) throw new Error(`login failed: ${JSON.stringify(body)}`);
-    token = body.data.token;
+    token = (body.data as Record<string, string>).token;
   });
 
   test.afterAll(async ({ request }) => {
     if (!createdVaultId) return;
     // Best-effort cleanup so repeat runs don't bump into the plan limit.
-    await request.delete(`${apiBase}/api/vaults/${createdVaultId}`, {
+    await deleteWithPoW(request, apiBase, `/api/vaults/${createdVaultId}`, {
       headers: { Authorization: `Bearer ${token}` },
+      difficulty: POW_DIFFICULTY.HIGH,
     }).catch(() => undefined);
   });
 
@@ -59,14 +61,15 @@ test.describe.serial('Vault — displayName round-trip', () => {
     test.skip(!hasCredentials, 'E2E_ADMIN_EMAIL and E2E_ADMIN_PASSWORD must be set');
 
     // 1. Create the vault via the API. Its displayName will be encrypted at rest.
-    const createRes = await request.post(`${apiBase}/api/vaults`, {
+    const { body: createBody } = await postWithPoW(request, apiBase, '/api/vaults', {
       headers: { Authorization: `Bearer ${token}` },
       data: { displayName: initialName },
+      difficulty: POW_DIFFICULTY.HIGH,
     });
-    const createBody = await createRes.json();
     expect(createBody.success, `create failed: ${JSON.stringify(createBody)}`).toBe(true);
-    expect(createBody.data.displayName).toBe(initialName);
-    createdVaultId = createBody.data.vaultId;
+    const createData = createBody.data as Record<string, string>;
+    expect(createData.displayName).toBe(initialName);
+    createdVaultId = createData.vaultId;
 
     // 2. Load the sidebar in the browser (which hits the list endpoint, forcing
     //    the decrypt path) and assert the plaintext name is rendered.
@@ -86,13 +89,15 @@ test.describe.serial('Vault — displayName round-trip', () => {
   test('rename: new displayName replaces the old one in the sidebar', async ({ page, request }) => {
     test.skip(!hasCredentials || !createdVaultId, 'Depends on create test');
 
+    const powHeaders = await solvePowChallenge(request, apiBase, POW_DIFFICULTY.HIGH);
     const patchRes = await request.patch(`${apiBase}/api/vaults/${createdVaultId}`, {
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${token}`, ...powHeaders },
       data: { displayName: renamedName },
     });
     const patchBody = await patchRes.json();
     expect(patchBody.success, `rename failed: ${JSON.stringify(patchBody)}`).toBe(true);
-    expect(patchBody.data.displayName).toBe(renamedName);
+    const patchData = patchBody.data as Record<string, string>;
+    expect(patchData.displayName).toBe(renamedName);
 
     await injectSession(page);
     await page.goto('/ui');
@@ -112,13 +117,13 @@ test.describe.serial('Vault — displayName round-trip', () => {
     // alongside the one we already have and delete that instead. This still
     // exercises the decrypt-on-list + gone-after-delete path end to end.
     const throwawayName = `E2E Throwaway ${Date.now()}`;
-    const createRes = await request.post(`${apiBase}/api/vaults`, {
+    const { body: throwawayBody } = await postWithPoW(request, apiBase, '/api/vaults', {
       headers: { Authorization: `Bearer ${token}` },
       data: { displayName: throwawayName },
+      difficulty: POW_DIFFICULTY.HIGH,
     });
-    const createBody = await createRes.json();
-    expect(createBody.success, `throwaway create failed: ${JSON.stringify(createBody)}`).toBe(true);
-    const throwawayVaultId: string = createBody.data.vaultId;
+    expect(throwawayBody.success, `throwaway create failed: ${JSON.stringify(throwawayBody)}`).toBe(true);
+    const throwawayVaultId = (throwawayBody.data as Record<string, string>).vaultId;
 
     // Sanity: sidebar shows both the renamed-from-test-2 vault and the throwaway.
     await injectSession(page);
@@ -130,10 +135,10 @@ test.describe.serial('Vault — displayName round-trip', () => {
       .toBeVisible({ timeout: 20000 });
 
     // Delete the throwaway.
-    const delRes = await request.delete(`${apiBase}/api/vaults/${throwawayVaultId}`, {
+    const { body: delBody } = await deleteWithPoW(request, apiBase, `/api/vaults/${throwawayVaultId}`, {
       headers: { Authorization: `Bearer ${token}` },
+      difficulty: POW_DIFFICULTY.HIGH,
     });
-    const delBody = await delRes.json();
     expect(delBody.success, `delete failed: ${JSON.stringify(delBody)}`).toBe(true);
 
     // Reload the sidebar and assert the throwaway is gone while the original remains.

@@ -1,5 +1,6 @@
 import { test, expect } from '../fixtures/auth.fixture.js';
 import { createTestUser, deleteTestUser, getUserState, onboardTestUserViaAPI } from '../helpers/users.js';
+import { postWithPoW, POW_DIFFICULTY } from '../helpers/pow.js';
 
 const ONBOARD_PASSWORD = 'E2eLifecycle42!Secure';
 
@@ -318,14 +319,16 @@ test.describe.serial('Admin lifecycle — email vault', () => {
     testUser = { userId: created.userId, username: created.username };
     await onboardTestUserViaAPI(request, apiBase, created.username, created.oneTimePassword, ONBOARD_PASSWORD);
     // Create a vault for the test user so the email-vault action has content
-    const loginRes = await request.post(`${apiBase}/api/auth/login`, {
+    const { body: loginBody } = await postWithPoW(request, apiBase, '/api/auth/login', {
       data: { username: created.username, password: ONBOARD_PASSWORD },
+      difficulty: POW_DIFFICULTY.MEDIUM,
     });
-    const loginBody = await loginRes.json();
     if (loginBody.success) {
-      await request.post(`${apiBase}/api/vaults`, {
-        headers: { Authorization: `Bearer ${loginBody.data.token}` },
+      const userToken = (loginBody.data as Record<string, string>).token;
+      await postWithPoW(request, apiBase, '/api/vaults', {
+        headers: { Authorization: `Bearer ${userToken}` },
         data: { displayName: 'E2E Email Test Vault' },
+        difficulty: POW_DIFFICULTY.HIGH,
       });
     }
   });

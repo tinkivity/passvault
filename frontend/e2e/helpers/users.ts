@@ -1,12 +1,14 @@
 import type { APIRequestContext, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import { testUserEmail } from './test-emails.js';
+import { postWithPoW, getWithPoW, deleteWithPoW, POW_DIFFICULTY } from './pow.js';
 
 /**
  * Admin-side user management helpers for e2e tests.
  *
- * These wrap the admin HTTP API. In dev, PoW is disabled
- * (config.features.powEnabled=false) so no challenge/solution is needed.
+ * All API calls include PoW headers (solved via helpers/pow.ts). On dev,
+ * the challenge endpoint returns a trivial difficulty and the middleware
+ * accepts any solution; on beta/prod the full solve is required.
  *
  * Never invoke directly against prod — these endpoints require a valid
  * admin token and mutate real records.
@@ -38,7 +40,7 @@ export async function createTestUser(
 ): Promise<CreatedTestUser> {
   const prefix = opts.usernamePrefix ?? 'e2e-lifecycle';
   const username = testUserEmail(`${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
-  const res = await request.post(`${apiBase}/api/admin/users`, {
+  const { body } = await postWithPoW(request, apiBase, '/api/admin/users', {
     headers: { Authorization: `Bearer ${token}` },
     data: {
       username,
@@ -46,15 +48,16 @@ export async function createTestUser(
       firstName: 'E2E',
       lastName: 'Test',
     },
+    difficulty: POW_DIFFICULTY.HIGH,
   });
-  const body = await res.json();
   if (!body.success) {
-    throw new Error(`createTestUser failed: ${res.status()} ${JSON.stringify(body)}`);
+    throw new Error(`createTestUser failed: ${JSON.stringify(body)}`);
   }
+  const data = body.data as Record<string, string>;
   return {
-    userId: body.data.userId,
+    userId: data.userId,
     username,
-    oneTimePassword: body.data.oneTimePassword,
+    oneTimePassword: data.oneTimePassword,
   };
 }
 
@@ -64,8 +67,9 @@ export async function deleteTestUser(
   token: string,
   userId: string,
 ): Promise<void> {
-  await request.delete(`${apiBase}/api/admin/users/${userId}`, {
+  await deleteWithPoW(request, apiBase, `/api/admin/users/${userId}`, {
     headers: { Authorization: `Bearer ${token}` },
+    difficulty: POW_DIFFICULTY.HIGH,
   }).catch(() => undefined);
 }
 
@@ -77,14 +81,15 @@ export async function getUserState(
 ): Promise<UserStateSummary | null> {
   // There is no single-user GET endpoint in the admin API — fetch the list
   // and filter. Acceptable for test dev volumes (< 100 users).
-  const res = await request.get(`${apiBase}/api/admin/users`, {
+  const { body } = await getWithPoW(request, apiBase, '/api/admin/users', {
     headers: { Authorization: `Bearer ${token}` },
+    difficulty: POW_DIFFICULTY.HIGH,
   });
-  const body = await res.json();
   if (!body.success) {
-    throw new Error(`getUserState list failed: ${res.status()} ${JSON.stringify(body)}`);
+    throw new Error(`getUserState list failed: ${JSON.stringify(body)}`);
   }
-  const match = (body.data.users as UserStateSummary[]).find(u => u.userId === userId);
+  const data = body.data as { users: UserStateSummary[] };
+  const match = data.users.find(u => u.userId === userId);
   return match ?? null;
 }
 
@@ -108,13 +113,14 @@ export async function onboardTestUserViaAPI(
   let token = '';
   let lastBody: unknown = null;
   for (let attempt = 1; attempt <= 5; attempt++) {
-    const loginRes = await request.post(`${apiBase}/api/auth/login`, {
+    const { body } = await postWithPoW(request, apiBase, '/api/auth/login', {
       data: { username, password: oneTimePassword },
+      difficulty: POW_DIFFICULTY.MEDIUM,
     });
-    const body = await loginRes.json();
     lastBody = body;
-    if (body.success && body.data?.token) {
-      token = body.data.token;
+    const data = body.data as Record<string, string> | undefined;
+    if (body.success && data?.token) {
+      token = data.token;
       break;
     }
     if (attempt < 5) {
@@ -125,11 +131,11 @@ export async function onboardTestUserViaAPI(
     throw new Error(`onboardTestUserViaAPI login failed after 5 attempts: ${JSON.stringify(lastBody)}`);
   }
 
-  const cpRes = await request.post(`${apiBase}/api/auth/change-password`, {
+  const { body: cpBody } = await postWithPoW(request, apiBase, '/api/auth/change-password', {
     headers: { Authorization: `Bearer ${token}` },
     data: { newPassword },
+    difficulty: POW_DIFFICULTY.MEDIUM,
   });
-  const cpBody = await cpRes.json();
   if (!cpBody.success) {
     throw new Error(`onboardTestUserViaAPI change-password failed: ${JSON.stringify(cpBody)}`);
   }

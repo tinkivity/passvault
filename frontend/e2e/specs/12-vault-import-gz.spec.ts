@@ -3,6 +3,7 @@ import { gzipSync } from 'zlib';
 import { writeFileSync, unlinkSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import { postWithPoW, getWithPoW, deleteWithPoW, POW_DIFFICULTY } from '../helpers/pow.js';
 
 /**
  * Vault import — verifies that both .json and .vault.gz files can be imported
@@ -29,29 +30,30 @@ test.describe.serial('Vault — import .vault.gz', () => {
     test.skip(!hasCredentials, 'E2E credentials must be set');
 
     // Login
-    const loginRes = await request.post(`${apiBase}/api/auth/login`, {
+    const { body: loginBody } = await postWithPoW(request, apiBase, '/api/auth/login', {
       data: { username: email, password },
+      difficulty: POW_DIFFICULTY.MEDIUM,
     });
-    const loginBody = await loginRes.json();
     if (!loginBody.success) throw new Error(`login failed: ${JSON.stringify(loginBody)}`);
-    token = loginBody.data.token;
+    token = (loginBody.data as Record<string, string>).token;
 
     // Create a source vault with a known password
-    const createRes = await request.post(`${apiBase}/api/vaults`, {
+    const { body: createBody } = await postWithPoW(request, apiBase, '/api/vaults', {
       headers: { Authorization: `Bearer ${token}` },
       data: { displayName: sourceVaultName, password: vaultPassword },
+      difficulty: POW_DIFFICULTY.HIGH,
     });
-    const createBody = await createRes.json();
     if (!createBody.success) throw new Error(`create failed: ${JSON.stringify(createBody)}`);
-    sourceVaultId = createBody.data.vaultId;
+    sourceVaultId = (createBody.data as Record<string, string>).vaultId;
   });
 
   test.afterAll(async ({ request }) => {
     // Clean up both vaults
     const ids = [sourceVaultId, importedVaultId].filter(Boolean);
     for (const id of ids) {
-      await request.delete(`${apiBase}/api/vaults/${id}`, {
+      await deleteWithPoW(request, apiBase, `/api/vaults/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
+        difficulty: POW_DIFFICULTY.HIGH,
       }).catch(() => undefined);
     }
   });
@@ -71,10 +73,10 @@ test.describe.serial('Vault — import .vault.gz', () => {
     test.skip(!hasCredentials, 'E2E credentials must be set');
 
     // 1. Download the vault as JSON (this is what the backend sends as attachment)
-    const downloadRes = await request.get(`${apiBase}/api/vaults/${sourceVaultId}/download`, {
+    const { body: downloadBody } = await getWithPoW(request, apiBase, `/api/vaults/${sourceVaultId}/download`, {
       headers: { Authorization: `Bearer ${token}` },
+      difficulty: POW_DIFFICULTY.HIGH,
     });
-    const downloadBody = await downloadRes.json();
     expect(downloadBody.success, `download failed: ${JSON.stringify(downloadBody)}`).toBe(true);
 
     // 2. Create a .vault.gz file (same format as email attachment)
@@ -133,10 +135,10 @@ test.describe.serial('Vault — import .vault.gz', () => {
     test.skip(!hasCredentials, 'E2E credentials must be set');
 
     // Download the vault as JSON
-    const downloadRes = await request.get(`${apiBase}/api/vaults/${sourceVaultId}/download`, {
+    const { body: downloadBody } = await getWithPoW(request, apiBase, `/api/vaults/${sourceVaultId}/download`, {
       headers: { Authorization: `Bearer ${token}` },
+      difficulty: POW_DIFFICULTY.HIGH,
     });
-    const downloadBody = await downloadRes.json();
     expect(downloadBody.success).toBe(true);
 
     // Write as plain JSON (not gzipped)
@@ -179,8 +181,9 @@ test.describe.serial('Vault — import .vault.gz', () => {
       try { unlinkSync(tmpFile); } catch { /* ignore */ }
       // Clean up the JSON-imported vault
       if (jsonImportedVaultId) {
-        await request.delete(`${apiBase}/api/vaults/${jsonImportedVaultId}`, {
+        await deleteWithPoW(request, apiBase, `/api/vaults/${jsonImportedVaultId}`, {
           headers: { Authorization: `Bearer ${token}` },
+          difficulty: POW_DIFFICULTY.HIGH,
         }).catch(() => undefined);
       }
     }
