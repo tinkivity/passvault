@@ -112,17 +112,24 @@ test.describe.serial('User onboarding — first-login password change (admin)', 
     if (userId) await deleteTestUser(request, apiBase, adminAuth.token, userId);
   });
 
-  test('admin OTP login goes directly to change-password, then admin dashboard', async ({ page }) => {
+  test('admin OTP login goes directly to change-password, then next step', async ({ page }) => {
     await completeAdminFirstLogin(page, username, otp, NEW_PASSWORD);
 
-    // Log in with the new password and confirm we land on the admin dashboard.
+    // Log in with the new password.
     await page.locator('#username').fill(username);
     await page.locator('#password').fill(NEW_PASSWORD);
     await page.locator('button[type="submit"]').click();
 
-    // Admin role lands on /ui/admin/dashboard after a non-first login.
-    // In dev passkey is optional, so no passkey-setup interstitial.
-    await page.waitForURL(/\/ui\/admin\/dashboard/, { timeout: 20000 });
-    await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible({ timeout: 15000 });
+    // In dev (passkey optional): lands on /ui/admin/dashboard.
+    // In beta/prod (passkey required): lands on /passkey-setup (mandatory
+    // passkey registration before first admin session).
+    const passkeyRequired = process.env.E2E_PASSKEY_REQUIRED === 'true';
+    if (passkeyRequired) {
+      await page.waitForURL('**/passkey-setup', { timeout: 20000 });
+      await expect(page.getByText(/Register Your Passkey/i)).toBeVisible({ timeout: 15000 });
+    } else {
+      await page.waitForURL(/\/ui\/admin\/dashboard/, { timeout: 20000 });
+      await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible({ timeout: 15000 });
+    }
   });
 });
