@@ -5,14 +5,8 @@
  */
 
 import type { BenchmarkResult } from './measure.js';
+import type { Baselines } from './baselines.js';
 import { barChart, boxPlot, lineChart } from './svg-charts.js';
-
-interface Baselines {
-  version: string;
-  endpoints: Record<string, { p95: number }>;
-  concurrent: { max_per_user_ms: number; allow_429: boolean };
-  payload: Record<string, number>;
-}
 
 interface AllResults {
   endpoints: BenchmarkResult[];

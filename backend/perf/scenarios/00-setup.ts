@@ -1,5 +1,7 @@
 /**
- * Perf test setup: authenticate admin, create test user, create vault.
+ * Perf test setup: authenticate admin, create test user, create vault,
+ * then warm all Lambda functions to eliminate cold-start noise from
+ * timed measurements.
  */
 
 import { describe, it, expect, afterAll } from 'vitest';
@@ -170,6 +172,50 @@ export function setupPerf(ctx: PerfContext) {
 
       expect(putRes.status).toBe(200);
       expect(putRes.data.success).toBe(true);
+    });
+
+    it('warms all Lambda functions (eliminates cold-start noise)', async () => {
+      // Each Lambda function is called once to trigger initialization.
+      // The setup steps above already warmed auth and admin-mgmt Lambdas,
+      // but vault, health, challenge, and admin-auth may still be cold.
+      // Results are discarded — this is purely to warm the execution environment.
+      const warmupCalls = [
+        // health Lambda
+        request('GET', API_PATHS.HEALTH),
+        // challenge Lambda
+        request('GET', API_PATHS.CHALLENGE),
+        // vault Lambda (list + get index)
+        request('GET', API_PATHS.VAULTS, {
+          token: ctx.testUserToken,
+          powDifficulty: pow(HIGH),
+        }),
+        request('GET', API_PATHS.VAULT.replace('{vaultId}', ctx.vaultId), {
+          token: ctx.testUserToken,
+          powDifficulty: pow(HIGH),
+        }),
+        // admin-auth Lambda (stats endpoint)
+        request('GET', API_PATHS.ADMIN_STATS, {
+          token: ctx.adminToken,
+          powDifficulty: pow(HIGH),
+        }),
+        // admin-mgmt Lambda (users list)
+        request('GET', API_PATHS.ADMIN_USERS, {
+          token: ctx.adminToken,
+          powDifficulty: pow(HIGH),
+        }),
+        // admin-mgmt Lambda (templates)
+        request('GET', API_PATHS.ADMIN_EMAIL_TEMPLATES, {
+          token: ctx.adminToken,
+          powDifficulty: pow(HIGH),
+        }),
+      ];
+
+      const results = await Promise.allSettled(warmupCalls);
+      const warmed = results.filter(r => r.status === 'fulfilled').length;
+      console.log(`  Warmup: ${warmed}/${results.length} Lambda functions warmed`);
+      // Don't assert on status — some endpoints may return non-200 during warmup
+      // (e.g. a race condition with GSI propagation). The goal is just to trigger
+      // the Lambda cold start before timed measurements begin.
     });
   });
 }

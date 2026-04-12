@@ -217,17 +217,17 @@ Running 28 tests using 1 worker
 
 ## Performance Tests
 
-Performance tests measure API response times, concurrent user handling, and payload scaling against checked-in baselines. Each endpoint is called 10 times (5 for large payloads) and the p95 is compared against the baseline threshold.
+Performance tests measure API response times, concurrent user handling, and payload scaling against environment-specific baselines. Each endpoint is called 10 times (5 for large payloads) and the p95 is compared against the baseline threshold for the target environment.
 
 `scripts/perftest.sh` automates the full workflow: creates a temporary admin + test user, onboards both, creates a vault with seed data, runs perf scenarios, and cleans up on exit.
 
 ### Running perf tests
 
 ```bash
-# Run against dev (recommended)
+# Run against dev (recommended for development)
 ./scripts/perftest.sh --env dev --profile <aws-profile>
 
-# Run against beta
+# Run against beta (uses beta-specific baselines)
 ./scripts/perftest.sh --env beta --profile <aws-profile>
 
 # Keep test data after run (for manual inspection)
@@ -246,29 +246,98 @@ open backend/perf/perf-report.html
 
 | Scenario | Tests | What it measures |
 |----------|-------|-----------------|
-| 00 Setup | 4 | Admin login, create test user, onboard user, create vault with seed data |
+| 00 Setup | 5 | Admin login, create test user, onboard user, create vault with seed data, **warm all Lambdas** |
 | 01 Response Times | 10 | p50/p95/p99 latency per endpoint (10 iterations each) |
 | 02 Concurrent Access | 1 | 5 parallel vault read streams, no 429s |
 | 03 Payload Size | 7 | Vault PUT+GET with 1KB–500KB round-trips, 1MB PUT, 1.1MB rejection, data restore |
 
-### Baselines
+### Lambda warmup
 
-Stored in `backend/perf/baselines.json`. Tests fail if p95 exceeds the threshold.
+The final setup step (`00-setup.ts`) fires one request to every Lambda function in parallel before timed measurements begin. This eliminates cold-start noise from the p95 values.
 
-| Endpoint | Baseline (p95) | Notes |
-|----------|---------------|-------|
+**Why this matters:** On beta, Lambdas have no reserved concurrency, so any function can cold-start on any request. A cold start adds 1–3 seconds. With only 10 samples per endpoint, p95 equals the single worst sample — one cold start would fail the entire test. The warmup ensures all Lambdas are initialized before the clock starts.
+
+**What it warms:** health, challenge, auth (login), vault (list + get), admin-auth (stats), admin-mgmt (users + templates) — all 6 Lambda functions that the perf tests measure.
+
+Warmup results are not asserted on (status codes may vary) and not included in the measurements. The goal is purely to trigger Lambda initialization.
+
+### Environment-specific baselines
+
+Baselines are stored in `backend/perf/baselines.json` with a `default` section and per-environment overrides. The test runner resolves the effective baseline for the current environment using `resolveBaselines(env)` from `backend/perf/lib/baselines.ts`.
+
+**Resolution logic:** For each endpoint, the environment-specific value is used if present; otherwise the default value applies. This means you only need to override endpoints that differ from dev.
+
+```
+effective_baseline = env_override[endpoint] ?? default[endpoint]
+```
+
+**Why environments need different baselines:**
+
+| Factor | Dev | Beta | Prod |
+|--------|-----|------|------|
+| PoW (Proof of Work) | Disabled | Enabled (+200–500ms/req) | Enabled (+200–500ms/req) |
+| Lambda memory | 256 MB | 256 MB | 512 MB |
+| Reserved concurrency | None | None | Yes (warm pool) |
+| Cold starts | Frequent | Occasional | Rare |
+| Network path | Direct API GW | CloudFront → API GW | CloudFront → API GW |
+
+**PoW overhead per difficulty level:**
+
+| Difficulty | Used by | Overhead |
+|------------|---------|----------|
+| LOW (16) | challenge, health | ~100ms (challenge fetch + solve) |
+| MEDIUM (18) | login, password change | ~200ms |
+| HIGH (20) | vault ops, admin endpoints | ~500ms |
+
+Each API call that requires PoW also makes an extra `GET /api/challenge` round-trip before the main request. Concurrent tests multiply this overhead per parallel stream.
+
+### Baseline values
+
+**Default (dev — no PoW):**
+
+| Endpoint | p95 | Notes |
+|----------|-----|-------|
 | health | 1000ms | Includes Lambda cold start |
 | challenge | 500ms | Lightweight crypto nonce |
-| auth_login | 3500ms | bcrypt 12 rounds (pure JS) on Lambda — intentionally slow |
+| auth_login | 3500ms | bcrypt 12 rounds (pure JS) — intentionally slow |
 | vault_list | 800ms | DynamoDB query |
-| vault_get_index | 1200ms | DynamoDB + S3 (includes cold start) |
+| vault_get_index | 1200ms | DynamoDB + S3 |
 | vault_put | 1500ms | DynamoDB + S3 write |
 | admin_users | 2000ms | DynamoDB scan |
 | admin_stats | 2000ms | Aggregation across tables |
-| admin_templates | 3000ms | S3 list + read operations |
+| admin_templates | 3000ms | S3 list + read |
 | admin_export | 5000ms | Zip all templates from S3 |
 
-Payload baselines: 1KB=1000ms, 50KB=1500ms, 200KB=3000ms, 500KB=3000ms, 1MB PUT=5000ms.
+**Beta overrides (PoW enabled, 256 MB Lambda):**
+
+| Endpoint | p95 | Delta from dev | Why |
+|----------|-----|----------------|-----|
+| auth_login | 4000ms | +500ms | MEDIUM PoW + challenge RTT |
+| vault_list | 2500ms | +1700ms | HIGH PoW + cold start variability |
+| vault_get_index | 2000ms | +800ms | HIGH PoW + S3 latency |
+| vault_put | 2500ms | +1000ms | HIGH PoW + S3 write |
+| admin_users | 3500ms | +1500ms | HIGH PoW + DynamoDB scan |
+| admin_stats | 3000ms | +1000ms | HIGH PoW + multi-table aggregation |
+| admin_templates | 4000ms | +1000ms | HIGH PoW + S3 operations |
+| admin_export | 5500ms | +500ms | HIGH PoW (export is already I/O-bound) |
+
+Beta concurrent baseline: 14000ms (vs 3000ms dev) — 5 parallel streams each solve HIGH PoW independently, creating CPU contention on the client side. The warmup step does not eliminate concurrent contention since all streams run simultaneously.
+
+**Prod overrides (PoW enabled, 512 MB Lambda, reserved concurrency):**
+
+Prod baselines are tighter than beta because of higher Lambda memory (faster bcrypt, faster cold starts) and reserved concurrency (fewer cold starts). Values are between dev and beta.
+
+### Payload baselines
+
+| Payload | Dev | Beta | Prod |
+|---------|-----|------|------|
+| 1KB round-trip | 1000ms | 3000ms | 2500ms |
+| 50KB round-trip | 1500ms | 4000ms | 3000ms |
+| 200KB round-trip | 3000ms | 5000ms | 3500ms |
+| 500KB round-trip | 3000ms | 5000ms | 3500ms |
+| 1MB PUT only | 5000ms | 5500ms | 5000ms |
+
+Beta payload baselines add ~1000–2000ms for the two PoW solves (PUT + GET round-trip = 2x HIGH PoW).
 
 ### Example output
 
@@ -285,18 +354,6 @@ Payload baselines: 1KB=1000ms, 50KB=1500ms, 200KB=3000ms, 500KB=3000ms, 1MB PUT=
   admin_stats         181ms   (bl: 2000ms) [###                              |] PASS
   admin_templates    2559ms   (bl: 3000ms) [##########################################       |] PASS
   admin_export       1022ms   (bl: 5000ms) [#################] PASS
-
-  Concurrent Access
-------------------------------------------------------------------------
-  concurrent_5_streams p95=1947ms  max=1947ms
-
-  Payload Size Scaling
-------------------------------------------------------------------------
-  1kb_roundtrip       p95=690ms   max=690ms  (bl: 1000ms) PASS
-  50kb_roundtrip      p95=650ms   max=650ms  (bl: 1500ms) PASS
-  200kb_roundtrip     p95=619ms   max=619ms  (bl: 3000ms) PASS
-  500kb_roundtrip     p95=1033ms  max=1033ms (bl: 3000ms) PASS
-  1mb_put             p95=613ms   max=613ms  (bl: 5000ms) PASS
 ```
 
 ### Reports
@@ -319,11 +376,30 @@ The HTML report includes:
 
 ### Updating baselines
 
-Edit `backend/perf/baselines.json` when response times legitimately change (new dependencies, infrastructure changes, Lambda memory adjustments). Commit the updated file. Key considerations:
+Edit `backend/perf/baselines.json` when response times legitimately change. The file has this structure:
 
+```json
+{
+  "version": "2.0.0",
+  "default": { "endpoints": { ... }, "concurrent": { ... }, "payload": { ... } },
+  "beta":    { "endpoints": { ... }, "concurrent": { ... }, "payload": { ... } },
+  "prod":    { "endpoints": { ... }, "concurrent": { ... }, "payload": { ... } }
+}
+```
+
+**Resolution** (`backend/perf/lib/baselines.ts`): The `resolveBaselines(env)` function merges the environment section on top of `default`. Only overridden values need to appear in the environment section — anything not overridden falls through to `default`.
+
+**When to update:**
+- After Lambda memory/architecture changes (affects all environments)
+- After adding PoW to new endpoints (affects beta + prod overrides)
+- After adding new endpoints (add to `default`, then override for beta/prod if PoW-protected)
+- After infrastructure changes (CloudFront, API Gateway throttle settings)
+
+**Key considerations:**
 - `auth_login` is intentionally slow — bcrypt with 12 rounds in pure JavaScript on Lambda
-- `health` baseline includes cold start latency; increase Lambda memory to reduce this
-- Payload baselines account for both PUT + GET round-trip (except 1MB which is PUT-only)
+- `health` and `challenge` don't require PoW, so their baselines are the same across environments
+- Payload baselines for round-trip tests account for 2x PoW solves (PUT + GET) on beta/prod
+- Concurrent baselines on beta/prod must account for parallel PoW solving CPU contention
 
 ---
 
