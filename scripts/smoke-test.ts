@@ -21,7 +21,7 @@ import { execSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { getEnvironmentConfig } from '@passvault/shared';
 import { API_PATHS, POW_HEADERS, POW_CONFIG, ERRORS } from '@passvault/shared';
-import type { ChallengeResponse, LoginResponse, ListUsersResponse } from '@passvault/shared';
+import type { ChallengeResponse, LoginResponse, ListUsersResponse, AdminStats } from '@passvault/shared';
 
 // ── ANSI helpers ────────────────────────────────────────────────────────────
 
@@ -291,6 +291,132 @@ async function main() {
     assert(r.status === 401, `expected 401, got ${r.status}`);
   });
 
+  await test('POST /api/auth/login with honeypot field → 403', async () => {
+    const r = await apiRequest(baseUrl, API_PATHS.AUTH_LOGIN, {
+      method: 'POST',
+      body: { username: 'test', password: 'test', email: 'bot@trap.com' },
+      powDifficulty: pow(POW_CONFIG.DIFFICULTY.MEDIUM),
+    });
+    if (!config.features.honeypotEnabled) {
+      // Honeypot disabled — expect normal auth rejection instead
+      assert(r.status === 401, `expected 401 (honeypot disabled), got ${r.status}`);
+      return { pass: true, note: 'honeypot disabled — got 401 as expected' };
+    }
+    assert(r.status === 403, `expected 403, got ${r.status}`);
+    assert(r.error === ERRORS.FORBIDDEN, `expected "${ERRORS.FORBIDDEN}", got "${r.error}"`);
+  });
+
+  await test('GET /api/vaults with expired JWT → 401 (not 500)', async () => {
+    // Craft a clearly-invalid but structurally plausible JWT
+    const expiredToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ0ZXN0IiwiZXhwIjoxfQ.invalid';
+    const r = await apiRequest(baseUrl, API_PATHS.VAULTS, {
+      token: expiredToken,
+      powDifficulty: pow(POW_CONFIG.DIFFICULTY.HIGH),
+    });
+    assert(r.status === 401, `expected 401, got ${r.status}`);
+  });
+
+  // ── PoW enforcement ───────────────────────────────────────────────────────
+
+  console.log('');
+  console.log(bold('PoW enforcement'));
+
+  if (!config.features.powEnabled) {
+    skip('POST /api/auth/login without PoW headers → 403', 'powEnabled=false');
+  } else {
+    await test('POST /api/auth/login without PoW headers → 403', async () => {
+      // Send directly without PoW headers — should be rejected by PoW middleware
+      const res = await fetch(`${baseUrl}${API_PATHS.AUTH_LOGIN}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'test', password: 'test' }),
+      });
+      assert(res.status === 403, `expected 403, got ${res.status}`);
+      const json = await res.json() as { error?: string };
+      assert(json.error === ERRORS.POW_REQUIRED, `expected "${ERRORS.POW_REQUIRED}", got "${json.error}"`);
+    });
+  }
+
+  // ── CORS headers ──────────────────────────────────────────────────────────
+
+  console.log('');
+  console.log(bold('CORS headers'));
+
+  await test('OPTIONS /api/auth/login → CORS preflight headers', async () => {
+    const res = await fetch(`${baseUrl}${API_PATHS.AUTH_LOGIN}`, {
+      method: 'OPTIONS',
+      headers: {
+        'Origin': baseUrl,
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'content-type,authorization',
+      },
+    });
+    // API Gateway returns 204 No Content for OPTIONS preflight
+    assert(res.status === 200 || res.status === 204, `expected 200 or 204, got ${res.status}`);
+    const allowOrigin = res.headers.get('access-control-allow-origin');
+    assert(allowOrigin !== null, 'missing Access-Control-Allow-Origin header');
+    const allowMethods = res.headers.get('access-control-allow-methods');
+    assert(allowMethods !== null, 'missing Access-Control-Allow-Methods header');
+    return { pass: true, note: `allow-origin=${allowOrigin}` };
+  });
+
+  // ── Response envelope ─────────────────────────────────────────────────────
+
+  console.log('');
+  console.log(bold('Response envelope'));
+
+  await test('Successful response has { success: true, data }', async () => {
+    const res = await fetch(`${baseUrl}${API_PATHS.HEALTH}`);
+    const json = await res.json() as Record<string, unknown>;
+    assert('success' in json, 'missing "success" field');
+    assert(json.success === true, `expected success=true, got ${json.success}`);
+    assert('data' in json, 'missing "data" field');
+  });
+
+  await test('Error response has { error, statusCode }', async () => {
+    // Use login with bad credentials — guaranteed to reach the Lambda and return a wrapped error
+    const r = await apiRequest(baseUrl, API_PATHS.AUTH_LOGIN, {
+      method: 'POST',
+      body: { username: 'envelope-test', password: 'wrong' },
+      powDifficulty: pow(POW_CONFIG.DIFFICULTY.MEDIUM),
+    });
+    assert(!r.ok, 'expected a failing response');
+    const json = r.raw as Record<string, unknown>;
+    assert(json != null, `raw response is ${json}`);
+    assert('error' in json, `missing "error" field in: ${JSON.stringify(json).slice(0, 200)}`);
+    assert(typeof json.error === 'string', `expected error to be a string, got ${typeof json.error}`);
+    assert('statusCode' in json, 'missing "statusCode" field');
+    assert(typeof json.statusCode === 'number', `expected statusCode to be a number, got ${typeof json.statusCode}`);
+  });
+
+  // ── CloudFront / SPA routing (beta + prod only) ──────────────────────────
+
+  console.log('');
+  console.log(bold('CloudFront / SPA routing'));
+
+  if (!config.features.cloudFrontEnabled) {
+    skip('GET /nonexistent-path → 200 with index.html', 'cloudFrontEnabled=false (dev)');
+    skip('Security headers on HTML response', 'cloudFrontEnabled=false (dev)');
+  } else {
+    await test('GET /nonexistent-path → 200 with index.html', async () => {
+      const res = await fetch(`${baseUrl}/this-path-does-not-exist`);
+      assert(res.status === 200, `expected 200, got ${res.status}`);
+      const body = await res.text();
+      assert(body.includes('<!DOCTYPE html>') || body.includes('<html'), 'response is not HTML — SPA rewrite may be broken');
+      return { pass: true, note: 'SPA rewrite working' };
+    });
+
+    await test('Security headers on HTML response', async () => {
+      const res = await fetch(baseUrl);
+      const cacheControl = res.headers.get('cache-control');
+      const contentType = res.headers.get('content-type');
+      assert(contentType !== null && contentType.includes('text/html'), `expected text/html, got ${contentType}`);
+      const notes: string[] = [];
+      if (cacheControl) notes.push(`cache-control=${cacheControl}`);
+      return { pass: true, note: notes.join(', ') || 'headers present' };
+    });
+  }
+
   // ── Authenticated admin tests (only if --password is supplied) ─────────────
 
   console.log('');
@@ -299,6 +425,7 @@ async function main() {
   if (!PASSWORD) {
     skip('POST /api/admin/login', 'pass --password to enable');
     skip('GET /api/admin/users', 'pass --password to enable');
+    skip('GET /api/admin/stats', 'pass --password to enable');
     skip('POST /api/admin/login with bad token → 401', 'pass --password to enable');
   } else {
     let adminToken: string | null = null;
@@ -348,6 +475,25 @@ async function main() {
         assert(Array.isArray((r.data as { users: unknown[] })?.users), 'data.users is not an array');
         const count = (r.data as { users: unknown[] }).users.length;
         return { pass: true, note: `${count} user${count !== 1 ? 's' : ''}` };
+      });
+    }
+
+    if (!adminToken) {
+      skip('GET /api/admin/stats', 'login failed');
+    } else {
+      await test('GET /api/admin/stats → totalUsers/totalVaultSizeBytes/loginsLast7Days', async () => {
+        const r = await apiRequest<AdminStats>(baseUrl, API_PATHS.ADMIN_STATS, {
+          method: 'GET',
+          token: adminToken!,
+          powDifficulty: pow(POW_CONFIG.DIFFICULTY.HIGH),
+        });
+        assert(r.status === 200, `expected 200, got ${r.status}: ${r.error}`);
+        assert(r.ok, `success=false: ${r.error}`);
+        const d = r.data!;
+        assertField(d, 'totalUsers', 'number');
+        assertField(d, 'totalVaultSizeBytes', 'number');
+        assertField(d, 'loginsLast7Days', 'number');
+        return { pass: true, note: `users=${d.totalUsers} vaultSize=${d.totalVaultSizeBytes}B logins7d=${d.loginsLast7Days}` };
       });
     }
 

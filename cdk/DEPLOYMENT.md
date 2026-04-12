@@ -12,6 +12,8 @@ For post-deploy scripts, see [../scripts/README.md](../scripts/README.md).
 2. [Initial Setup](#2-initial-setup)
 3. [JWT Secret (SSM Parameter Store)](#3-jwt-secret-ssm-parameter-store)
 4. [CDK Context Variables](#4-cdk-context-variables)
+   - [4a. SES Domain Verification](#4a-ses-domain-verification-precondition-for---context-domain)
+   - [4b. Routing qualification test mail to your inbox](#4b-routing-qualification-test-mail-to-your-inbox)
 5. [Deployment Commands](#5-deployment-commands)
 6. [Post-Deployment](#6-post-deployment)
 7. [SES Email Setup (Beta/Prod)](#7-ses-email-setup-betaprod)
@@ -236,9 +238,10 @@ All `cdk` commands accept context variables via `--context key=value`.
 |---|---|---|---|
 | `env` | Yes | All | Deployment environment: `dev`, `beta`, or `prod`. Names the stack `PassVault-Dev`, `PassVault-Beta`, or `PassVault-Prod`. |
 | `adminEmail` | Yes | All | Initial admin username. Also subscribes to the SNS alert topic (beta/prod). |
-| `domain` | No | beta, prod | Root domain of an existing Route 53 hosted zone (e.g. `example.com`). Creates a `CertificateStack` in us-east-1 and configures CloudFront with a custom subdomain. |
-| `passkeyRpId` | beta, prod | beta, prod | WebAuthn relying party ID (e.g. `vault.example.com`). Also settable via `PASSKEY_RP_ID` env var. |
-| `passkeyOrigin` | beta, prod | beta, prod | WebAuthn relying party origin (e.g. `https://vault.example.com`). Also settable via `PASSKEY_ORIGIN` env var. |
+| `domain` | No | beta, prod | Root domain of an existing Route 53 hosted zone (e.g. `example.com`). Creates a `CertificateStack` in us-east-1 and configures CloudFront with a custom subdomain. **Precondition**: the domain must be a Verified SES identity in the target account/region before `cdk deploy` — see §4a. |
+| `plusAddress` | No | beta, prod | Single mailbox that receives all qualification test mail (e.g. `ops@example.com`). Must be `local@<domain>` and its domain must equal `domain`. When set, qualification scripts build test-user addresses as `local+<tag>@<domain>` and emit a `PlusAddress` CfnOutput. See §4b. |
+| `passkeyRpId` | No | beta, prod | WebAuthn relying party ID (e.g. `beta.pv.example.com`). Resolution order: context → `PASSKEY_RP_ID` env var → auto-derived as `{config.subdomain}.{domain}` when `domain` is set (subdomain values: `dev.pv`, `beta.pv`, `pv` — see `shared/src/config/environments.ts`). |
+| `passkeyOrigin` | No | beta, prod | WebAuthn relying party origin (e.g. `https://beta.pv.example.com`). Resolution order: context → `PASSKEY_ORIGIN` env var → auto-derived as `https://{config.subdomain}.{domain}` when `domain` is set. |
 
 ### Examples
 
@@ -247,10 +250,26 @@ All `cdk` commands accept context variables via `--context key=value`.
 cdk deploy PassVault-Dev --context env=dev --context adminEmail=you@example.com
 ```
 
-**Beta with custom domain:**
+**Beta with custom domain (no test-mail routing):**
 ```bash
 cdk deploy --all --context env=beta --context domain=example.com --context adminEmail=you@example.com
 ```
+
+**Beta with test-mail routing (recommended for qualification):**
+```bash
+cdk deploy --all \
+  --context env=beta \
+  --context domain=example.com \
+  --context plusAddress=you@example.com \
+  --context adminEmail=you+beta-admin@example.com \
+  --context passkeyRpId=beta.pv.example.com \
+  --context passkeyOrigin=https://beta.pv.example.com
+```
+
+With `plusAddress` set, `scripts/qualify.sh --env beta` discovers the
+`PlusAddress` CfnOutput and routes all ~15 test-user invitations to
+`you+<tag>@example.com`. Without it, qualification falls back to
+`@passvault-test.local` (hard-bounces — not recommended). See §4b.
 
 **Full production:**
 ```bash
@@ -261,6 +280,99 @@ cdk deploy --all \
   --context passkeyRpId=vault.example.com \
   --context passkeyOrigin=https://vault.example.com
 ```
+
+---
+
+## 4a. SES Domain Verification (precondition for `--context domain=`)
+
+If you pass `--context domain=example.com` to `cdk deploy`, the stack assumes
+`example.com` (or whichever root you pass) is already a **Verified** SES
+identity in the target account and region. CDK does not check this
+synchronously — the deploy will succeed, but transactional mail from the
+backend Lambdas (`noreply@{subdomain}.{domain}`) will bounce silently until
+verification is complete.
+
+Verify the domain out-of-band before you deploy:
+
+1. Open the SES console in the target region (`eu-central-1` for beta/prod).
+2. **Configuration → Verified identities → Create identity → Domain**.
+3. Enter the root domain (e.g. `example.com`) and accept the default DKIM
+   settings. SES returns a set of CNAME records.
+4. Add those CNAMEs to your Route 53 hosted zone (or equivalent DNS provider).
+5. Wait for the identity to reach **Verification status: Verified**
+   (usually 5–15 minutes). Do not proceed until this shows green.
+
+### SES send-email smoke test (run this first)
+
+Before you trust the deploy, confirm the verified identity + DKIM + sandbox
+rules all actually work by sending yourself one message directly — this has
+**zero** dependency on the Lambdas, IAM wiring, or stack outputs, and isolates
+SES identity problems from application-level misconfiguration:
+
+```bash
+aws ses send-email --region eu-central-1 \
+  --from noreply@sub.example.com \
+  --destination ToAddresses=you+ses-smoke@example.com \
+  --message 'Subject={Data=SES smoke},Body={Text={Data=hello}}'
+```
+
+Replace `sub.example.com` with `{subdomain}.{domain}` for the target env
+(prod → `pv.example.com`, beta → `beta.pv.example.com`) and
+`you+ses-smoke@example.com` with a mailbox on the verified domain. **Run this
+before `cdk deploy PassVault-Beta` and again before `qualify.sh --env beta`** —
+it's the cheapest way to confirm that the SES account is out of the sandbox
+for your verified domain, that DKIM alignment is correct, and that
+plus-addressing survives the round-trip to your inbox. If this command fails,
+nothing downstream will work.
+
+If `send-email` succeeds but you don't see the message, check SES sandbox
+status — while in the sandbox, SES will only deliver to addresses *at* the
+verified domain (plus-addressing counts). Mail to any other domain will be
+silently dropped.
+
+## 4b. Routing qualification test mail to your inbox
+
+`scripts/qualify.sh --env beta` creates ~15 test users per run. Each one
+triggers an invitation email from the backend. By default those addresses use
+`@passvault-test.local` (a reserved pseudo-TLD that hard-bounces at DNS and
+damages SES sender reputation). To route all qualification mail to a single
+mailbox you own, pass `--context plusAddress=you@example.com` at `cdk deploy`
+time:
+
+```bash
+cd cdk
+npx cdk deploy PassVault-Beta \
+  --context env=beta \
+  --context domain=example.com \
+  --context plusAddress=you@example.com \
+  --context adminEmail=you+beta-admin@example.com \
+  --context passkeyRpId=beta.pv.example.com \
+  --context passkeyOrigin=https://beta.pv.example.com
+```
+
+CDK emits two stack outputs the qualification pipeline depends on:
+
+- `Domain` — the root domain passed via `--context domain=<d>`
+- `PlusAddress` — the mailbox passed via `--context plusAddress=<addr>`
+
+On fresh-deploy runs (no `PassVault-Beta` yet), `qualify.sh --env beta`
+requires the operator to pass `--domain` and `--plus-address` on the command
+line — CDK has nowhere else to read them from. On subsequent runs
+(`--resume`, `--cleanup`), qualify.sh reads both values directly from the
+stack's CloudFormation outputs and the flags become optional. Test users
+become `you+<tag>-<timestamp>@example.com`, and qualify prompts for
+confirmation before sending real mail (bypass with `--yes` in CI).
+
+Validation rules (enforced at synth time by
+[cdk/lib/validate-context.ts](lib/validate-context.ts)):
+- `plusAddress` requires `domain` to also be set.
+- `plusAddress` must be a well-formed `local@domain` email.
+- The domain portion of `plusAddress` must equal the `domain` context value.
+
+Dev is never affected: `qualify.sh` (default env) keeps the legacy
+`@passvault-test.local` fallback and does not send real mail (dev Lambdas have
+no `SENDER_EMAIL` configured). Prod is not qualifiable at all — `qualify.sh
+--env prod` is rejected outright.
 
 ---
 
@@ -290,9 +402,14 @@ When `--context domain=...` is provided and `cloudFrontEnabled` is true (beta/pr
 Use `--all` so CDK handles the dependency order automatically:
 
 ```bash
-# Beta
-cdk deploy --all --context env=beta --context domain=example.com --context adminEmail=you@example.com \
-  --context passkeyRpId=beta.pv.example.com --context passkeyOrigin=https://beta.pv.example.com
+# Beta (with test-mail routing — see §4b)
+cdk deploy --all \
+  --context env=beta \
+  --context domain=example.com \
+  --context plusAddress=you@example.com \
+  --context adminEmail=you+beta-admin@example.com \
+  --context passkeyRpId=beta.pv.example.com \
+  --context passkeyOrigin=https://beta.pv.example.com
 
 # Prod
 cdk deploy --all \
@@ -303,6 +420,12 @@ cdk deploy --all \
   --context passkeyOrigin=https://vault.example.com \
   --require-approval broadening
 ```
+
+`plusAddress` is optional on beta but strongly recommended if you intend to
+run `qualify.sh --env beta` against the deployed stack — without it, the
+qualification pipeline cannot route test-user invitations to a real mailbox.
+Prod deploys omit `plusAddress` because production traffic is real users, not
+qualification runs.
 
 If you name only the main stack (e.g. `cdk deploy PassVault-Beta`), the cert stack is silently skipped and the deployment will fail or produce a distribution without a custom domain.
 
@@ -400,58 +523,99 @@ In beta/prod, admin login is a two-step process: enter username + password first
 
 ## 7. SES Email Setup (Beta/Prod)
 
-PassVault uses Amazon SES for OTP delivery emails and encrypted vault backups. If `SENDER_EMAIL` is not set on the Lambda, email features are silently disabled.
+PassVault uses Amazon SES for invitation OTPs, vault-export download links,
+email-change confirmations, and the daily digest cron. If `SENDER_EMAIL` is
+not set on the Lambda, all of these silently become no-ops.
 
 **How it works:**
 
-- CDK sets `SENDER_EMAIL=noreply@{domain}` on the auth, admin, and vault Lambdas when `--context domain=...` is provided (beta/prod).
-- The `SesNotifierConstruct` creates an SES email identity for the domain and grants the Lambdas `ses:SendEmail` permission.
-- In dev, `SENDER_EMAIL` is not set and email features return appropriate error codes.
+- The sender address is always
+  `SENDER_EMAIL=noreply@{subdomain}.{domain}` — e.g.
+  `noreply@beta.pv.example.com` for beta or `noreply@pv.example.com` for prod.
+  CDK sets this on the auth, admin, vault, and digest Lambdas only when
+  `--context domain=...` is provided. See
+  [lib/passvault-stack.ts:159-166](lib/passvault-stack.ts#L159-L166).
+- The `SesNotifierConstruct` creates Route 53 DKIM/SPF/MX/DMARC records for
+  `{subdomain}.{domain}` and subscribes `alerts@{subdomain}.{domain}` to the
+  monitoring/kill-switch SNS topic.
+- **Domain-level verification is a precondition** (see §4a). CDK does **not**
+  auto-verify the root `{domain}` identity — that must be done in the SES
+  console before the first `cdk deploy`. Without it, Lambdas will try to send
+  and fail silently.
+- In dev, `SENDER_EMAIL` is never set, so the email code paths short-circuit
+  and no mail is sent regardless of SES state.
 
 ### SES Sandbox
 
-New AWS accounts start in the SES sandbox. In sandbox mode, SES only delivers to manually verified addresses -- all other sends are silently rejected.
+New AWS accounts start in the SES sandbox. In sandbox mode, SES only delivers
+to addresses *at* a verified identity — which is exactly what §4b's
+`plusAddress` pattern relies on. Plus-addressing (`you+tag@example.com`) is
+accepted by the sandbox as long as the root domain is verified.
 
-To send to arbitrary recipients:
+For qualification runs, **sandbox + verified domain + plus-addressing is
+sufficient**. You do not need to exit the sandbox to run `qualify.sh --env beta`.
 
-1. Open **AWS Console** -> **Amazon SES** -> **Account dashboard**
-2. If the banner reads "Your account is in the sandbox", click **Request production access**
+Exit the sandbox only when you want real users (outside your verified domain)
+to receive invitation mail:
+
+1. **AWS Console → Amazon SES → Account dashboard**
+2. If the banner reads "Your account is in the sandbox", click
+   **Request production access**
 3. Select "Transactional", describe low-volume private password vault usage
 4. AWS typically approves within 24 hours
 
-For testing while in sandbox: **SES** -> **Verified identities** -> **Create identity** -> **Email address** -> verify the recipient.
-
 ### Domain Verification
 
-Domain verification (DKIM) is handled automatically by the `SesNotifierConstruct` via CNAME records in Route 53 when `--context domain=...` is provided. DKIM propagation can take a few minutes -- SES will not send until the identity shows **Verified** in the console.
+Domain verification is **your responsibility, not CDK's** — see §4a for the
+step-by-step. The `SesNotifierConstruct` creates DKIM/SPF records for the
+`{subdomain}.{domain}` email identity it manages for alerts, but the root
+`{domain}` identity that `SENDER_EMAIL=noreply@{subdomain}.{domain}` sends
+*from* must already be Verified in the SES console when you deploy.
 
-If not using a custom domain, verify the sender address manually in the SES console.
+Before the first beta/prod deploy — and before every `qualify.sh --env beta`
+run — execute the **SES send-email smoke test** from §4a. It confirms in ~2
+seconds that the verified identity + DKIM + sandbox rules all work end-to-end,
+with zero dependency on the Lambdas or IAM wiring.
 
 ### Troubleshooting Email (5-step checklist)
 
-1. **Check Lambda logs.** Look for `Sending OTP email to ...`, `OTP email sent to ...`, `Failed to send OTP email`, or `OTP email skipped` messages:
+1. **Run the send-email smoke test from §4a first.** If `aws ses send-email`
+   from the command line cannot deliver to a mailbox on the verified domain,
+   no amount of Lambda debugging will help — the problem is at the SES
+   identity layer. Fix that before continuing.
+
+2. **Check Lambda logs.** Look for `Sending OTP email to ...`, `OTP email sent
+   to ...`, `Failed to send OTP email`, or `OTP email skipped` messages:
    ```bash
-   aws logs tail /aws/lambda/passvault-admin-{env} --since 1h --region eu-central-1
+   aws logs tail /aws/lambda/passvault-admin-mgmt-{env} --since 1h --region eu-central-1
    ```
 
-2. **Check SES sending activity.** In the SES console, check **Email activity** or **Sending statistics**. Zero sends means the Lambda never called SES.
+3. **Check SES sending activity.** In the SES console, check **Email
+   activity** or **Sending statistics**. Zero sends means the Lambda never
+   called SES — check that `SENDER_EMAIL` is set (step 5).
 
-3. **Check sandbox status.** If still in sandbox, unverified recipient addresses are silently dropped.
-
-4. **Check that the Lambda bundle is current.** If `cdk deploy` was run without rebuilding the backend, the running code may predate the email feature. Rebuild and redeploy:
+4. **Check that the Lambda bundle is current.** If `cdk deploy` was run
+   without rebuilding the backend, the running code may predate an email
+   feature. Rebuild and redeploy:
    ```bash
    npm run build -w shared -w backend
-   cd cdk && cdk deploy --all --context env={env} --context domain=example.com --context adminEmail=you@example.com
+   cd cdk && cdk deploy --all \
+     --context env={env} \
+     --context domain=example.com \
+     --context plusAddress=you@example.com \
+     --context adminEmail=you+beta-admin@example.com
    ```
 
 5. **Check that `SENDER_EMAIL` is set on the Lambda:**
    ```bash
    aws lambda get-function-configuration \
-     --function-name passvault-admin-{env} \
+     --function-name passvault-admin-mgmt-{env} \
      --region eu-central-1 \
      --query 'Environment.Variables.SENDER_EMAIL'
    ```
-   If this returns `null`, the CDK deploy was run without `--context domain=...`.
+   If this returns `null`, the CDK deploy was run without `--context
+   domain=...`. If it returns `noreply@{subdomain}.{domain}` but mail still
+   fails, the root `{domain}` is not a Verified SES identity — see §4a.
 
 ---
 
@@ -475,7 +639,7 @@ PassVault uses the CloudFront Flat-Rate Pricing Plan (Free tier) for edge-level 
 4. Choose **Flat-Rate Plan** -> select **Free**
 5. Accept the plan terms
 
-For full details on defense layers and worst-case cost analysis, see [../BOTPROTECTION.md](../BOTPROTECTION.md).
+For full details on defense layers and worst-case cost analysis, see [docs/BOTPROTECTION.md](../docs/BOTPROTECTION.md).
 
 ---
 
@@ -511,7 +675,7 @@ aws lambda get-function-concurrency --function-name passvault-auth-prod
 # If ReservedConcurrentExecutions is 0, the kill switch is active
 ```
 
-For full kill switch details, see [../BOTPROTECTION.md](../BOTPROTECTION.md).
+For full kill switch details, see [docs/BOTPROTECTION.md](../docs/BOTPROTECTION.md).
 
 ---
 
@@ -526,8 +690,14 @@ cd cdk
 cdk deploy PassVault-Dev --context env=dev --context adminEmail=you@example.com
 
 # Beta (CloudFront enabled, passkeys required for admin, ~$0/month)
-cdk deploy --all --context env=beta --context domain=example.com --context adminEmail=you@example.com \
-  --context passkeyRpId=beta.pv.example.com --context passkeyOrigin=https://beta.pv.example.com
+# Add --context plusAddress=you@example.com if you intend to qualify against this stack (see §4b).
+cdk deploy --all \
+  --context env=beta \
+  --context domain=example.com \
+  --context plusAddress=you@example.com \
+  --context adminEmail=you+beta-admin@example.com \
+  --context passkeyRpId=beta.pv.example.com \
+  --context passkeyOrigin=https://beta.pv.example.com
 
 # Prod (CloudFront, passkeys, monitoring, kill switch, ~$0-2/month)
 cdk deploy --all \
@@ -599,11 +769,24 @@ aws ssm get-parameter --name /passvault/{env}/jwt-secret --region eu-central-1
 
 **Symptom:** `cdk deploy` fails with "Stack already exists".
 
-**Fix:**
+**Fix:** destroy the existing stack with the *same* context values it was
+deployed with (CDK needs them to resolve the construct tree), then redeploy:
 ```bash
 aws cloudformation list-stacks --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE
-cdk destroy --context env={env}
-cdk deploy --all --context env={env} --context adminEmail=you@example.com
+
+# Destroy — pass the same --context flags as the original deploy
+cdk destroy --all \
+  --context env={env} \
+  --context domain=example.com \
+  --context plusAddress=you@example.com \
+  --context adminEmail=you+beta-admin@example.com
+
+# Redeploy
+cdk deploy --all \
+  --context env={env} \
+  --context domain=example.com \
+  --context plusAddress=you@example.com \
+  --context adminEmail=you+beta-admin@example.com
 ```
 
 ### API Gateway 429 (Unexpected)

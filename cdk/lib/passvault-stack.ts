@@ -15,11 +15,22 @@ import { SesNotifierConstruct } from './constructs/ses-notifier.js';
 interface PassVaultStackProps extends cdk.StackProps {
   certificate?: acm.ICertificate;
   domain?: string;
+  plusAddress?: string;
 }
 
 export class PassVaultStack extends cdk.Stack {
   constructor(scope: Construct, id: string, config: EnvironmentConfig, props?: PassVaultStackProps) {
     super(scope, id, props);
+
+    // Precondition reminder — SES domain verification must have completed out-of-band.
+    // CDK cannot check this synchronously; the warning fires at synth/deploy time.
+    if (props?.domain) {
+      console.warn(
+        `[passvault-stack] Reminder: "${props.domain}" must be a Verified SES identity ` +
+          `in this account/region before \`cdk deploy\`. Run the SES send-email smoke ` +
+          `test described in cdk/DEPLOYMENT.md first if you haven't already.`,
+      );
+    }
 
     // Admin email — used as the initial administrator username and as the SES alert recipient.
     // Required for all stacks. Provide via:
@@ -33,7 +44,7 @@ export class PassVaultStack extends cdk.Stack {
     const storage = new StorageConstruct(this, 'Storage', config);
 
     // 2. Backend: Lambdas + API Gateway
-    const backend = new BackendConstruct(this, 'Backend', { config, storage });
+    const backend = new BackendConstruct(this, 'Backend', { config, storage, domain: props?.domain });
 
     // 3. Frontend: CloudFront (when enabled)
     let frontend: FrontendConstruct | undefined;
@@ -52,6 +63,13 @@ export class PassVaultStack extends cdk.Stack {
     const frontendOrigin = frontend
       ? `https://${frontend.distribution.distributionDomainName}`
       : '*';
+    // FRONTEND_URL is the full URL used by email templates for logo, buttons,
+    // and verification links. Prefers the custom domain when configured so that
+    // email links point to the user-facing URL, not the raw CloudFront domain.
+    // Empty in dev (no CloudFront).
+    const frontendUrl = frontend
+      ? `https://${frontend.customDomain ?? frontend.distribution.distributionDomainName}`
+      : '';
     for (const fn of [
       backend.challengeFn,
       backend.authFn,
@@ -59,8 +77,10 @@ export class PassVaultStack extends cdk.Stack {
       backend.adminMgmtFn,
       backend.vaultFn,
       backend.healthFn,
+      backend.digestFn,
     ]) {
       fn.addEnvironment('FRONTEND_ORIGIN', frontendOrigin);
+      fn.addEnvironment('FRONTEND_URL', frontendUrl);
     }
 
     // 4. Monitoring: CloudWatch dashboard + alarms + SNS topic (prod only)
@@ -171,6 +191,23 @@ export class PassVaultStack extends cdk.Stack {
       value: adminEmail,
       description: 'Initial administrator username (email address)',
     });
+
+    // Beta/prod: persist the deploy-time domain and plus-address as stack
+    // outputs so scripts/qualify.sh can resume against an already-deployed
+    // stack without the operator having to re-pass the same flags.
+    if (props?.domain) {
+      new cdk.CfnOutput(this, 'Domain', {
+        value: props.domain,
+        description: 'Root domain passed at deploy time (--context domain=<d>).',
+      });
+    }
+    if (props?.plusAddress) {
+      new cdk.CfnOutput(this, 'PlusAddress', {
+        value: props.plusAddress,
+        description:
+          'Qualification mailbox. Scripts build test-user addresses as local+<tag>@domain.',
+      });
+    }
 
     new cdk.CfnOutput(this, 'ApiUrl', {
       value: backend.api.url,

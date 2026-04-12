@@ -19,6 +19,8 @@ interface FrontendConstructProps {
 
 export class FrontendConstruct extends Construct {
   public readonly distribution: cloudfront.Distribution;
+  /** Custom domain (e.g. `beta.pv.example.com`) if configured, otherwise undefined. */
+  public readonly customDomain: string | undefined;
 
   constructor(scope: Construct, id: string, props: FrontendConstructProps) {
     super(scope, id);
@@ -26,6 +28,7 @@ export class FrontendConstruct extends Construct {
     const { config, frontendBucket, api, certificate, domain } = props;
     const env = config.environment;
     const fullDomain = domain ? `${config.subdomain}.${domain}` : undefined;
+    this.customDomain = fullDomain;
 
     // API Gateway origin — strip the stage name from the path
     const apiDomainName = `${api.restApiId}.execute-api.${config.region}.amazonaws.com`;

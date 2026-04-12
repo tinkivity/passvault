@@ -1,42 +1,78 @@
 #!/usr/bin/env bash
-# qualify.sh — Full qualification pipeline for PassVault dev environment.
+# qualify.sh — Full qualification pipeline for PassVault (dev | beta).
+#
+# Prod is not qualifiable by this script — the qualification pipeline creates
+# and destroys ephemeral test users and is unsafe to run against production.
 #
 # Usage:
+#   # Dev (self-contained; no operator input required)
 #   ./scripts/qualify.sh [--profile <name>] [--region <region>]
-#   ./scripts/qualify.sh --resume [--profile <name>] [--region <region>]
-#   ./scripts/qualify.sh --cleanup [state-file] [--profile <name>] [--region <region>]
+#
+#   # Beta — fresh deploy (no existing PassVault-Beta stack):
+#   #   --domain and --plus-address are MANDATORY because cdk deploy needs them.
+#   ./scripts/qualify.sh --env beta \
+#     --domain example.com --plus-address you@example.com \
+#     [--profile <name>] [--region <region>] [--yes]
+#
+#   # Beta — resume against an already-deployed stack:
+#   #   --domain and --plus-address are read from the stack's Domain and
+#   #   PlusAddress CfnOutputs, no CLI flags needed.
+#   ./scripts/qualify.sh --env beta --resume [--profile <name>]
+#
+#   # Cleanup (dev or beta). For beta, values are discovered from the stack
+#   # outputs if still present; otherwise --domain/--plus-address must be
+#   # re-passed so cdk destroy can synth the same stack.
+#   ./scripts/qualify.sh --cleanup [state-file] [--env <env>] [--profile <name>]
 #
 # Options:
+#   --env <name>           Target environment: dev (default) | beta. prod is rejected.
 #   --profile <name>       AWS named profile
 #   --region <region>      AWS region (default: eu-central-1)
+#   --domain <d>           Root domain. Required for beta fresh deploys (cdk needs
+#                          --context domain=<d>). Ignored/discovered-from-stack when
+#                          the target stack already exists. The domain must already
+#                          be a Verified SES identity in the account/region.
+#   --plus-address <addr>  Mailbox that receives all qualification test mail.
+#                          Required for beta fresh deploys. Must be local@<domain>
+#                          and its domain must equal --domain. Test users become
+#                          local+<tag>@<domain>.
+#   --yes                  Skip the beta "real mail will be sent" confirmation (CI bypass)
 #   --resume               Skip build/test/deploy; run SIT/pentest/E2E/perf against existing stack
 #   --cleanup [state-file] Skip tests; only tear down a previous qualification run.
-#                          If no file given, auto-discovers .qualify-state-dev-*.json.
+#                          If no file given, auto-discovers .qualify-state-${env}-*.json.
 #   -h, --help             Show usage
 #
-# Hardcoded to dev environment. Runs: build → unit tests → cdk deploy →
-# SIT → pentest → E2E → perf → evaluate → cleanup/report.
+# Runs: build → unit tests → cdk deploy → SIT → pentest → E2E → perf → evaluate → cleanup/report.
 
 set -euo pipefail
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 ENV="dev"
-STACK="PassVault-Dev"
+STACK=""
 PROFILE=""
 REGION="eu-central-1"
+DOMAIN=""
+PLUS_ADDRESS=""
+ASSUME_YES=false
 CLEANUP=false
 CLEANUP_FILE=""
 RESUME=false
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-USAGE="Usage: $0 [--profile <name>] [--region <region>] [--resume]
-       $0 --cleanup [state-file] [--profile <name>] [--region <region>]"
+USAGE="Usage: $0 [--profile <name>] [--region <region>] [--resume] [--yes]                            # dev (default)
+       $0 --env beta --domain <d> --plus-address <addr> [--profile <name>] [--yes]   # beta, fresh deploy
+       $0 --env beta --resume [--profile <name>]                                     # beta, against existing stack
+       $0 --cleanup [state-file] [--env <env>] [--profile <name>]"
 
 # ── Argument parsing ──────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --profile)  PROFILE="$2";      shift 2 ;;
-    --region)   REGION="$2";       shift 2 ;;
+    --env)           ENV="$2";           shift 2 ;;
+    --profile)       PROFILE="$2";       shift 2 ;;
+    --region)        REGION="$2";        shift 2 ;;
+    --domain)        DOMAIN="$2";        shift 2 ;;
+    --plus-address)  PLUS_ADDRESS="$2";  shift 2 ;;
+    --yes)           ASSUME_YES=true;    shift ;;
     --cleanup)
       CLEANUP=true
       if [[ $# -ge 2 && "$2" != --* ]]; then
@@ -58,6 +94,59 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+case "$ENV" in
+  dev|beta) ;;
+  prod)
+    cat >&2 <<'EOM'
+Error: qualification against prod is not allowed.
+
+qualify.sh creates and destroys ephemeral test users, admins, and vaults. Run
+it against dev (safe, no real mail) or beta (real SES via test email routing)
+only. Prod must never see qualification traffic.
+EOM
+    exit 1
+    ;;
+  *)
+    echo "Error: unknown environment '$ENV'. Valid values: dev, beta." >&2
+    exit 1
+    ;;
+esac
+
+# Derive stack name from env (matches shared getEnvironmentConfig().stackName).
+STACK_ENV_CAP="$(echo "$ENV" | tr '[:lower:]' '[:upper:]' | cut -c1)$(echo "$ENV" | cut -c2-)"
+STACK="PassVault-${STACK_ENV_CAP}"
+
+# Validate --plus-address shape (local@domain) and domain match when set.
+if [[ -n "$PLUS_ADDRESS" ]]; then
+  if [[ ! "$PLUS_ADDRESS" =~ ^[^@[:space:]]+@[^@[:space:]]+$ ]]; then
+    echo "Error: --plus-address must be a valid email (local@domain), got: $PLUS_ADDRESS" >&2
+    exit 1
+  fi
+  PLUS_LOCAL="${PLUS_ADDRESS%@*}"
+  PLUS_DOMAIN="${PLUS_ADDRESS#*@}"
+  if [[ -n "$DOMAIN" && "$PLUS_DOMAIN" != "$DOMAIN" ]]; then
+    echo "Error: --plus-address domain ($PLUS_DOMAIN) must match --domain ($DOMAIN)." >&2
+    exit 1
+  fi
+fi
+
+# Derive the CDK adminEmail context value. When plus-addressing is on, route
+# the bootstrap admin's mail into the same inbox under a distinct tag.
+if [[ -n "$PLUS_ADDRESS" ]]; then
+  ADMIN_EMAIL_CTX="${PLUS_LOCAL}+qualify-admin@${PLUS_DOMAIN}"
+else
+  ADMIN_EMAIL_CTX="qualify@passvault-test.local"
+fi
+
+# Common CDK context args, used by deploy and destroy. Extra --context flags
+# are appended when domain/plus-address are provided (always, for beta/prod).
+cdk_ctx_args() {
+  local args="--context env=$ENV --context adminEmail=$ADMIN_EMAIL_CTX"
+  [[ -n "$DOMAIN" ]]       && args="$args --context domain=$DOMAIN"
+  [[ -n "$PLUS_ADDRESS" ]] && args="$args --context plusAddress=$PLUS_ADDRESS"
+  echo "$args"
+}
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 RED='\033[0;31m'
@@ -106,13 +195,116 @@ aws_args() {
   echo "$args"
 }
 
+# ── Resolve context: verify credentials, probe stack, fill/demand beta flags ─
+#
+# Runs once, up front, so the rest of the script (cleanup mode, normal mode,
+# sub-script invocations, final destroy) has a single consistent view of
+# DOMAIN, PLUS_ADDRESS, and STACK_EXISTS. Without this, beta cleanup and
+# beta --resume would have no way to recover domain/plus-address and cdk
+# destroy would synth a different stack graph than what was deployed.
+#
+# Dev is unaffected: domain/plus-address stay empty and all cdk invocations
+# use the same minimal context they always did.
+
+if ! aws sts get-caller-identity --region "$REGION" &>/dev/null; then
+  echo "Error: no AWS access — aws sts get-caller-identity failed." >&2
+  [[ -n "$PROFILE" ]] \
+    && echo "  Your SSO session may have expired. Run: aws sso login --profile $PROFILE" >&2 \
+    || echo "  Your SSO session may have expired. Run: aws sso login" >&2
+  exit 1
+fi
+
+STACK_EXISTS=false
+if aws cloudformation describe-stacks --stack-name "$STACK" --region "$REGION" &>/dev/null; then
+  STACK_EXISTS=true
+fi
+
+if [[ "$ENV" == "beta" && "$CLEANUP" == "true" && "$STACK_EXISTS" == "false" ]]; then
+  # Cleanup mode with no remaining stack — nothing to destroy, so domain/
+  # plus-address are not needed. Fall through; the sub-script cleanups and
+  # state-file removal still run, cdk destroy is a no-op.
+  echo "  $STACK already destroyed — cleanup will remove sub-script state only."
+elif [[ "$ENV" == "beta" ]]; then
+  if [[ "$STACK_EXISTS" == "true" ]]; then
+    # Stack is already deployed. Read the Domain and PlusAddress outputs that
+    # the CDK stack emits (cdk/lib/passvault-stack.ts) and use them as the
+    # single source of truth for every downstream step. If the operator
+    # *also* passed --domain or --plus-address, they must match exactly —
+    # mismatched values would cause the final cdk destroy to synth against a
+    # different context than was deployed and orphan resources.
+    DISCOVERED_DOMAIN=$(_cfn_output Domain 2>/dev/null || echo "")
+    DISCOVERED_PLUS=$(_cfn_output PlusAddress 2>/dev/null || echo "")
+    [[ "$DISCOVERED_DOMAIN" == "None" ]] && DISCOVERED_DOMAIN=""
+    [[ "$DISCOVERED_PLUS"   == "None" ]] && DISCOVERED_PLUS=""
+
+    if [[ -z "$DISCOVERED_DOMAIN" || -z "$DISCOVERED_PLUS" ]]; then
+      cat >&2 <<EOM
+Error: $STACK exists but is missing the Domain and/or PlusAddress CfnOutputs.
+
+  Discovered Domain       : '${DISCOVERED_DOMAIN:-<missing>}'
+  Discovered PlusAddress  : '${DISCOVERED_PLUS:-<missing>}'
+
+This means the stack was deployed before the test-email-routing feature
+landed (or without --context domain=... and --context plusAddress=...). Redeploy
+with both contexts set, then re-run qualify. See cdk/DEPLOYMENT.md §4b.
+EOM
+      exit 1
+    fi
+
+    if [[ -n "$DOMAIN" && "$DOMAIN" != "$DISCOVERED_DOMAIN" ]]; then
+      echo "Error: --domain '$DOMAIN' does not match $STACK's Domain output '$DISCOVERED_DOMAIN'." >&2
+      echo "       Omit --domain to use the deployed value, or redeploy the stack first." >&2
+      exit 1
+    fi
+    if [[ -n "$PLUS_ADDRESS" && "$PLUS_ADDRESS" != "$DISCOVERED_PLUS" ]]; then
+      echo "Error: --plus-address '$PLUS_ADDRESS' does not match $STACK's PlusAddress output '$DISCOVERED_PLUS'." >&2
+      echo "       Omit --plus-address to use the deployed value, or redeploy the stack first." >&2
+      exit 1
+    fi
+
+    DOMAIN="$DISCOVERED_DOMAIN"
+    PLUS_ADDRESS="$DISCOVERED_PLUS"
+    PLUS_LOCAL="${PLUS_ADDRESS%@*}"
+    PLUS_DOMAIN="${PLUS_ADDRESS#*@}"
+    echo "  Context source: $STACK outputs (Domain=$DOMAIN, PlusAddress=$PLUS_ADDRESS)"
+  else
+    # Stack does not exist — qualify.sh will run `cdk deploy` and needs the
+    # values on the CLI. There is nowhere else to get them from.
+    MISSING=""
+    [[ -z "$DOMAIN" ]]       && MISSING="${MISSING} --domain"
+    [[ -z "$PLUS_ADDRESS" ]] && MISSING="${MISSING} --plus-address"
+    if [[ -n "$MISSING" ]]; then
+      cat >&2 <<EOM
+Error: beta qualification requires${MISSING}.
+
+  $STACK is not yet deployed, so qualify.sh will run \`cdk deploy\` as part
+  of Step 3. CDK needs these two pieces of information to synthesize a beta
+  stack with SES wiring and test-mail routing:
+
+    --domain <d>            root domain, must be a Verified SES identity in
+                            this account/region (see cdk/DEPLOYMENT.md §4a)
+    --plus-address <addr>   local@<d>, the single mailbox that receives all
+                            qualification test-user mail
+
+  Once $STACK has been deployed with these contexts, subsequent runs
+  (--resume, --cleanup) read them from the stack's Domain and PlusAddress
+  CfnOutputs and the flags become optional.
+
+Example:
+  $0 --env beta --domain example.com --plus-address you@example.com --profile <p>
+EOM
+      exit 1
+    fi
+  fi
+fi
+
 # ── Cleanup-only mode ────────────────────────────────────────────────────────
 if [[ "$CLEANUP" == "true" ]]; then
 
   # Auto-discover state file if not given
   if [[ -z "$CLEANUP_FILE" ]]; then
     shopt -s nullglob
-    MATCHES=( "$REPO_ROOT"/.qualify-state-dev-*.json )
+    MATCHES=( "$REPO_ROOT"/.qualify-state-${ENV}-*.json )
     shopt -u nullglob
 
     if [[ ${#MATCHES[@]} -eq 0 ]]; then
@@ -147,59 +339,51 @@ if [[ "$CLEANUP" == "true" ]]; then
   PERF_STATE=$(jq -r '.perfStateFile // empty' "$CLEANUP_FILE")
 
   echo ""
-  echo "PassVault Dev Qualification — Cleanup"
+  echo "PassVault ${STACK_ENV_CAP} Qualification — Cleanup"
   echo "  State file  : $(basename "$CLEANUP_FILE")"
   echo "  Region      : $REGION"
   [[ -n "$PROFILE" ]] && echo "  AWS profile : $PROFILE"
+  [[ -n "$DOMAIN" ]] && echo "  Domain      : $DOMAIN"
+  [[ -n "$PLUS_ADDRESS" ]] && echo "  Plus address: $PLUS_ADDRESS"
   echo ""
-
-  # Verify AWS access
-  section "AWS credentials"
-  if ! aws sts get-caller-identity --region "$REGION" &>/dev/null; then
-    echo "  No AWS access — cannot reach AWS STS."
-    [[ -n "$PROFILE" ]] \
-      && echo "    aws sso login --profile $PROFILE" \
-      || echo "    aws sso login"
-    exit 1
-  fi
-  echo "  AWS credentials valid."
+  # AWS credentials already verified above in the resolve-context phase.
 
   # SIT cleanup
   if [[ -n "$SIT_STATE" && -f "$REPO_ROOT/$SIT_STATE" ]]; then
     section "SIT cleanup"
-    "$REPO_ROOT/scripts/sitest.sh" --cleanup "$REPO_ROOT/$SIT_STATE" --env dev \
+    "$REPO_ROOT/scripts/sitest.sh" --cleanup "$REPO_ROOT/$SIT_STATE" --env "$ENV" \
       ${PROFILE:+--profile "$PROFILE"} --region "$REGION" || echo "  Warning: SIT cleanup failed."
   fi
 
   # Pentest cleanup
   if [[ -n "$PENTEST_STATE" && -f "$REPO_ROOT/$PENTEST_STATE" ]]; then
     section "Pentest cleanup"
-    "$REPO_ROOT/scripts/pentest.sh" --cleanup "$REPO_ROOT/$PENTEST_STATE" --env dev \
+    "$REPO_ROOT/scripts/pentest.sh" --cleanup "$REPO_ROOT/$PENTEST_STATE" --env "$ENV" \
       ${PROFILE:+--profile "$PROFILE"} --region "$REGION" || echo "  Warning: Pentest cleanup failed."
   fi
 
   # E2E cleanup
   if [[ -n "$E2E_STATE" && -f "$REPO_ROOT/$E2E_STATE" ]]; then
     section "E2E cleanup"
-    "$REPO_ROOT/scripts/e2etest.sh" --cleanup "$REPO_ROOT/$E2E_STATE" --env dev \
+    "$REPO_ROOT/scripts/e2etest.sh" --cleanup "$REPO_ROOT/$E2E_STATE" --env "$ENV" \
       ${PROFILE:+--profile "$PROFILE"} --region "$REGION" || echo "  Warning: E2E cleanup failed."
   fi
 
   # Perf cleanup
   if [[ -n "$PERF_STATE" && -f "$REPO_ROOT/$PERF_STATE" ]]; then
     section "Perf cleanup"
-    "$REPO_ROOT/scripts/perftest.sh" --cleanup "$REPO_ROOT/$PERF_STATE" --env dev \
+    "$REPO_ROOT/scripts/perftest.sh" --cleanup "$REPO_ROOT/$PERF_STATE" --env "$ENV" \
       ${PROFILE:+--profile "$PROFILE"} --region "$REGION" || echo "  Warning: Perf cleanup failed."
   fi
 
   # CDK destroy
   section "CDK destroy"
-  (cd "$REPO_ROOT/cdk" && npx cdk destroy "$STACK" --context env=dev --context adminEmail=qualify@passvault-test.local --force \
+  (cd "$REPO_ROOT/cdk" && npx cdk destroy "$STACK" $(cdk_ctx_args) --force \
     ${PROFILE:+--profile "$PROFILE"}) || echo "  Warning: CDK destroy failed."
 
   # Post-destroy
   section "Post-destroy"
-  "$REPO_ROOT/scripts/post-destroy.sh" --env dev \
+  "$REPO_ROOT/scripts/post-destroy.sh" --env "$ENV" \
     ${PROFILE:+--profile "$PROFILE"} --region "$REGION" || echo "  Warning: post-destroy failed."
 
   # Remove state files
@@ -219,7 +403,7 @@ fi
 # ══════════════════════════════════════════════════════════════════════════════
 
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-STATE_FILE="$REPO_ROOT/.qualify-state-dev-${TIMESTAMP}.json"
+STATE_FILE="$REPO_ROOT/.qualify-state-${ENV}-${TIMESTAMP}.json"
 STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 PIPELINE_START=$SECONDS
 
@@ -245,22 +429,12 @@ PERF_STATE_FILE=""
 # ── Step 0: Preflight ────────────────────────────────────────────────────────
 section "Step 0 — Preflight"
 
-echo "  Checking AWS access..."
-if ! aws sts get-caller-identity --region "$REGION" &>/dev/null; then
-  echo "  No AWS access — cannot reach AWS STS."
-  echo "  Your SSO session may have expired. Run:"
-  [[ -n "$PROFILE" ]] \
-    && echo "    aws sso login --profile $PROFILE" \
-    || echo "    aws sso login"
-  echo ""
-  exit 1
-fi
-echo "  AWS credentials valid."
+# AWS credentials and stack existence were already resolved up front (see
+# "Resolve context" phase near the top of this script). $STACK_EXISTS is set
+# there. Here we only interpret that result against --resume.
+echo "  AWS credentials: OK (verified up front)."
 
-STACK_EXISTS=false
-echo "  Checking for existing $STACK stack..."
-if aws cloudformation describe-stacks --stack-name "$STACK" --region "$REGION" &>/dev/null; then
-  STACK_EXISTS=true
+if [[ "$STACK_EXISTS" == "true" ]]; then
   if [[ "$RESUME" == "true" ]]; then
     echo "  Stack $STACK exists — resuming (skipping build/test/deploy)."
   else
@@ -277,14 +451,41 @@ else
   echo "  No existing stack — clear to deploy."
 fi
 
-echo "  State file: .qualify-state-dev-${TIMESTAMP}.json"
+echo "  State file: .qualify-state-${ENV}-${TIMESTAMP}.json"
 echo ""
-echo -e "${BOLD}PassVault Dev Qualification${RESET}"
+echo -e "${BOLD}PassVault ${STACK_ENV_CAP} Qualification${RESET}"
 echo "  Environment : $ENV"
 echo "  Region      : $REGION"
 [[ -n "$PROFILE" ]] && echo "  AWS profile : $PROFILE"
+[[ -n "$DOMAIN" ]] && echo "  Domain      : $DOMAIN"
+[[ -n "$PLUS_ADDRESS" ]] && echo "  Plus address: $PLUS_ADDRESS"
 [[ "$RESUME" == "true" ]] && echo "  Mode        : resume (steps 1-3 skipped)"
 echo "  Started     : $STARTED_AT"
+echo ""
+
+# Beta with real-mail routing: require explicit confirmation before proceeding.
+# Dev is never prompted; --yes bypasses for CI.
+if [[ "$ENV" == "beta" && -n "$PLUS_ADDRESS" && "$ASSUME_YES" != "true" ]]; then
+  echo ""
+  echo -e "${YELLOW}⚠  ${ENV} qualification will send real emails to ${PLUS_LOCAL}+*@${PLUS_DOMAIN}${RESET}"
+  echo "   (~15 messages: one invitation per test user, plus vault-export and digest)"
+  echo ""
+  read -rp "   Proceed? [y/N] " _confirm
+  if [[ "$_confirm" != "y" && "$_confirm" != "Y" ]]; then
+    echo "  Aborted."
+    exit 0
+  fi
+  echo ""
+fi
+
+# Export PASSVAULT_PLUS_ADDRESS into the child-script environment so test-user
+# construction flows through testUserEmail() and uses the plus-addressed mailbox.
+if [[ -n "$PLUS_ADDRESS" ]]; then
+  export PASSVAULT_PLUS_ADDRESS="$PLUS_ADDRESS"
+  echo "  Email routing: on → ${PLUS_LOCAL}+<tag>@${PLUS_DOMAIN}"
+else
+  echo "  Email routing: off (test users use @passvault-test.local)"
+fi
 echo ""
 
 if [[ "$RESUME" == "true" ]]; then
@@ -298,6 +499,15 @@ else
 # ── Step 1: Build ─────────────────────────────────────────────────────────────
 section "Step 1 — Build"
 STEP_START=$SECONDS
+
+echo "  Running npm ci …"
+if ! (cd "$REPO_ROOT" && npm ci); then
+  set_step STATUS build "fail"
+  set_step EXIT build "$?"
+  set_step DURATION build "$(( SECONDS - STEP_START ))"
+  echo "  npm ci failed — aborting qualification."
+  exit 1
+fi
 
 if (cd "$REPO_ROOT" && npm run build); then
   set_step STATUS build "pass"
@@ -358,7 +568,7 @@ fi
 section "Step 3 — CDK deploy"
 STEP_START=$SECONDS
 
-CDK_ARGS="$STACK --context env=dev --context adminEmail=qualify@passvault-test.local --require-approval never"
+CDK_ARGS="$STACK $(cdk_ctx_args) --require-approval never"
 [[ -n "$PROFILE" ]] && CDK_ARGS="$CDK_ARGS --profile $PROFILE"
 
 if (cd "$REPO_ROOT/cdk" && npx cdk deploy $CDK_ARGS); then
@@ -371,9 +581,9 @@ else
   set_step DURATION deploy "$(( SECONDS - STEP_START ))"
   echo "  Deploy failed — attempting destroy + cleanup."
 
-  (cd "$REPO_ROOT/cdk" && npx cdk destroy "$STACK" --context env=dev --context adminEmail=qualify@passvault-test.local --force \
+  (cd "$REPO_ROOT/cdk" && npx cdk destroy "$STACK" $(cdk_ctx_args) --force \
     ${PROFILE:+--profile "$PROFILE"}) 2>/dev/null || true
-  "$REPO_ROOT/scripts/post-destroy.sh" --env dev \
+  "$REPO_ROOT/scripts/post-destroy.sh" --env "$ENV" \
     ${PROFILE:+--profile "$PROFILE"} --region "$REGION" 2>/dev/null || true
 
   echo "  Aborting qualification."
@@ -437,7 +647,7 @@ SUB_ARGS="$SUB_ARGS --region $REGION"
 section "Step 4 — System Integration Tests"
 STEP_START=$SECONDS
 
-if "$REPO_ROOT/scripts/sitest.sh" --env dev --keep $SUB_ARGS; then
+if "$REPO_ROOT/scripts/sitest.sh" --env "$ENV" --keep $SUB_ARGS; then
   set_step STATUS sit "pass"
   set_step EXIT sit "0"
 else
@@ -449,7 +659,7 @@ set_step DURATION sit "$(( SECONDS - STEP_START ))"
 
 # Discover SIT state file
 shopt -s nullglob
-SIT_FILES=( "$REPO_ROOT"/.sit-state-dev-*.json )
+SIT_FILES=( "$REPO_ROOT"/.sit-state-${ENV}-*.json )
 shopt -u nullglob
 if [[ ${#SIT_FILES[@]} -gt 0 ]]; then
   SIT_STATE_FILE="$(basename "${SIT_FILES[${#SIT_FILES[@]}-1]}")"
@@ -461,7 +671,7 @@ echo "  SIT: $(get_step STATUS sit) ($(fmt_duration $(get_step DURATION sit)))"
 section "Step 5 — Penetration Tests"
 STEP_START=$SECONDS
 
-if "$REPO_ROOT/scripts/pentest.sh" --env dev --keep $SUB_ARGS; then
+if "$REPO_ROOT/scripts/pentest.sh" --env "$ENV" --keep $SUB_ARGS; then
   set_step STATUS pentest "pass"
   set_step EXIT pentest "0"
 else
@@ -473,7 +683,7 @@ set_step DURATION pentest "$(( SECONDS - STEP_START ))"
 
 # Discover pentest state file
 shopt -s nullglob
-PENTEST_FILES=( "$REPO_ROOT"/.pentest-state-dev-*.json )
+PENTEST_FILES=( "$REPO_ROOT"/.pentest-state-${ENV}-*.json )
 shopt -u nullglob
 if [[ ${#PENTEST_FILES[@]} -gt 0 ]]; then
   PENTEST_STATE_FILE="$(basename "${PENTEST_FILES[${#PENTEST_FILES[@]}-1]}")"
@@ -494,7 +704,7 @@ elif ! (cd "$REPO_ROOT/frontend" && npx playwright --version &>/dev/null); then
   set_step STATUS e2e "skip"
   set_step EXIT e2e "0"
 else
-  if "$REPO_ROOT/scripts/e2etest.sh" --env dev --keep --base-url "$API_URL" $SUB_ARGS; then
+  if "$REPO_ROOT/scripts/e2etest.sh" --env "$ENV" --keep --base-url "$API_URL" $SUB_ARGS; then
     set_step STATUS e2e "pass"
     set_step EXIT e2e "0"
   else
@@ -504,7 +714,7 @@ else
 
   # Discover E2E state file
   shopt -s nullglob
-  E2E_FILES=( "$REPO_ROOT"/.e2e-state-dev-*.json )
+  E2E_FILES=( "$REPO_ROOT"/.e2e-state-${ENV}-*.json )
   shopt -u nullglob
   if [[ ${#E2E_FILES[@]} -gt 0 ]]; then
     E2E_STATE_FILE="$(basename "${E2E_FILES[${#E2E_FILES[@]}-1]}")"
@@ -523,7 +733,7 @@ if [[ ! -f "$REPO_ROOT/backend/perf/vitest.config.ts" ]]; then
   set_step STATUS perf "skip"
   set_step EXIT perf "0"
 else
-  if "$REPO_ROOT/scripts/perftest.sh" --env dev --keep --base-url "$API_URL" $SUB_ARGS; then
+  if "$REPO_ROOT/scripts/perftest.sh" --env "$ENV" --keep --base-url "$API_URL" $SUB_ARGS; then
     set_step STATUS perf "pass"
     set_step EXIT perf "0"
   else
@@ -533,7 +743,7 @@ else
 
   # Discover perf state file
   shopt -s nullglob
-  PERF_FILES=( "$REPO_ROOT"/.perf-state-dev-*.json )
+  PERF_FILES=( "$REPO_ROOT"/.perf-state-${ENV}-*.json )
   shopt -u nullglob
   if [[ ${#PERF_FILES[@]} -gt 0 ]]; then
     PERF_STATE_FILE="$(basename "${PERF_FILES[${#PERF_FILES[@]}-1]}")"
@@ -582,34 +792,34 @@ if [[ "$ANY_FAIL" == "false" ]]; then
 
   # SIT cleanup
   if [[ -n "$SIT_STATE_FILE" && -f "$REPO_ROOT/$SIT_STATE_FILE" ]]; then
-    "$REPO_ROOT/scripts/sitest.sh" --cleanup "$REPO_ROOT/$SIT_STATE_FILE" --env dev \
+    "$REPO_ROOT/scripts/sitest.sh" --cleanup "$REPO_ROOT/$SIT_STATE_FILE" --env "$ENV" \
       ${PROFILE:+--profile "$PROFILE"} --region "$REGION" || echo "  Warning: SIT cleanup failed."
   fi
 
   # Pentest cleanup
   if [[ -n "$PENTEST_STATE_FILE" && -f "$REPO_ROOT/$PENTEST_STATE_FILE" ]]; then
-    "$REPO_ROOT/scripts/pentest.sh" --cleanup "$REPO_ROOT/$PENTEST_STATE_FILE" --env dev \
+    "$REPO_ROOT/scripts/pentest.sh" --cleanup "$REPO_ROOT/$PENTEST_STATE_FILE" --env "$ENV" \
       ${PROFILE:+--profile "$PROFILE"} --region "$REGION" || echo "  Warning: Pentest cleanup failed."
   fi
 
   # E2E cleanup
   if [[ -n "$E2E_STATE_FILE" && -f "$REPO_ROOT/$E2E_STATE_FILE" ]]; then
-    "$REPO_ROOT/scripts/e2etest.sh" --cleanup "$REPO_ROOT/$E2E_STATE_FILE" --env dev \
+    "$REPO_ROOT/scripts/e2etest.sh" --cleanup "$REPO_ROOT/$E2E_STATE_FILE" --env "$ENV" \
       ${PROFILE:+--profile "$PROFILE"} --region "$REGION" || echo "  Warning: E2E cleanup failed."
   fi
 
   # Perf cleanup
   if [[ -n "$PERF_STATE_FILE" && -f "$REPO_ROOT/$PERF_STATE_FILE" ]]; then
-    "$REPO_ROOT/scripts/perftest.sh" --cleanup "$REPO_ROOT/$PERF_STATE_FILE" --env dev \
+    "$REPO_ROOT/scripts/perftest.sh" --cleanup "$REPO_ROOT/$PERF_STATE_FILE" --env "$ENV" \
       ${PROFILE:+--profile "$PROFILE"} --region "$REGION" || echo "  Warning: Perf cleanup failed."
   fi
 
   # CDK destroy
-  (cd "$REPO_ROOT/cdk" && npx cdk destroy "$STACK" --context env=dev --context adminEmail=qualify@passvault-test.local --force \
+  (cd "$REPO_ROOT/cdk" && npx cdk destroy "$STACK" $(cdk_ctx_args) --force \
     ${PROFILE:+--profile "$PROFILE"}) || echo "  Warning: CDK destroy failed."
 
   # Post-destroy
-  "$REPO_ROOT/scripts/post-destroy.sh" --env dev \
+  "$REPO_ROOT/scripts/post-destroy.sh" --env "$ENV" \
     ${PROFILE:+--profile "$PROFILE"} --region "$REGION" || echo "  Warning: post-destroy failed."
 
   # Remove state files
@@ -621,7 +831,7 @@ if [[ "$ANY_FAIL" == "false" ]]; then
 
   echo ""
   echo -e "${BOLD}═══════════════════════════════════════════════${RESET}"
-  echo -e "${BOLD}  PassVault Dev Qualification — ${GREEN}PASS ✓${RESET}"
+  echo -e "${BOLD}  PassVault ${STACK_ENV_CAP} Qualification — ${GREEN}PASS ✓${RESET}"
   echo -e "${BOLD}═══════════════════════════════════════════════${RESET}"
   banner_line "Build"   build
   banner_line "Tests"   test
@@ -645,7 +855,7 @@ else
 
   echo ""
   echo -e "${BOLD}═══════════════════════════════════════════════${RESET}"
-  echo -e "${BOLD}  PassVault Dev Qualification — ${RED}FAIL ✗${RESET}"
+  echo -e "${BOLD}  PassVault ${STACK_ENV_CAP} Qualification — ${RED}FAIL ✗${RESET}"
   echo -e "${BOLD}═══════════════════════════════════════════════${RESET}"
   banner_line "Build"   build
   banner_line "Tests"   test

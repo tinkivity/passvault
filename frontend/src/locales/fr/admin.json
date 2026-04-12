@@ -121,6 +121,8 @@
   "reactivate": "R\u00e9activer",
   "downloadVault": "T\u00e9l\u00e9charger le coffre",
   "emailVault": "Envoyer le coffre",
+  "emailVaultSending": "Envoi de l'export du coffre \u00e0 {{username}}...",
+  "emailVaultSent": "L'export du coffre a \u00e9t\u00e9 envoy\u00e9 \u00e0 {{username}}.",
   "userDetails": "D\u00e9tails utilisateur",
   "refreshOtpAction": "Actualiser OTP",
   "deleteUserAction": "Supprimer l'utilisateur",

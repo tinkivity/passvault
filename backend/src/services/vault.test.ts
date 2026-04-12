@@ -29,7 +29,8 @@ vi.mock('../utils/audit.js', () => ({
 }));
 
 vi.mock('../utils/email-templates.js', () => ({
-  renderEmail: vi.fn().mockResolvedValue({ html: '<p>html</p>', plainText: 'plain text' }),
+  renderEmail: vi.fn().mockResolvedValue({ subject: 'Test Subject', html: '<p>html</p>', plainText: 'plain text' }),
+  resolveGreeting: vi.fn((user: { username: string }) => user.username),
 }));
 
 vi.mock('../utils/language.js', () => ({
@@ -291,7 +292,7 @@ describe('sendVaultEmail', () => {
     expect(result.response?.success).toBe(true);
     expect(mockSendEmailWithAttachment).toHaveBeenCalledWith(
       'alice@example.com',
-      expect.stringContaining('vault'),
+      'Test Subject', // subject from renderEmail mock
       expect.any(String),
       expect.objectContaining({
         filename: expect.stringMatching(/^passvault-alice@example\.com-\d{4}-\d{2}-\d{2}\.vault\.gz$/),
@@ -300,6 +301,27 @@ describe('sendVaultEmail', () => {
       }),
       expect.any(String), // html body
     );
+  });
+
+  it('attachment content is valid base64 that decodes to valid gzip', async () => {
+    const { gunzipSync } = await import('zlib');
+    mockGetUser.mockResolvedValue(makeUser({ username: 'alice@example.com' }));
+    mockGetIndexFile.mockResolvedValue({ content: 'enc-idx', lastModified: '2024-06-01T12:00:00.000Z' });
+    mockGetItemsFile.mockResolvedValue({ content: 'enc-items', lastModified: '2024-06-01T12:00:00.000Z' });
+    await sendVaultEmail('user-1', 'vault-1');
+
+    const call = mockSendEmailWithAttachment.mock.calls[0];
+    const attachmentContent: string = call[3].content;
+
+    // Must be valid base64
+    const decoded = Buffer.from(attachmentContent, 'base64');
+    expect(decoded.length).toBeGreaterThan(0);
+
+    // Must be valid gzip — gunzipSync throws on corrupt data
+    const decompressed = gunzipSync(decoded);
+    const json = JSON.parse(decompressed.toString('utf-8'));
+    expect(json).toHaveProperty('encryptedIndex');
+    expect(json).toHaveProperty('encryptedItems');
   });
 });
 

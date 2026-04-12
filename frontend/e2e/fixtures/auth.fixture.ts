@@ -1,4 +1,5 @@
 import { test as base, expect, type Page, type APIRequestContext } from '@playwright/test';
+import { postWithPoW, POW_DIFFICULTY } from '../helpers/pow.js';
 
 /**
  * Custom fixture that provides a `adminPage` — a Page already logged in
@@ -40,14 +41,15 @@ export const test = base.extend<{
       base.skip(true, 'E2E_ADMIN_EMAIL and E2E_ADMIN_PASSWORD must be set');
       return;
     }
-    const loginRes = await request.post(`${apiBase}/api/auth/login`, {
+    const { body } = await postWithPoW(request, apiBase, '/api/auth/login', {
       data: { username: email, password },
+      difficulty: POW_DIFFICULTY.MEDIUM,
     });
-    const body = await loginRes.json();
     if (!body.success) {
       throw new Error(`API login failed: ${JSON.stringify(body)}`);
     }
-    await use({ token: body.data.token, userId: body.data.userId });
+    const data = body.data as Record<string, string>;
+    await use({ token: data.token, userId: data.userId });
   },
 
   adminPage: async ({ page, adminAuth }, use) => {
@@ -81,14 +83,14 @@ export const test = base.extend<{
     // sessionStorage. The adminAuth fixture above only kept the minimal
     // fields used for API calls.
     const apiBase = process.env.E2E_API_BASE_URL ?? '';
-    const loginRes = await page.request.post(`${apiBase}/api/auth/login`, {
+    const { body: loginBody } = await postWithPoW(page.request, apiBase, '/api/auth/login', {
       data: { username: email, password },
+      difficulty: POW_DIFFICULTY.MEDIUM,
     });
-    const body = await loginRes.json();
-    if (!body.success) {
-      throw new Error(`API login failed: ${JSON.stringify(body)}`);
+    if (!loginBody.success) {
+      throw new Error(`API login failed: ${JSON.stringify(loginBody)}`);
     }
-    const d = body.data;
+    const d = loginBody.data as Record<string, unknown>;
 
     // Navigate to the app origin so sessionStorage is on the right domain
     await page.goto('/login');

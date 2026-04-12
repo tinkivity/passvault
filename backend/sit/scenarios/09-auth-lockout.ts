@@ -3,6 +3,7 @@ import { request, pow } from '../lib/client.js';
 import { API_PATHS, POW_CONFIG, LIMITS } from '@passvault/shared';
 import type { CreateUserResponse } from '@passvault/shared';
 import type { SitContext } from '../lib/context.js';
+import { testUserEmail } from '../lib/test-emails.js';
 
 const HIGH = POW_CONFIG.DIFFICULTY.HIGH;
 const MEDIUM = POW_CONFIG.DIFFICULTY.MEDIUM;
@@ -33,7 +34,7 @@ export function authLockoutScenarios(ctx: SitContext) {
     let victimOtp: string;
 
     it('creates a throwaway user for lockout testing', async () => {
-      victimEmail = `sit-lockout-${ts}@passvault-test.local`;
+      victimEmail = testUserEmail(`sit-lockout-${ts}`);
       const res = await request<{ success: boolean; data: CreateUserResponse }>('POST', API_PATHS.ADMIN_USERS, {
         body: { username: victimEmail, plan: 'free', firstName: 'SIT', lastName: 'Lockout' },
         token: ctx.adminToken,

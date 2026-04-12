@@ -21,7 +21,7 @@ import {
 } from '../utils/dynamodb.js';
 import { randomUUID } from 'crypto';
 import { sendHtmlEmail } from '../utils/ses.js';
-import { renderEmail } from '../utils/email-templates.js';
+import { renderEmail, formatAbsoluteTime } from '../utils/email-templates.js';
 import { resolveLanguage } from '../utils/language.js';
 import { hashPassword, verifyPassword } from '../utils/crypto.js';
 import { validatePassword } from '../utils/password.js';
@@ -234,6 +234,14 @@ export async function changePassword(
     otpExpiresAt: null,
   });
 
+  await recordAuditEvent({
+    category: 'system',
+    action: 'password_changed',
+    userId,
+    performedBy: userId,
+    details: { firstLogin: String(isFirstLogin) },
+  }).catch(err => console.error('Failed to record audit event:', err));
+
   // Offer passkey setup after first password change (users go to optional setup; admin in beta/prod goes to mandatory setup)
   const offerPasskeySetup = isFirstLogin ? true : undefined;
   return { response: { success: true, offerPasskeySetup } };
@@ -265,6 +273,14 @@ export async function selfChangePassword(
 
   const newHash = await hashPassword(request.newPassword);
   await updateUser(userId, { passwordHash: newHash });
+
+  await recordAuditEvent({
+    category: 'system',
+    action: 'password_changed',
+    userId,
+    performedBy: userId,
+    details: { selfService: 'true' },
+  }).catch(err => console.error('Failed to record audit event:', err));
 
   return { response: { success: true } };
 }
@@ -351,20 +367,24 @@ export async function requestEmailChange(
 
   // Send verification email to the NEW address
   const verifyUrl = `${frontendUrl}/verify-email-change?token=${emailChangeToken}`;
+  const verifyLinkExpiresAt = formatAbsoluteTime(new Date(emailChangeTokenExpiresAt), lang);
   const verifyEmail = await renderEmail('email-change-verify', lang, {
     verifyUrl,
     linkExpiryHours: '24',
+    linkExpiresAt: verifyLinkExpiresAt,
   });
-  await sendHtmlEmail(newEmail, 'PassVault — Verify your new email address', verifyEmail.html, verifyEmail.plainText);
+  await sendHtmlEmail(newEmail, verifyEmail.subject, verifyEmail.html, verifyEmail.plainText);
 
   // Send notification to the OLD address
   const lockUrl = `${frontendUrl}/lock-account?token=${emailChangeLockToken}`;
+  const lockLinkExpiresAt = formatAbsoluteTime(new Date(emailChangeLockTokenExpiresAt), lang);
   const notifyEmail = await renderEmail('email-change-notify', lang, {
     newEmail,
     lockUrl,
     linkExpiryHours: '1',
+    linkExpiresAt: lockLinkExpiresAt,
   });
-  await sendHtmlEmail(user.username, 'PassVault — Email change requested', notifyEmail.html, notifyEmail.plainText);
+  await sendHtmlEmail(user.username, notifyEmail.subject, notifyEmail.html, notifyEmail.plainText);
 
   return {};
 }
@@ -391,6 +411,7 @@ export async function verifyEmailChange(
     return { error: ERRORS.USER_EXISTS, statusCode: 409 };
   }
 
+  const oldEmail = user.username;
   await updateUser(user.userId, {
     username: user.pendingEmail,
     pendingEmail: undefined,
@@ -399,6 +420,14 @@ export async function verifyEmailChange(
     emailChangeLockToken: undefined,
     emailChangeLockTokenExpiresAt: undefined,
   });
+
+  await recordAuditEvent({
+    category: 'system',
+    action: 'email_changed',
+    userId: user.userId,
+    performedBy: user.userId,
+    details: { oldEmail, newEmail: user.pendingEmail },
+  }).catch(err => console.error('Failed to record audit event:', err));
 
   return {};
 }

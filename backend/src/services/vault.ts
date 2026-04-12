@@ -22,7 +22,7 @@ import {
 import { getVaultIndexFile, getVaultItemsFile, putVaultSplitFiles, deleteVaultSplitFiles, getLegacyVaultFile, migrateLegacyVaultFile } from '../utils/s3.js';
 import { getUserById, createVaultRecord, getVaultRecord, listVaultsByUser, deleteVaultRecord, updateVaultDisplayName } from '../utils/dynamodb.js';
 import { sendEmailWithAttachment } from '../utils/ses.js';
-import { renderEmail } from '../utils/email-templates.js';
+import { renderEmail, resolveGreeting } from '../utils/email-templates.js';
 import { resolveLanguage } from '../utils/language.js';
 import { recordAuditEvent } from '../utils/audit.js';
 
@@ -306,8 +306,8 @@ export async function sendVaultEmail(
   const filename = `passvault-${user.username}-${date}.vault.gz`;
 
   const lang = resolveLanguage(user.preferredLanguage);
-  const { html, plainText } = await renderEmail('vault-export', lang, {
-    userName: user.username,
+  const { subject, html, plainText } = await renderEmail('vault-export', lang, {
+    userName: resolveGreeting(user),
     exportDate: date,
     filename,
   });
@@ -317,11 +317,11 @@ export async function sendVaultEmail(
 
   await sendEmailWithAttachment(
     user.username,
-    'Your PassVault encrypted vault export',
+    subject,
     plainText,
     {
       filename,
-      content: compressed.toString('binary'),
+      content: compressed.toString('base64'),
       contentType: 'application/gzip',
     },
     html,

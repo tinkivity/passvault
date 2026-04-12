@@ -251,13 +251,27 @@ echo "  API URL     : $API_URL"
 echo "  Users table : $TABLE"
 [[ -n "$FILES_BUCKET" ]] && echo "  Files bucket: $FILES_BUCKET"
 
+# Discover plus-address routing from stack outputs (beta/prod).
+# See e2etest.sh for why this matters (SES reputation).
+if [[ -z "${PASSVAULT_PLUS_ADDRESS:-}" ]]; then
+  DISCOVERED_PLUS=$(_cfn_output PlusAddress 2>/dev/null || echo "")
+  [[ "$DISCOVERED_PLUS" == "None" ]] && DISCOVERED_PLUS=""
+  if [[ -n "$DISCOVERED_PLUS" ]]; then
+    export PASSVAULT_PLUS_ADDRESS="$DISCOVERED_PLUS"
+  fi
+fi
+
 # ── Generate SIT admin name ──────────────────────────────────────────────────
 section "SIT admin setup"
 
 ADJECTIVES=("quick" "clever" "silent" "bright" "bold" "sharp" "calm" "keen")
 NOUNS=("fox" "owl" "hawk" "wolf" "bear" "lynx" "crane" "pike")
 SIT_NAME="${ADJECTIVES[$((RANDOM % 8))]}-${NOUNS[$((RANDOM % 8))]}"
-SIT_EMAIL="sit-${SIT_NAME}@passvault-test.local"
+source "$REPO_ROOT/scripts/lib/test-emails.sh"
+SIT_EMAIL=$(make_test_email "sit-${SIT_NAME}")
+if [[ -n "${PASSVAULT_PLUS_ADDRESS:-}" ]]; then
+  echo "  Email routing: on → $SIT_EMAIL"
+fi
 
 echo "  SIT admin   : $SIT_EMAIL"
 

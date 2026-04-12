@@ -1,5 +1,6 @@
 import { test, expect } from '../fixtures/auth.fixture.js';
 import { createTestUser, deleteTestUser, getUserState, onboardTestUserViaAPI } from '../helpers/users.js';
+import { postWithPoW, POW_DIFFICULTY } from '../helpers/pow.js';
 
 const ONBOARD_PASSWORD = 'E2eLifecycle42!Secure';
 
@@ -310,17 +311,71 @@ test.describe.serial('Admin lifecycle — refresh OTP', () => {
 // ────────────────────────────────────────────────────────────────────────────
 // Group 6: email-vault (uses admin's own vault as target)
 // ────────────────────────────────────────────────────────────────────────────
-test.describe('Admin lifecycle — email vault', () => {
-  // This test requires the admin user to already own at least one vault.
-  // The 08-vault-crud suite creates and cleans up its own vaults, so we
-  // cannot rely on it — we create one inline for this test.
-  test.fixme('email-vault: success toast appears after triggering per-vault email', async ({
-    adminPage, request, adminAuth, apiBase,
+test.describe.serial('Admin lifecycle — email vault', () => {
+  let testUser: { userId: string; username: string };
+
+  test.beforeAll(async ({ request, adminAuth, apiBase }) => {
+    const created = await createTestUser(request, apiBase, adminAuth.token, { usernamePrefix: 'e2e-emailvault' });
+    testUser = { userId: created.userId, username: created.username };
+    await onboardTestUserViaAPI(request, apiBase, created.username, created.oneTimePassword, ONBOARD_PASSWORD);
+    // Create a vault for the test user so the email-vault action has content
+    const { body: loginBody } = await postWithPoW(request, apiBase, '/api/auth/login', {
+      data: { username: created.username, password: ONBOARD_PASSWORD },
+      difficulty: POW_DIFFICULTY.MEDIUM,
+    });
+    if (loginBody.success) {
+      const userToken = (loginBody.data as Record<string, string>).token;
+      await postWithPoW(request, apiBase, '/api/vaults', {
+        headers: { Authorization: `Bearer ${userToken}` },
+        data: { displayName: 'E2E Email Test Vault' },
+        difficulty: POW_DIFFICULTY.HIGH,
+      });
+    }
+  });
+
+  test.afterAll(async ({ request, adminAuth, apiBase }) => {
+    if (testUser?.userId) await deleteTestUser(request, apiBase, adminAuth.token, testUser.userId);
+  });
+
+  test('email-vault: shows sending then success dialog from user list 3-dot menu', async ({
+    adminPage, apiBase,
   }) => {
-    // TODO: Needs inline vault setup against the admin user's own account
-    // (POST /api/vaults) and cleanup afterward. The Email icon lives inside
-    // the per-vault row on the admin user detail page but is also gated on
-    // `isProd` in the frontend. Revisit once the UI gating is resolved.
+    await adminPage.goto('/ui/admin/users');
+
+    // Filter to the test user
+    const filter = adminPage.getByRole('textbox', { name: /Filter by username/i });
+    await expect(filter).toBeVisible({ timeout: 45000 });
+    await filter.fill(testUser.username);
+
+    // Wait for the row to appear
+    const row = adminPage.getByRole('row').filter({ hasText: testUser.username });
+    await expect(row).toBeVisible({ timeout: 45000 });
+
+    // Open the 3-dot menu
+    const actionsButton = adminPage.getByRole('button', { name: new RegExp(`Actions for ${testUser.username}`) });
+    await actionsButton.click();
+
+    // Click "email vault"
+    const emailItem = adminPage.getByRole('menuitem', { name: /email vault/i });
+    await expect(emailItem).toBeVisible({ timeout: 5000 });
+    await emailItem.click();
+
+    // Sending dialog should appear immediately (before API returns)
+    await expect(adminPage.getByText(/sending vault export/i)).toBeVisible({ timeout: 3000 });
+
+    // OK button should be disabled while sending
+    const okButton = adminPage.getByRole('button', { name: /^ok$/i });
+    await expect(okButton).toBeDisabled();
+
+    // Wait for success — the dialog transitions once the API completes
+    await expect(adminPage.getByText(/vault export has been emailed/i)).toBeVisible({ timeout: 60000 });
+
+    // OK button should be enabled now
+    await expect(okButton).toBeEnabled();
+
+    // Dismiss the dialog
+    await okButton.click();
+    await expect(adminPage.getByText(/vault export has been emailed/i)).not.toBeVisible();
   });
 });
 

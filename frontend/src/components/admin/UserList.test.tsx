@@ -53,6 +53,7 @@ function renderList(overrides?: {
   onUnlockUser?: ReturnType<typeof vi.fn>;
   onExpireUser?: ReturnType<typeof vi.fn>;
   onReactivateUser?: ReturnType<typeof vi.fn>;
+  onEmailVault?: ReturnType<typeof vi.fn>;
   onOtpRefreshed?: ReturnType<typeof vi.fn>;
   onRowClick?: ReturnType<typeof vi.fn>;
   users?: UserSummary[];
@@ -70,7 +71,7 @@ function renderList(overrides?: {
       onUnlockUser={overrides?.onUnlockUser ?? vi.fn()}
       onExpireUser={overrides?.onExpireUser ?? vi.fn()}
       onReactivateUser={overrides?.onReactivateUser ?? vi.fn()}
-      onEmailVault={vi.fn()}
+      onEmailVault={overrides?.onEmailVault ?? vi.fn().mockResolvedValue(undefined)}
       onOtpRefreshed={overrides?.onOtpRefreshed ?? vi.fn()}
       onRowClick={overrides?.onRowClick}
     />,
@@ -451,5 +452,37 @@ describe('UserList', () => {
     renderList();
     await userEvent.type(screen.getByLabelText(/filter by username/i), 'ali');
     expect(screen.getByText(/showing 1 of 3 records/i)).toBeInTheDocument();
+  });
+
+  it('shows sending dialog immediately when email vault is clicked', async () => {
+    // Use a promise that never resolves to keep the dialog in "sending" state
+    const onEmailVault = vi.fn().mockReturnValue(new Promise(() => {}));
+    renderList({ onEmailVault });
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for charlie@example.com' }));
+    await userEvent.click(await screen.findByText(/email vault/i));
+    expect(onEmailVault).toHaveBeenCalledWith('u1');
+    // Sending state shows immediately — no waiting for API
+    expect(await screen.findByText(/sending vault export/i)).toBeInTheDocument();
+    // OK button is disabled during sending
+    expect(screen.getByRole('button', { name: /^ok$/i })).toBeDisabled();
+  });
+
+  it('transitions to success state after email completes', async () => {
+    const onEmailVault = vi.fn().mockResolvedValue(undefined);
+    renderList({ onEmailVault });
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for charlie@example.com' }));
+    await userEvent.click(await screen.findByText(/email vault/i));
+    expect(await screen.findByText(/vault export has been emailed/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^ok$/i })).toBeEnabled();
+  });
+
+  it('closes email dialog when OK is clicked after success', async () => {
+    const onEmailVault = vi.fn().mockResolvedValue(undefined);
+    renderList({ onEmailVault });
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for charlie@example.com' }));
+    await userEvent.click(await screen.findByText(/email vault/i));
+    await screen.findByText(/vault export has been emailed/i);
+    await userEvent.click(screen.getByRole('button', { name: /^ok$/i }));
+    expect(screen.queryByText(/vault export has been emailed/i)).not.toBeInTheDocument();
   });
 });

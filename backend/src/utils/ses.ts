@@ -61,10 +61,9 @@ export async function sendEmailWithAttachment(
   const mixedBoundary = `==PassVault_Mixed_${Date.now()}==`;
   const altBoundary = `==PassVault_Alt_${Date.now()}==`;
 
-  // Wrap base64 at 76 characters per line as required by MIME spec.
-  const base64Content = Buffer.from(attachment.content)
-    .toString('base64')
-    .replace(/(.{76})/g, '$1\r\n');
+  // Content is already base64-encoded by callers. Wrap at 76 characters per line
+  // as required by MIME spec.
+  const base64Content = attachment.content.replace(/(.{76})/g, '$1\r\n');
 
   // Build the text/html body parts
   const bodyParts: string[] = [];

@@ -22,13 +22,30 @@ PassVault deploys to AWS using CDK. Three environments are supported: **dev**, *
 
 ## Qualification Gate
 
-Before promoting changes to beta or prod, run the qualification pipeline against a fresh dev deployment:
+Before promoting changes to beta, run the qualification pipeline. Dev is the
+fast, mail-safe path used on feature branches; beta exercises the full
+SES/email path via [test email routing](../cdk/DEPLOYMENT.md#4b-routing-qualification-test-mail-to-your-inbox)
+and is the gate before cutting a beta release. **Prod is not qualifiable** —
+`qualify.sh --env prod` is rejected outright to keep test traffic off
+production.
 
 ```bash
+# Dev — self-contained, no real mail sent
 ./scripts/qualify.sh --profile <your-profile>
+
+# Beta, first run against a fresh PassVault-Beta stack (flags required)
+./scripts/qualify.sh --env beta \
+  --domain example.com \
+  --plus-address you@example.com \
+  --profile <your-profile>
+
+# Beta, subsequent runs (values read from the deployed stack's outputs)
+./scripts/qualify.sh --env beta --resume --profile <your-profile>
 ```
 
-This automates: build, unit tests, CDK deploy, SIT, pentest, E2E browser tests, and performance benchmarks. See [QUALIFICATION.md](QUALIFICATION.md) for details.
+Both modes automate: build, unit tests, CDK deploy, SIT, pentest, E2E browser
+tests, and performance benchmarks. See [QUALIFICATION.md](QUALIFICATION.md)
+for the flag reference and the full contract.
 
 ---
 
@@ -116,8 +133,8 @@ The SIT creates a temporary admin, exercises auth, vault, admin, and audit flows
 
 | Document | Description |
 |----------|-------------|
-| [cdk/DEPLOYMENT.md](cdk/DEPLOYMENT.md) | Full deployment guide (SSM, CDK context, SES, monitoring) |
-| [cdk/ARCHITECTURE.md](cdk/ARCHITECTURE.md) | CDK constructs, DynamoDB tables, Lambda definitions, API Gateway |
-| [scripts/README.md](scripts/README.md) | Operational scripts (post-deploy, post-destroy, sitest, pentest, smoke-test) |
+| [cdk/DEPLOYMENT.md](../cdk/DEPLOYMENT.md) | Full deployment guide (SSM, CDK context, SES, monitoring) |
+| [cdk/ARCHITECTURE.md](../cdk/ARCHITECTURE.md) | CDK constructs, DynamoDB tables, Lambda definitions, API Gateway |
+| [scripts/README.md](../scripts/README.md) | Operational scripts (post-deploy, post-destroy, sitest, pentest, smoke-test) |
 | [BOTPROTECTION.md](BOTPROTECTION.md) | Bot defense layers, CloudFront flat-rate plan, kill switch, cost analysis |
 | [COSTS.md](COSTS.md) | Detailed cost projections per user count |

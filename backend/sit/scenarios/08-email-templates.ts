@@ -3,6 +3,7 @@ import { request, pow } from '../lib/client.js';
 import { API_PATHS, POW_CONFIG } from '@passvault/shared';
 import type { CreateUserResponse } from '@passvault/shared';
 import type { SitContext } from '../lib/context.js';
+import { testUserEmail } from '../lib/test-emails.js';
 
 const HIGH = POW_CONFIG.DIFFICULTY.HIGH;
 
@@ -359,7 +360,7 @@ export function emailTemplateScenarios(ctx: SitContext) {
 
     it('create user with preferred language', async () => {
       const ts = Date.now();
-      const email = `sit-lang-${ts}@passvault-test.local`;
+      const email = testUserEmail(`sit-lang-${ts}`);
 
       const res = await request<{ success: boolean; data: CreateUserResponse }>(
         'POST', API_PATHS.ADMIN_USERS, {

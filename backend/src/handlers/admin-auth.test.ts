@@ -55,6 +55,10 @@ vi.mock('../utils/dynamodb.js', () => ({
   updatePasskeyCounter: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('../utils/audit.js', () => ({
+  recordAuditEvent: vi.fn().mockResolvedValue(undefined),
+}));
+
 import { handler } from './admin-auth.js';
 import { adminLogin } from '../services/admin.js';
 import { changePassword } from '../services/auth.js';

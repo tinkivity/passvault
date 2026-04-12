@@ -3,6 +3,7 @@ import { request, pow } from '../lib/client.js';
 import { API_PATHS, POW_CONFIG } from '@passvault/shared';
 import type { CreateUserResponse, ListUsersResponse, AdminStats } from '@passvault/shared';
 import type { SitContext } from '../lib/context.js';
+import { testUserEmail } from '../lib/test-emails.js';
 
 const HIGH = POW_CONFIG.DIFFICULTY.HIGH;
 const MEDIUM = POW_CONFIG.DIFFICULTY.MEDIUM;
@@ -20,7 +21,7 @@ export function adminUserMgmtScenarios(ctx: SitContext) {
     });
 
     it('creates pro user -> OTP + userId', async () => {
-      ctx.proUserEmail = `sit-pro-${ts}@passvault-test.local`;
+      ctx.proUserEmail = testUserEmail(`sit-pro-${ts}`);
 
       const res = await request<{ success: boolean; data: CreateUserResponse }>('POST', API_PATHS.ADMIN_USERS, {
         body: { username: ctx.proUserEmail, plan: 'pro', firstName: 'SIT', lastName: 'ProUser' },
@@ -38,7 +39,7 @@ export function adminUserMgmtScenarios(ctx: SitContext) {
     });
 
     it('creates free user -> OTP + userId', async () => {
-      ctx.freeUserEmail = `sit-free-${ts}@passvault-test.local`;
+      ctx.freeUserEmail = testUserEmail(`sit-free-${ts}`);
 
       const res = await request<{ success: boolean; data: CreateUserResponse }>('POST', API_PATHS.ADMIN_USERS, {
         body: { username: ctx.freeUserEmail, plan: 'free', firstName: 'SIT', lastName: 'FreeUser' },
@@ -108,7 +109,7 @@ export function adminUserMgmtScenarios(ctx: SitContext) {
     });
 
     it('creates another admin -> plan=administrator, success', async () => {
-      const adminEmail = `sit-admin2-${ts}@passvault-test.local`;
+      const adminEmail = testUserEmail(`sit-admin2-${ts}`);
 
       const res = await request<{ success: boolean; data: CreateUserResponse }>('POST', API_PATHS.ADMIN_USERS, {
         body: { username: adminEmail, plan: 'administrator' },

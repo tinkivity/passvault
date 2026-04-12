@@ -23,8 +23,8 @@ No AWS credentials or deployed stack required for unit tests or type checking.
 
 | Package | Tests | Guide |
 |---------|-------|-------|
-| Backend | ~320 tests (services, handlers, middleware, utils) | [backend/TESTING.md](backend/TESTING.md) |
-| Frontend | ~190 tests (components, hooks, services) | [frontend/TESTING.md](frontend/TESTING.md) |
+| Backend | ~320 tests (services, handlers, middleware, utils) | [backend/TESTING.md](../backend/TESTING.md) |
+| Frontend | ~190 tests (components, hooks, services) | [frontend/TESTING.md](../frontend/TESTING.md) |
 | CDK | ~60 tests (stack synthesis, constructs) | Run with `npm test --workspace=cdk` |
 | Shared | ~57 tests (password policy, configs, constants) | Run with `npm test --workspace=shared` |
 
@@ -77,7 +77,7 @@ scripts/sitest.sh --cleanup --env dev
 | 07 Admin Audit | 12 | Config, event queries, pagination, filtering, sorting, vault ops |
 | 08 Email Templates | 23 | List/download/upload templates, language variants, i18n, version, export all/modified, import zip, modified flag detection, unsubscribe, notification prefs |
 
-See [backend/sit/SCENARIOS.md](backend/sit/SCENARIOS.md) for detailed scenario documentation.
+See [backend/sit/SCENARIOS.md](../backend/sit/SCENARIOS.md) for detailed scenario documentation.
 
 ---
 
@@ -117,7 +117,7 @@ scripts/pentest.sh --cleanup --env dev
 | 10 Vault Security | 4 | Cross-user access, unique salts, size limits |
 | 11 Email Templates | 28 | Auth/authz for templates, export, import, version endpoints; input validation (empty body, invalid base64, non-zip data); unsubscribe token attacks |
 
-See [backend/pentest/REPORT.md](backend/pentest/REPORT.md) for the findings template.
+See [backend/pentest/REPORT.md](../backend/pentest/REPORT.md) for the findings template.
 
 ---
 
@@ -329,14 +329,29 @@ Edit `backend/perf/baselines.json` when response times legitimately change (new 
 
 ## Qualification Pipeline
 
-The qualification script automates the complete verification pipeline for dev:
+The qualification script automates the complete verification pipeline for
+dev and beta. **Prod is not qualifiable** — `qualify.sh --env prod` is
+rejected outright to keep test traffic off production. Dev is the fast,
+mail-safe path used on feature branches; beta exercises the full SES/email
+path via [test email routing](../cdk/DEPLOYMENT.md#4b-routing-qualification-test-mail-to-your-inbox)
+and is the gate before cutting a beta release.
 
 ```bash
-# Full qualification
+# Dev (default; self-contained, no real mail sent)
 ./scripts/qualify.sh --profile <aws-profile>
 
-# Cleanup after debugging failures
+# Beta, first run against a fresh PassVault-Beta stack (flags required)
+./scripts/qualify.sh --env beta \
+  --domain example.com \
+  --plus-address you@example.com \
+  --profile <aws-profile>
+
+# Beta, subsequent runs (values read from Domain/PlusAddress stack outputs)
+./scripts/qualify.sh --env beta --resume --profile <aws-profile>
+
+# Cleanup after debugging failures (match the --env of the failed run)
 ./scripts/qualify.sh --cleanup --profile <aws-profile>
+./scripts/qualify.sh --cleanup --env beta --profile <aws-profile>
 ```
 
 **Pipeline:** Build → Unit tests → CDK deploy → SIT → Pentest → E2E → Performance → Evaluate
@@ -344,7 +359,8 @@ The qualification script automates the complete verification pipeline for dev:
 - All pass: stack auto-destroyed, clean exit
 - Any fail: stack preserved, reports available, cleanup via `--cleanup`
 
-See [QUALIFICATION.md](QUALIFICATION.md) for full documentation.
+See [QUALIFICATION.md](QUALIFICATION.md) for full documentation and the
+flag reference.
 
 ---
 
@@ -364,7 +380,8 @@ See [QUALIFICATION.md](QUALIFICATION.md) for full documentation.
 
 Before promoting from dev to beta to prod:
 
-- [ ] **`./scripts/qualify.sh --profile <name>` passes** (runs all automated checks below)
+- [ ] **`./scripts/qualify.sh --profile <name>` passes on dev** (fast gate on every feature branch; no real mail sent)
+- [ ] **`./scripts/qualify.sh --env beta --resume --profile <name>` passes on beta** (full SES + test-mail-routing gate before cutting a beta release)
 - [ ] `npm test` passes (all unit tests green)
 - [ ] `npm run typecheck` passes (no type errors in any package)
 - [ ] `npm run build` succeeds (shared, backend, frontend)

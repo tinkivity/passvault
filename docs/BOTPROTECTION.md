@@ -24,7 +24,7 @@ PassVault uses the **AWS CloudFront Flat-Rate Pricing Plan** (Free tier or highe
 | Business | TBD | 125M | 50 TB |
 | Premium | TBD | 500M | 50 TB |
 
-This plan is configured in the **AWS CloudFront console**, not via CDK. See [DEPLOYMENT.md](./DEPLOYMENT.md#cloudfront-flat-rate-plan) for setup instructions.
+This plan is configured in the **AWS CloudFront console**, not via CDK. See [cdk/DEPLOYMENT.md §8](../cdk/DEPLOYMENT.md#8-cloudfront-flat-rate-plan) for setup instructions.
 
 ### Layer 2 — API Gateway Stage Throttling
 

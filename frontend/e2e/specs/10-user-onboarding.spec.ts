@@ -5,6 +5,8 @@ import {
   completeFirstLogin,
   completeAdminFirstLogin,
 } from '../helpers/users.js';
+import { testUserEmail } from '../helpers/test-emails.js';
+import { postWithPoW, POW_DIFFICULTY } from '../helpers/pow.js';
 
 /**
  * First-login OTP → change-password UI flow.
@@ -88,21 +90,21 @@ test.describe.serial('User onboarding — first-login password change (admin)', 
   test.beforeAll(async ({ request, adminAuth, apiBase }) => {
     // Create an admin user via the admin API so we can test the admin
     // first-login path (skips /onboarding, goes straight to /change-password).
-    const apiRes = await request.post(`${apiBase}/api/admin/users`, {
+    const { body } = await postWithPoW(request, apiBase, '/api/admin/users', {
       headers: { Authorization: `Bearer ${adminAuth.token}` },
       data: {
-        username: `e2e-onboarding-admin-${Date.now()}@passvault-test.local`,
+        username: testUserEmail(`e2e-onboarding-admin-${Date.now()}`),
         plan: 'administrator',
         firstName: 'E2E',
         lastName: 'AdminOnboarding',
       },
+      difficulty: POW_DIFFICULTY.HIGH,
     });
-    const body = await apiRes.json();
     if (!body.success) {
       throw new Error(`admin create failed: ${JSON.stringify(body)}`);
     }
     userId = body.data.userId;
-    username = body.data.username ?? `e2e-onboarding-admin-${Date.now()}@passvault-test.local`;
+    username = body.data.username ?? testUserEmail(`e2e-onboarding-admin-${Date.now()}`);
     otp = body.data.oneTimePassword;
   });
 

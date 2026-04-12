@@ -58,7 +58,7 @@
                             {{otpCode}}
                           </p>
                           <p style="margin: 10px 0 0 0; font-size: 13px; color: #6e6e73; line-height: 1.5;">
-                            Expire dans {{otpExpiryMinutes}} minutes
+                            Expire dans {{otpExpiryMinutes}} minutes ({{otpExpiresAt}})
                           </p>
                         </td>
                       </tr>
@@ -95,7 +95,7 @@
                 </tr>
               </table>
               <p style="margin: 12px 0 0 0; font-size: 13px; color: #6e6e73;">
-                Ce lien expire dans {{linkExpiryDays}} jours.
+                Ce lien expire dans {{linkExpiryDays}} jours ({{linkExpiresAt}}).
               </p>
             </td>
           </tr>
@@ -159,7 +159,7 @@ Bonjour {{userName}},
 Un compte a été créé pour vous sur {{appName}}. Utilisez le mot de passe à usage unique ci-dessous pour vous connecter pour la première fois.
 
 Votre mot de passe à usage unique : {{otpCode}}
-Expire dans {{otpExpiryMinutes}} minutes.
+Expire dans {{otpExpiryMinutes}} minutes ({{otpExpiresAt}}).
 
 Après votre connexion, vous serez invité à définir un nouveau mot de passe et à configurer votre compte.
 

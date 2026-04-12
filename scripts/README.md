@@ -242,6 +242,8 @@ Runs Playwright E2E browser tests against a deployed stack. Creates a temporary 
 
 **Cleanup covers:** E2E admin user, vaults, S3 files, audit events. Vite server and `.env.local` are always cleaned up on exit.
 
+**Email routing:** On beta, the script reads the `PlusAddress` CfnOutput from the deployed stack and sets `PASSVAULT_PLUS_ADDRESS` so test user emails route through the real SES-verified domain via plus-addressing (e.g. `ops+e2e-bold-hawk@example.com`). This prevents hard bounces against `@passvault-test.local` addresses, which would damage the SES sender reputation score. On dev, `@passvault-test.local` is used (no real email sent).
+
 ---
 
 ## perftest.sh
@@ -287,34 +289,79 @@ Runs performance tests (response times, concurrent users, payload scaling) again
 
 ## qualify.sh
 
-Runs the full qualification pipeline for the dev environment: build, unit tests, deploy, SIT, pentest, E2E browser tests, performance tests — then auto-destroys on success or preserves the stack on failure for debugging.
+Runs the full qualification pipeline for `dev` or `beta` (prod is rejected
+outright): build, unit tests, deploy, SIT, pentest, E2E browser tests,
+performance tests — then auto-destroys on success or preserves the stack on
+failure for debugging.
 
-**When to run:** Before merging feature branches to main, before promoting to beta.
+**When to run:** Before merging feature branches to main (dev), before
+cutting a beta release (beta).
 
 **Usage:**
 
 ```bash
-# Full qualification
+# Dev — self-contained, no flags required
 ./scripts/qualify.sh --profile <aws-profile>
 
-# Cleanup after debugging failures
-./scripts/qualify.sh --cleanup --profile <aws-profile>
+# Beta — FIRST run against a fresh stack (--domain and --plus-address required)
+./scripts/qualify.sh --env beta \
+  --domain example.com \
+  --plus-address you@example.com \
+  --profile <aws-profile>
 
-# Cleanup with specific state file
-./scripts/qualify.sh --cleanup .qualify-state-dev-20260406-120000.json --profile <aws-profile>
+# Beta — subsequent runs; values read from Domain/PlusAddress stack outputs
+./scripts/qualify.sh --env beta --resume --profile <aws-profile>
+
+# Beta in CI (skip the "real mail will be sent" confirmation)
+./scripts/qualify.sh --env beta --resume --yes --profile <aws-profile>
+
+# Cleanup after debugging failures
+./scripts/qualify.sh --cleanup --env beta --profile <aws-profile>
 ```
 
 **Options:**
 
 | Flag | Description |
 |------|-------------|
+| `--env <name>` | `dev` (default) or `beta`. `prod` is rejected. |
 | `--profile` | AWS named profile |
 | `--region` | AWS region (default: `eu-central-1`) |
-| `--cleanup [file]` | Cleanup-only mode (auto-discovers state file if not specified) |
+| `--domain <d>` | Root domain. **Required on beta fresh deploys** (passed to `cdk deploy --context domain=<d>`). On beta runs against an existing stack, read from the `Domain` CfnOutput and the flag becomes optional. Must be a Verified SES identity in the target account/region. |
+| `--plus-address <addr>` | Mailbox for qualification mail (e.g. `you@example.com`). **Required on beta fresh deploys** — without it the pipeline would hard-bounce test-user invitations into SES. On subsequent beta runs, read from the `PlusAddress` CfnOutput. Must be `local@<domain>` and its domain must equal `--domain`. |
+| `--yes` | Skip the beta "real mail will be sent" confirmation prompt (CI). |
+| `--resume` | Skip build/test/deploy; run tests against an existing stack. |
+| `--cleanup [file]` | Cleanup-only mode (auto-discovers state file if not specified). |
 
 **Pipeline:** Build → Unit tests → CDK deploy → SIT → Pentest → E2E → Performance → Evaluate
 
+**Email routing:** Dev always uses `@passvault-test.local` (no real mail sent
+— dev Lambdas have no `SENDER_EMAIL`). Beta reads `Domain` + `PlusAddress`
+CfnOutputs from the deployed stack and routes all ~15 test-user invitations
+to `local+<tag>@<domain>`. For the first beta deploy these values come from
+the `--domain`/`--plus-address` CLI flags. Before running against a newly-
+verified SES domain, run the send-email smoke test in [cdk/DEPLOYMENT.md §4a](../cdk/DEPLOYMENT.md)
+to isolate SES identity problems from application wiring.
+
 See [docs/QUALIFICATION.md](../docs/QUALIFICATION.md) for full documentation.
+
+---
+
+## Test email routing and SES reputation
+
+All test scripts (`sitest.sh`, `pentest.sh`, `e2etest.sh`, `perftest.sh`) create temporary users that may trigger invitation or notification emails. On **dev**, these use `@passvault-test.local` addresses — no real email is sent because dev Lambdas have no `SENDER_EMAIL` configured.
+
+On **beta and prod**, emails are sent via SES. Using fake `@passvault-test.local` addresses would cause **hard bounces**, which directly damage the SES sender reputation score. Sustained hard bounces can lead to SES throttling, review, or suspension of the sending identity.
+
+To avoid this, all test scripts auto-discover the `PlusAddress` CfnOutput from the deployed stack and set `PASSVAULT_PLUS_ADDRESS` in the environment. The `make_test_email()` (shell) and `testUserEmail()` (TypeScript) helpers then construct addresses like `ops+sit-bold-hawk@example.com` — all routed to the single operator inbox via plus-addressing, with zero bounces.
+
+**How it works:**
+
+1. CDK emits a `PlusAddress` output (e.g. `ops@example.com`) when the stack is deployed with `--context plusAddress=ops@example.com`
+2. Each test script reads it: `_cfn_output PlusAddress`
+3. Exports `PASSVAULT_PLUS_ADDRESS=ops@example.com`
+4. `make_test_email("sit-bold-hawk")` → `ops+sit-bold-hawk@example.com`
+
+When called from `qualify.sh`, the parent already exports the variable and the child scripts skip the stack lookup.
 
 ---
 
