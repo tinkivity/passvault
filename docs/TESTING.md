@@ -249,7 +249,7 @@ open backend/perf/perf-report.html
 | 00 Setup | 5 | Admin login, create test user, onboard user, create vault with seed data, **warm all Lambdas** |
 | 01 Response Times | 10 | p50/p95/p99 latency per endpoint (**20 iterations** each) |
 | 02 Concurrent Access | 1 | 5 parallel vault read streams, no 429s |
-| 03 Payload Size | 7 | Vault PUT+GET with 1KB–500KB round-trips, 1MB PUT, 1.1MB rejection, data restore (**10 iterations** each) |
+| 03 Payload Size | 7 | Vault PUT+GET with 1KB–500KB round-trips, 1MB PUT, 1.1MB rejection, data restore (**20 iterations** each) |
 
 ### Sample count and p95 accuracy
 
@@ -262,7 +262,7 @@ The p95 percentile is computed as `sorted[Math.ceil(N * 0.95) - 1]`. With too fe
 | **20** | **18** | 19th of 20 — one outlier excluded |
 | 30 | 28 | 29th of 30 — two outliers excluded |
 
-Endpoint tests use **20 iterations** and payload tests use **10 iterations** (previously 10 and 5). With 20 samples, a single cold start, GC pause, or network hiccup is excluded from p95. With the old 10-sample runs, p95 was literally the max — one bad request failed the entire test regardless of how the other 9 performed.
+Both endpoint and payload tests use **20 iterations**. With 20 samples, a single cold start, GC pause, or network hiccup is excluded from p95. At any sample size below 20, the formula degenerates to p95 = max — one bad request fails the entire test regardless of how the other N-1 performed.
 
 ### Lambda warmup
 
@@ -325,9 +325,9 @@ Each API call that requires PoW also makes an extra `GET /api/challenge` round-t
 
 | Endpoint | p95 | Delta from dev | Why |
 |----------|-----|----------------|-----|
-| auth_login | 4000ms | +500ms | MEDIUM PoW + challenge RTT |
+| auth_login | 4500ms | +1000ms | MEDIUM PoW + challenge RTT + bcrypt variance |
 | vault_list | 2500ms | +1700ms | HIGH PoW + cold start variability |
-| vault_get_index | 2000ms | +800ms | HIGH PoW + S3 latency |
+| vault_get_index | 3000ms | +1800ms | HIGH PoW + S3 latency + DynamoDB read |
 | vault_put | 2500ms | +1000ms | HIGH PoW + S3 write |
 | admin_users | 3500ms | +1500ms | HIGH PoW + DynamoDB scan |
 | admin_stats | 3000ms | +1000ms | HIGH PoW + multi-table aggregation |

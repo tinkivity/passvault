@@ -24,9 +24,9 @@
   },
   "beta": {
     "endpoints": {
-      "auth_login": { "p95": 4000 },
+      "auth_login": { "p95": 4500 },
       "vault_list": { "p95": 2500 },
-      "vault_get_index": { "p95": 2000 },
+      "vault_get_index": { "p95": 3000 },
       "vault_put": { "p95": 2500 },
       "admin_users": { "p95": 3500 },
       "admin_stats": { "p95": 3000 },

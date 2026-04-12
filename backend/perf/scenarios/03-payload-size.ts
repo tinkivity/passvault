@@ -69,7 +69,7 @@ export function payloadScenarios(ctx: PerfContext) {
               expect(getRes.status).toBe(200);
             }
           },
-          10, // 10 iterations so p95 != max (with 5, p95 = max = single worst sample)
+          20, // 20 iterations: ceil(20*0.95)-1 = 18, so p95 excludes the max. At N<20 p95 = max.
         );
 
         result.baseline = baselineMs;
