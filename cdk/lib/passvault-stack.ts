@@ -3,6 +3,7 @@ import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as sns from 'aws-cdk-lib/aws-sns';
+import * as sns_subscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
 import { Construct } from 'constructs';
 import type { EnvironmentConfig } from '@passvault/shared';
 import { StorageConstruct } from './constructs/storage.js';
@@ -120,6 +121,12 @@ export class PassVaultStack extends cdk.Stack {
           topicName: `passvault-${config.environment}-kill-switch`,
           displayName: `PassVault ${config.environment} Kill Switch`,
         });
+        // Subscribe adminEmail directly so the admin is notified when the
+        // kill switch fires — even if no custom domain / SES notifier is
+        // configured. AWS sends a confirmation email on first deploy.
+        killSwitchTopic.addSubscription(
+          new sns_subscriptions.EmailSubscription(adminEmail),
+        );
       } else {
         // prod — monitoring must exist
         killSwitchTopic = monitoring!.alertTopic;
