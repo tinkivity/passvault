@@ -372,6 +372,20 @@ fi
 echo "  API URL     : $API_URL"
 echo "  Users table : $TABLE"
 
+# Discover plus-address routing from stack outputs (beta/prod) so test user
+# emails route through a real SES-verified domain instead of bouncing off
+# @passvault-test.local. This is critical for SES reputation — hard bounces
+# on a verified domain damage the sender reputation score and can lead to
+# SES throttling or suspension. When PASSVAULT_PLUS_ADDRESS is already set
+# (e.g. by qualify.sh), the stack output lookup is skipped.
+if [[ -z "${PASSVAULT_PLUS_ADDRESS:-}" ]]; then
+  DISCOVERED_PLUS=$(_cfn_output PlusAddress 2>/dev/null || echo "")
+  [[ "$DISCOVERED_PLUS" == "None" ]] && DISCOVERED_PLUS=""
+  if [[ -n "$DISCOVERED_PLUS" ]]; then
+    export PASSVAULT_PLUS_ADDRESS="$DISCOVERED_PLUS"
+  fi
+fi
+
 # ── Create E2E admin user ────────────────────────────────────────────────────
 section "E2E admin setup"
 
@@ -382,7 +396,7 @@ source "$REPO_ROOT/scripts/lib/test-emails.sh"
 E2E_EMAIL=$(make_test_email "e2e-${E2E_NAME}")
 
 echo "  E2E admin   : $E2E_EMAIL"
-[[ -n "${PASSVAULT_PLUS_ADDRESS:-}" ]] && echo "  Email routing: on"
+[[ -n "${PASSVAULT_PLUS_ADDRESS:-}" ]] && echo "  Email routing: on → plus-addressing via ${PASSVAULT_PLUS_ADDRESS}"
 
 E2E_JSON=$(ENVIRONMENT="$ENV" ADMIN_EMAIL="$E2E_EMAIL" DYNAMODB_TABLE="$TABLE" \
   npx tsx "$REPO_ROOT/scripts/sit-create-admin.ts" 2>/dev/null)

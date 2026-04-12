@@ -251,6 +251,16 @@ echo "  API URL     : $API_URL"
 echo "  Users table : $TABLE"
 [[ -n "$FILES_BUCKET" ]] && echo "  Files bucket: $FILES_BUCKET"
 
+# Discover plus-address routing from stack outputs (beta/prod).
+# See e2etest.sh for why this matters (SES reputation).
+if [[ -z "${PASSVAULT_PLUS_ADDRESS:-}" ]]; then
+  DISCOVERED_PLUS=$(_cfn_output PlusAddress 2>/dev/null || echo "")
+  [[ "$DISCOVERED_PLUS" == "None" ]] && DISCOVERED_PLUS=""
+  if [[ -n "$DISCOVERED_PLUS" ]]; then
+    export PASSVAULT_PLUS_ADDRESS="$DISCOVERED_PLUS"
+  fi
+fi
+
 # ── Generate SIT admin name ──────────────────────────────────────────────────
 section "SIT admin setup"
 

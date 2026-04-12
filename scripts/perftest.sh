@@ -255,6 +255,16 @@ echo "  API URL     : $API_URL"
 echo "  Users table : $TABLE"
 [[ -n "$FILES_BUCKET" ]] && echo "  Files bucket: $FILES_BUCKET"
 
+# Discover plus-address routing from stack outputs (beta/prod).
+# See e2etest.sh for why this matters (SES reputation).
+if [[ -z "${PASSVAULT_PLUS_ADDRESS:-}" ]]; then
+  DISCOVERED_PLUS=$(_cfn_output PlusAddress 2>/dev/null || echo "")
+  [[ "$DISCOVERED_PLUS" == "None" ]] && DISCOVERED_PLUS=""
+  if [[ -n "$DISCOVERED_PLUS" ]]; then
+    export PASSVAULT_PLUS_ADDRESS="$DISCOVERED_PLUS"
+  fi
+fi
+
 # ── Generate perf admin name ─────────────────────────────────────────────────
 section "Perf admin setup"
 
@@ -265,7 +275,7 @@ source "$REPO_ROOT/scripts/lib/test-emails.sh"
 PERF_EMAIL=$(make_test_email "perf-${PERF_NAME}")
 
 echo "  Perf admin  : $PERF_EMAIL"
-[[ -n "${PASSVAULT_PLUS_ADDRESS:-}" ]] && echo "  Email routing: on"
+[[ -n "${PASSVAULT_PLUS_ADDRESS:-}" ]] && echo "  Email routing: on → plus-addressing via ${PASSVAULT_PLUS_ADDRESS}"
 
 # ── Create perf admin ────────────────────────────────────────────────────────
 PERF_JSON=$(ENVIRONMENT="$ENV" ADMIN_EMAIL="$PERF_EMAIL" DYNAMODB_TABLE="$TABLE" \

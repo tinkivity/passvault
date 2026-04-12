@@ -242,6 +242,8 @@ Runs Playwright E2E browser tests against a deployed stack. Creates a temporary 
 
 **Cleanup covers:** E2E admin user, vaults, S3 files, audit events. Vite server and `.env.local` are always cleaned up on exit.
 
+**Email routing:** On beta, the script reads the `PlusAddress` CfnOutput from the deployed stack and sets `PASSVAULT_PLUS_ADDRESS` so test user emails route through the real SES-verified domain via plus-addressing (e.g. `ops+e2e-bold-hawk@example.com`). This prevents hard bounces against `@passvault-test.local` addresses, which would damage the SES sender reputation score. On dev, `@passvault-test.local` is used (no real email sent).
+
 ---
 
 ## perftest.sh
@@ -341,6 +343,25 @@ verified SES domain, run the send-email smoke test in [cdk/DEPLOYMENT.md §4a](.
 to isolate SES identity problems from application wiring.
 
 See [docs/QUALIFICATION.md](../docs/QUALIFICATION.md) for full documentation.
+
+---
+
+## Test email routing and SES reputation
+
+All test scripts (`sitest.sh`, `pentest.sh`, `e2etest.sh`, `perftest.sh`) create temporary users that may trigger invitation or notification emails. On **dev**, these use `@passvault-test.local` addresses — no real email is sent because dev Lambdas have no `SENDER_EMAIL` configured.
+
+On **beta and prod**, emails are sent via SES. Using fake `@passvault-test.local` addresses would cause **hard bounces**, which directly damage the SES sender reputation score. Sustained hard bounces can lead to SES throttling, review, or suspension of the sending identity.
+
+To avoid this, all test scripts auto-discover the `PlusAddress` CfnOutput from the deployed stack and set `PASSVAULT_PLUS_ADDRESS` in the environment. The `make_test_email()` (shell) and `testUserEmail()` (TypeScript) helpers then construct addresses like `ops+sit-bold-hawk@example.com` — all routed to the single operator inbox via plus-addressing, with zero bounces.
+
+**How it works:**
+
+1. CDK emits a `PlusAddress` output (e.g. `ops@example.com`) when the stack is deployed with `--context plusAddress=ops@example.com`
+2. Each test script reads it: `_cfn_output PlusAddress`
+3. Exports `PASSVAULT_PLUS_ADDRESS=ops@example.com`
+4. `make_test_email("sit-bold-hawk")` → `ops+sit-bold-hawk@example.com`
+
+When called from `qualify.sh`, the parent already exports the variable and the child scripts skip the stack lookup.
 
 ---
 
