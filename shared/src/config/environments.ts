@@ -62,7 +62,7 @@ export const prodConfig: EnvironmentConfig = {
   },
   session: {
     sessionTimeoutSeconds: 600,
-    vaultTimeoutSeconds: 60,
+    vaultTimeoutSeconds: 180,
     adminTokenExpiryHours: 8,
     userTokenExpiryMinutes: 1440,
     otpExpiryMinutes: 120,

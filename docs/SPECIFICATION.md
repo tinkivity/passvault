@@ -1300,19 +1300,17 @@ All phases are complete. The build plan was documented in the now-deleted `IMPLE
 
 ### 10.4 Session Timeouts
 
-Session timeouts vary by environment (see Section 2.5):
+Session timeouts vary by environment (see `shared/src/config/environments.ts`):
 
-| Timeout | Dev/Beta | Prod |
-|---------|----------|------|
-| View Mode Auto-Logout | 5 minutes | 60 seconds |
-| Edit Mode Auto-Logout | 10 minutes | 120 seconds |
-| Admin Token Expiry | 24 hours | 8 hours |
-| User Token Expiry | 30 minutes | 5 minutes |
+| Timeout | Dev | Beta | Prod |
+|---------|-----|------|------|
+| Session (auto-logout) | 5 min (300s) | 5 min (300s) | 10 min (600s) |
+| Vault (auto-lock) | 1 min (60s) | 1 min (60s) | 3 min (180s) |
+| Admin Token Expiry | 24 hours | 8 hours | 8 hours |
+| User Token Expiry | 1440 min | 1440 min | 1440 min |
 
-- **Post-Save Logout**: Immediate logout after successful save (< 1 second)
-- **Post-Cancel Logout**: Immediate logout after canceling edit mode (< 1 second)
-- **Timer Accuracy**: Countdown timer must be accurate within ±1 second
-- **Logout Execution**: Clear all tokens and redirect to login within 500ms of logout trigger
+- **Wall-clock timers**: Countdown uses `Date.now()` deadlines, not `setInterval` decrements. This ensures the timer catches up immediately when the browser tab regains focus after background throttling.
+- **Logout Execution**: Clear all tokens and redirect to login within 500ms of timeout trigger
 
 ### 10.2 Scalability
 - Support up to 10,000 registered users

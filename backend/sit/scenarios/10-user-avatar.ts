@@ -37,23 +37,23 @@ export function userAvatarScenarios(ctx: SitContext) {
     });
 
     it('upload valid JPEG avatar -> 200 + base64 returned', async () => {
-      const res = await request<{ avatarBase64: string }>('PUT', API_PATHS.AUTH_AVATAR, {
+      const res = await request<{ success: boolean; data: { avatarBase64: string } }>('PUT', API_PATHS.AUTH_AVATAR, {
         body: { imageBase64: TINY_JPEG_BASE64, mimeType: 'image/jpeg' },
         token: ctx.proUserToken,
       });
       expect(res.status).toBe(200);
-      expect(res.data.avatarBase64).toBeDefined();
-      expect(typeof res.data.avatarBase64).toBe('string');
+      expect(res.data.data.avatarBase64).toBeDefined();
+      expect(typeof res.data.data.avatarBase64).toBe('string');
     });
 
     it('upload valid PNG avatar -> 200 + base64 returned', async () => {
       // Re-use the JPEG for simplicity; jimp handles both
-      const res = await request<{ avatarBase64: string }>('PUT', API_PATHS.AUTH_AVATAR, {
+      const res = await request<{ success: boolean; data: { avatarBase64: string } }>('PUT', API_PATHS.AUTH_AVATAR, {
         body: { imageBase64: TINY_JPEG_BASE64, mimeType: 'image/jpeg' },
         token: ctx.proUserToken,
       });
       expect(res.status).toBe(200);
-      expect(res.data.avatarBase64).toBeDefined();
+      expect(res.data.data.avatarBase64).toBeDefined();
     });
 
     it('re-upload replaces existing avatar', async () => {
@@ -97,12 +97,12 @@ export function userAvatarScenarios(ctx: SitContext) {
     });
 
     it('re-upload after delete works', async () => {
-      const res = await request<{ avatarBase64: string }>('PUT', API_PATHS.AUTH_AVATAR, {
+      const res = await request<{ success: boolean; data: { avatarBase64: string } }>('PUT', API_PATHS.AUTH_AVATAR, {
         body: { imageBase64: TINY_JPEG_BASE64, mimeType: 'image/jpeg' },
         token: ctx.proUserToken,
       });
       expect(res.status).toBe(200);
-      expect(res.data.avatarBase64).toBeDefined();
+      expect(res.data.data.avatarBase64).toBeDefined();
     });
 
     it('upload >1 MB -> 400 AVATAR_TOO_LARGE', async () => {

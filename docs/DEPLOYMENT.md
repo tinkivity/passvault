@@ -106,7 +106,7 @@ The frontend reads configuration from `VITE_*` env vars at build time. Set these
 | `VITE_ENVIRONMENT` | Target environment | `dev` / `beta` / `prod` |
 | `VITE_PASSKEY_REQUIRED` | Whether passkeys are required | `false` / `true` |
 | `VITE_SESSION_TIMEOUT_SECONDS` | Session inactivity timeout | `300` |
-| `VITE_VAULT_TIMEOUT_SECONDS` | Per-vault unlock timeout | `60` |
+| `VITE_VAULT_TIMEOUT_SECONDS` | Per-vault unlock timeout | `60` (dev/beta), `180` (prod) |
 
 > **v2 change:** `VITE_VIEW_TIMEOUT_SECONDS`, `VITE_EDIT_TIMEOUT_SECONDS`, and `VITE_ADMIN_TIMEOUT_SECONDS` have been removed. They are replaced by `VITE_SESSION_TIMEOUT_SECONDS` and `VITE_VAULT_TIMEOUT_SECONDS`.
 
