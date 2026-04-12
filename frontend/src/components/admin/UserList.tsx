@@ -578,10 +578,6 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser
 
   const filtered = applyFilters(users, selectedStatuses, selectedPlans, usernameFilter, createdFrom, createdTo, lastLoginFrom, lastLoginTo);
 
-  const footerLabel = hasFilters
-    ? t('common:showing', { count: filtered.length, total: users.length, label: users.length === 1 ? t('common:record') : t('common:records') })
-    : t('common:countLabel', { count: users.length, label: users.length === 1 ? t('common:record') : t('common:records') });
-
   if (users.length === 0 && !loading) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
@@ -773,9 +769,6 @@ export function UserList({ users, loading, onDownload, onRefreshOtp, onResetUser
           defaultSorting={[{ id: 'username', desc: false }]}
           onRowClick={onRowClick}
         />
-
-        {/* Footer record count */}
-        <div className="text-sm text-muted-foreground">{footerLabel}</div>
       </div>
 
       {/* Delete confirmation */}

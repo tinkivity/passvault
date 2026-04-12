@@ -443,15 +443,17 @@ describe('UserList', () => {
     expect(within(tbody).getByText('charlie@example.com')).toBeInTheDocument();
   });
 
-  it('shows record count footer', () => {
+  it('shows record count in DataTable footer', () => {
     renderList();
-    expect(screen.getByText(/3 records/i)).toBeInTheDocument();
+    // DataTable footer shows "1–3 of 3" (showingRange format)
+    expect(screen.getByText(/1.*3 of 3/)).toBeInTheDocument();
   });
 
   it('shows filtered record count when filters are active', async () => {
     renderList();
     await userEvent.type(screen.getByLabelText(/filter by username/i), 'ali');
-    expect(screen.getByText(/showing 1 of 3 records/i)).toBeInTheDocument();
+    // DataTable footer shows "1–1 of 1" for the single filtered result
+    expect(screen.getByText(/1.*1 of 1/)).toBeInTheDocument();
   });
 
   it('shows sending dialog immediately when email vault is clicked', async () => {

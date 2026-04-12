@@ -366,19 +366,21 @@ describe('LoginsPage', () => {
     expect(screen.queryByRole('button', { name: /reset/i })).not.toBeInTheDocument();
   });
 
-  it('shows total event count when no filters are active', async () => {
+  it('shows record count in DataTable footer when no filters are active', async () => {
     setupMock();
     renderPage();
-    await waitFor(() => expect(screen.getByText(/^4 events$/i)).toBeInTheDocument());
+    // DataTable footer shows "1–4 of 4" (showingRange format)
+    await waitFor(() => expect(screen.getByText(/1.*4 of 4/)).toBeInTheDocument());
   });
 
-  it('shows filtered vs total count when filters are active', async () => {
+  it('shows filtered record count in DataTable footer when filters are active', async () => {
     setupMock();
     renderPage();
     await waitForData();
     await userEvent.click(screen.getByLabelText(/filter by status/i));
     await userEvent.click(await screen.findByRole('option', { name: /^success$/i }));
     await userEvent.keyboard('{Escape}');
-    expect(await screen.findByText(/showing 3 of 4 events/i)).toBeInTheDocument();
+    // DataTable footer shows "1–3 of 3" for 3 filtered results
+    expect(await screen.findByText(/1.*3 of 3/)).toBeInTheDocument();
   });
 });
