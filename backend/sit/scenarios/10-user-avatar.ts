@@ -17,6 +17,17 @@ const TINY_JPEG_BASE64 =
 
 export function userAvatarScenarios(ctx: SitContext) {
   describe('10 — User Avatar', () => {
+    // The pro user token from earlier scenarios may have expired (beta session
+    // timeout is 300s). Refresh it before running avatar tests.
+    it('refresh pro user token', async () => {
+      const res = await request<{ success: boolean; data: LoginResponse }>('POST', API_PATHS.AUTH_LOGIN, {
+        body: { username: ctx.proUserEmail, password: ctx.proUserPassword },
+        powDifficulty: pow(MEDIUM),
+      });
+      expect(res.status).toBe(200);
+      ctx.proUserToken = res.data.data.token;
+    });
+
     it('upload valid JPEG avatar -> 200 + base64 returned', async () => {
       const res = await request<{ avatarBase64: string }>('PUT', API_PATHS.AUTH_AVATAR, {
         body: { imageBase64: TINY_JPEG_BASE64, mimeType: 'image/jpeg' },

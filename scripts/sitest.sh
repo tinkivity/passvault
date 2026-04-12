@@ -17,7 +17,7 @@
 #                          State is preserved afterward (implies --keep).
 #   --cleanup [state-file] Skip tests; only clean up data from a previous --keep run.
 #                          If no file given, auto-discovers by --env.
-#   -- <vitest-args>       Extra args forwarded to vitest (e.g. -- --grep "Avatar")
+#   -- <vitest-args>       Extra args forwarded to vitest (e.g. -- -t "Avatar")
 #   -h, --help             Show usage
 
 set -euo pipefail
