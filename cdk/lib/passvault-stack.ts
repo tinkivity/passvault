@@ -44,7 +44,7 @@ export class PassVaultStack extends cdk.Stack {
     const storage = new StorageConstruct(this, 'Storage', config);
 
     // 2. Backend: Lambdas + API Gateway
-    const backend = new BackendConstruct(this, 'Backend', { config, storage });
+    const backend = new BackendConstruct(this, 'Backend', { config, storage, domain: props?.domain });
 
     // 3. Frontend: CloudFront (when enabled)
     let frontend: FrontendConstruct | undefined;
@@ -63,6 +63,13 @@ export class PassVaultStack extends cdk.Stack {
     const frontendOrigin = frontend
       ? `https://${frontend.distribution.distributionDomainName}`
       : '*';
+    // FRONTEND_URL is the full URL used by email templates for logo, buttons,
+    // and verification links. Prefers the custom domain when configured so that
+    // email links point to the user-facing URL, not the raw CloudFront domain.
+    // Empty in dev (no CloudFront).
+    const frontendUrl = frontend
+      ? `https://${frontend.customDomain ?? frontend.distribution.distributionDomainName}`
+      : '';
     for (const fn of [
       backend.challengeFn,
       backend.authFn,
@@ -70,8 +77,10 @@ export class PassVaultStack extends cdk.Stack {
       backend.adminMgmtFn,
       backend.vaultFn,
       backend.healthFn,
+      backend.digestFn,
     ]) {
       fn.addEnvironment('FRONTEND_ORIGIN', frontendOrigin);
+      fn.addEnvironment('FRONTEND_URL', frontendUrl);
     }
 
     // 4. Monitoring: CloudWatch dashboard + alarms + SNS topic (prod only)

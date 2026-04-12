@@ -240,8 +240,8 @@ All `cdk` commands accept context variables via `--context key=value`.
 | `adminEmail` | Yes | All | Initial admin username. Also subscribes to the SNS alert topic (beta/prod). |
 | `domain` | No | beta, prod | Root domain of an existing Route 53 hosted zone (e.g. `example.com`). Creates a `CertificateStack` in us-east-1 and configures CloudFront with a custom subdomain. **Precondition**: the domain must be a Verified SES identity in the target account/region before `cdk deploy` — see §4a. |
 | `plusAddress` | No | beta, prod | Single mailbox that receives all qualification test mail (e.g. `ops@example.com`). Must be `local@<domain>` and its domain must equal `domain`. When set, qualification scripts build test-user addresses as `local+<tag>@<domain>` and emit a `PlusAddress` CfnOutput. See §4b. |
-| `passkeyRpId` | beta, prod | beta, prod | WebAuthn relying party ID (e.g. `vault.example.com`). Also settable via `PASSKEY_RP_ID` env var. |
-| `passkeyOrigin` | beta, prod | beta, prod | WebAuthn relying party origin (e.g. `https://vault.example.com`). Also settable via `PASSKEY_ORIGIN` env var. |
+| `passkeyRpId` | No | beta, prod | WebAuthn relying party ID (e.g. `beta.pv.example.com`). Resolution order: context → `PASSKEY_RP_ID` env var → auto-derived as `{config.subdomain}.{domain}` when `domain` is set (subdomain values: `dev.pv`, `beta.pv`, `pv` — see `shared/src/config/environments.ts`). |
+| `passkeyOrigin` | No | beta, prod | WebAuthn relying party origin (e.g. `https://beta.pv.example.com`). Resolution order: context → `PASSKEY_ORIGIN` env var → auto-derived as `https://{config.subdomain}.{domain}` when `domain` is set. |
 
 ### Examples
 

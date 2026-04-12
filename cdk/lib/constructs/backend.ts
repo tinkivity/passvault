@@ -20,6 +20,8 @@ const dist = (name: string) => lambda.Code.fromAsset(resolve(BACKEND_DIST, name)
 interface BackendConstructProps {
   config: EnvironmentConfig;
   storage: StorageConstruct;
+  /** Root domain (e.g. `example.com`). Used to auto-derive passkey RP ID/origin when not explicitly set. */
+  domain?: string;
 }
 
 export class BackendConstruct extends Construct {
@@ -190,11 +192,12 @@ export class BackendConstruct extends Construct {
     this.vaultFn.addEnvironment('JWT_SECRET_PARAM', jwtSecretParamName);
 
     // Passkey (WebAuthn) relying-party configuration.
-    // Set these in SSM or provide via context/environment overrides at deploy time.
-    // Example: PASSKEY_RP_ID=vault.example.com, PASSKEY_ORIGIN=https://vault.example.com
+    // Resolution order: explicit context → env var → auto-derived from domain + config.subdomain.
+    // Auto-derived example: domain=example.com, subdomain=beta.pv → rpId=beta.pv.example.com, origin=https://beta.pv.example.com
     if (config.features.passkeyRequired) {
-      const rpId = this.node.tryGetContext('passkeyRpId') as string | undefined ?? process.env.PASSKEY_RP_ID ?? '';
-      const origin = this.node.tryGetContext('passkeyOrigin') as string | undefined ?? process.env.PASSKEY_ORIGIN ?? '';
+      const derivedHost = props.domain ? `${config.subdomain}.${props.domain}` : '';
+      const rpId = this.node.tryGetContext('passkeyRpId') as string | undefined ?? process.env.PASSKEY_RP_ID ?? derivedHost;
+      const origin = this.node.tryGetContext('passkeyOrigin') as string | undefined ?? process.env.PASSKEY_ORIGIN ?? (derivedHost ? `https://${derivedHost}` : '');
       this.authFn.addEnvironment('PASSKEY_RP_ID', rpId);
       this.authFn.addEnvironment('PASSKEY_ORIGIN', origin);
       this.adminAuthFn.addEnvironment('PASSKEY_RP_ID', rpId);
