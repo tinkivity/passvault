@@ -16,6 +16,7 @@ import {
 } from '../utils/dynamodb.js';
 import { randomUUID } from 'crypto';
 import { config } from '../config.js';
+import { recordAuditEvent } from '../utils/audit.js';
 import { parseBody } from '../utils/request.js';
 import {
   generateChallengeJwt,
@@ -170,6 +171,14 @@ export async function handlePasskeyRegister(
     await updateUser(user!.userId, updates as Parameters<typeof updateUser>[1]);
   }
 
+  await recordAuditEvent({
+    category: 'system',
+    action: 'passkey_registered',
+    userId: user!.userId,
+    performedBy: user!.userId,
+    details: { name: passkeyName, replacedExisting: String(replacedExisting) },
+  }).catch(err => console.error('Failed to record audit event:', err));
+
   return success({ success: true, replacedExisting });
 }
 
@@ -214,6 +223,15 @@ export async function handleRevokePasskey(
   }
 
   await deletePasskeyCredential(credentialId);
+
+  await recordAuditEvent({
+    category: 'system',
+    action: 'passkey_revoked',
+    userId: user!.userId,
+    performedBy: user!.userId,
+    details: { credentialId, name: target.name },
+  }).catch(err => console.error('Failed to record audit event:', err));
+
   return success({ success: true });
 }
 
