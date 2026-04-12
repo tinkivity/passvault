@@ -500,6 +500,15 @@ else
 section "Step 1 — Build"
 STEP_START=$SECONDS
 
+echo "  Running npm ci …"
+if ! (cd "$REPO_ROOT" && npm ci); then
+  set_step STATUS build "fail"
+  set_step EXIT build "$?"
+  set_step DURATION build "$(( SECONDS - STEP_START ))"
+  echo "  npm ci failed — aborting qualification."
+  exit 1
+fi
+
 if (cd "$REPO_ROOT" && npm run build); then
   set_step STATUS build "pass"
   set_step EXIT build "0"
