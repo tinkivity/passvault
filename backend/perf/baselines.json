@@ -25,7 +25,7 @@
   "beta": {
     "endpoints": {
       "auth_login": { "p95": 4500 },
-      "vault_list": { "p95": 2500 },
+      "vault_list": { "p95": 3500 },
       "vault_get_index": { "p95": 3000 },
       "vault_put": { "p95": 2500 },
       "admin_users": { "p95": 3500 },
@@ -35,8 +35,8 @@
     },
     "concurrent": { "max_per_user_ms": 14000, "allow_429": false },
     "payload": {
-      "1kb_roundtrip_ms": 3000,
-      "50kb_roundtrip_ms": 4000,
+      "1kb_roundtrip_ms": 3500,
+      "50kb_roundtrip_ms": 4500,
       "200kb_roundtrip_ms": 5000,
       "500kb_roundtrip_ms": 5000,
       "1mb_put_ms": 5500

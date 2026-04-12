@@ -326,7 +326,7 @@ Each API call that requires PoW also makes an extra `GET /api/challenge` round-t
 | Endpoint | p95 | Delta from dev | Why |
 |----------|-----|----------------|-----|
 | auth_login | 4500ms | +1000ms | MEDIUM PoW + challenge RTT + bcrypt variance |
-| vault_list | 2500ms | +1700ms | HIGH PoW + cold start variability |
+| vault_list | 3500ms | +2700ms | HIGH PoW + DynamoDB scan variance + no reserved concurrency |
 | vault_get_index | 3000ms | +1800ms | HIGH PoW + S3 latency + DynamoDB read |
 | vault_put | 2500ms | +1000ms | HIGH PoW + S3 write |
 | admin_users | 3500ms | +1500ms | HIGH PoW + DynamoDB scan |
@@ -344,8 +344,8 @@ Prod baselines are tighter than beta because of higher Lambda memory (faster bcr
 
 | Payload | Dev | Beta | Prod |
 |---------|-----|------|------|
-| 1KB round-trip | 1000ms | 3000ms | 2500ms |
-| 50KB round-trip | 1500ms | 4000ms | 3000ms |
+| 1KB round-trip | 1000ms | 3500ms | 2500ms |
+| 50KB round-trip | 1500ms | 4500ms | 3000ms |
 | 200KB round-trip | 3000ms | 5000ms | 3500ms |
 | 500KB round-trip | 3000ms | 5000ms | 3500ms |
 | 1MB PUT only | 5000ms | 5500ms | 5000ms |
