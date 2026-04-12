@@ -513,6 +513,12 @@ The `--force` flag bypasses the existing-admin check, creating a new admin recor
 
 ---
 
+## Note on avatar storage
+
+User avatar images are stored as base64 strings in the DynamoDB users table (`avatarBase64` attribute), not in S3. This means DynamoDB point-in-time recovery and on-demand backups automatically include all avatar data. No separate avatar backup or restore procedure is needed.
+
+---
+
 ## Administrator: decrypting vault names from DynamoDB
 
 This section is for **PassVault operators**, not end users. Vault `displayName` values are stored in `passvault-vaults-{env}` as ciphertext so they cannot be read directly via the AWS console, a backup snapshot, or a DynamoDB export. This appendix documents how an operator can recover the cleartext vault names for support or incident response.

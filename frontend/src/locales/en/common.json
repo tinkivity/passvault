@@ -115,5 +115,8 @@
   "help": "Help",
   "helpComingSoon": "Help — coming soon",
   "never": "Never",
-  "emailTemplates": "Email Templates"
+  "emailTemplates": "Email Templates",
+  "changePhoto": "Change photo",
+  "removePhoto": "Remove photo",
+  "uploadingPhoto": "Uploading photo\u2026"
 }

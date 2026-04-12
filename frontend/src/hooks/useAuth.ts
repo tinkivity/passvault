@@ -15,7 +15,7 @@ function deriveStatus(res: LoginResponse): UserStatus {
 }
 
 export function useAuth() {
-  const { token, userId, role, username, firstName, lastName, displayName, status, plan, loginEventId, expiresAt, accountExpired, setAuth, clearAuth, patchAuth } = useAuthContext();
+  const { token, userId, role, username, firstName, lastName, displayName, status, plan, loginEventId, expiresAt, accountExpired, avatarBase64, setAuth, clearAuth, patchAuth } = useAuthContext();
   const { clearKey } = useEncryptionContext();
   const { i18n } = useTranslation();
   const [loading, setLoading] = useState(false);
@@ -73,6 +73,7 @@ export function useAuth() {
         loginEventId: res.loginEventId ?? null,
         expiresAt: res.expiresAt ?? null,
         accountExpired: res.accountExpired ?? false,
+        avatarBase64: res.avatarBase64 ?? null,
       });
 
       applyLanguagePreference(res.preferredLanguage);
@@ -107,6 +108,7 @@ export function useAuth() {
         loginEventId: res.loginEventId ?? null,
         expiresAt: res.expiresAt ?? null,
         accountExpired: res.accountExpired ?? false,
+        avatarBase64: res.avatarBase64 ?? null,
       });
 
       applyLanguagePreference(res.preferredLanguage);
@@ -228,6 +230,7 @@ export function useAuth() {
         loginEventId: res.loginEventId ?? null,
         expiresAt: res.expiresAt ?? null,
         accountExpired: res.accountExpired ?? false,
+        avatarBase64: res.avatarBase64 ?? null,
       });
 
       applyLanguagePreference(res.preferredLanguage);
@@ -240,6 +243,39 @@ export function useAuth() {
       setLoading(false);
     }
   }, [setAuth, applyLanguagePreference]);
+
+  const uploadAvatar = useCallback(async (imageBase64: string, mimeType: 'image/png' | 'image/jpeg') => {
+    if (!token) throw new Error('Not authenticated');
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.uploadAvatar({ imageBase64, mimeType }, token);
+      patchAuth({ avatarBase64: res.avatarBase64 });
+      return res;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Avatar upload failed';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [token, patchAuth]);
+
+  const deleteAvatar = useCallback(async () => {
+    if (!token) throw new Error('Not authenticated');
+    setLoading(true);
+    setError(null);
+    try {
+      await api.deleteAvatar(token);
+      patchAuth({ avatarBase64: null });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Avatar delete failed';
+      setError(msg);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [token, patchAuth]);
 
   const logout = useCallback(() => {
     if (token && loginEventId) {
@@ -261,6 +297,7 @@ export function useAuth() {
     firstName,
     lastName,
     displayName,
+    avatarBase64,
     status,
     plan,
     loading,
@@ -278,6 +315,8 @@ export function useAuth() {
     selfChangePassword,
     updateProfile,
     adminChangePassword,
+    uploadAvatar,
+    deleteAvatar,
     logout,
   };
 }

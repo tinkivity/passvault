@@ -518,6 +518,9 @@ export class BackendConstruct extends Construct {
     authLogout.addMethod('POST', authIntegration);
     const authProfile = auth.addResource('profile');
     authProfile.addMethod('PATCH', authIntegration);
+    const authAvatar = auth.addResource('avatar');
+    authAvatar.addMethod('PUT', authIntegration);
+    authAvatar.addMethod('DELETE', authIntegration);
     const authEmailChange = auth.addResource('email-change');
     authEmailChange.addMethod('POST', authIntegration);
     const authVerifyEmailChange = auth.addResource('verify-email-change');

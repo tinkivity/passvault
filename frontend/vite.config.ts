@@ -16,6 +16,19 @@ export default defineConfig({
   server: {
     port: 5173,
   },
+  preview: {
+    // E2E proxy: when e2etest.sh sets E2E_API_PROXY_TARGET, vite preview
+    // forwards /api requests to the deployed API Gateway. This avoids CORS
+    // issues on beta/prod where FRONTEND_ORIGIN is locked to CloudFront.
+    proxy: process.env.E2E_API_PROXY_TARGET
+      ? {
+          '/api': {
+            target: process.env.E2E_API_PROXY_TARGET,
+            changeOrigin: true,
+          },
+        }
+      : undefined,
+  },
   worker: {
     format: 'es',
   },

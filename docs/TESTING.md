@@ -76,6 +76,8 @@ scripts/sitest.sh --cleanup --env dev
 | 06 User Profile | 3 | Self-change password, re-login, logout |
 | 07 Admin Audit | 12 | Config, event queries, pagination, filtering, sorting, vault ops |
 | 08 Email Templates | 23 | List/download/upload templates, language variants, i18n, version, export all/modified, import zip, modified flag detection, unsubscribe, notification prefs |
+| 09 Auth Lockout | | Auth lockout and recovery |
+| 10 User Avatar | 10 | Upload, replace, delete, persistence, validation |
 
 See [backend/sit/SCENARIOS.md](../backend/sit/SCENARIOS.md) for detailed scenario documentation.
 
@@ -116,6 +118,7 @@ scripts/pentest.sh --cleanup --env dev
 | 09 JWT Attacks | 4 | Tampered payload, expired, alg:none |
 | 10 Vault Security | 4 | Cross-user access, unique salts, size limits |
 | 11 Email Templates | 28 | Auth/authz for templates, export, import, version endpoints; input validation (empty body, invalid base64, non-zip data); unsubscribe token attacks |
+| 12 Avatar Upload | 11 | Oversized, MIME spoofing, XSS vectors, auth bypass, corrupt input |
 
 See [backend/pentest/REPORT.md](../backend/pentest/REPORT.md) for the findings template.
 
@@ -168,6 +171,12 @@ The auth fixture (`frontend/e2e/fixtures/auth.fixture.ts`) authenticates via **d
 | 05-vault-items | 3 | Fixme | Create/search/delete items (needs vault fixture) |
 | 06-notifications | 3 | Fixme | Notification prefs (only available for `role=user`, not admin) |
 | 07-language | 2 | Active | Switch to German via globe icon, switch back to English |
+| 08-vault-crud | | Active | Vault CRUD: create, rename, delete via API + sidebar |
+| 09-admin-user-lifecycle | | Active | Admin user lifecycle management |
+| 10-user-onboarding | | Active | User onboarding flow |
+| 11-passkey | | Active | Passkey setup and login |
+| 12-vault-import-gz | | Active | Vault import from .vault.gz file |
+| 13-user-avatar | 3 | Active | Default puppy, account dialog avatar, session persistence |
 
 **Current results:** 19 passed, 9 skipped (fixme), 0 failed.
 

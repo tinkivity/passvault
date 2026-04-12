@@ -8,6 +8,7 @@ import { userProfileScenarios } from './06-user-profile.js';
 import { adminAuditScenarios } from './07-admin-audit.js';
 import { emailTemplateScenarios } from './08-email-templates.js';
 import { authLockoutScenarios } from './09-auth-lockout.js';
+import { userAvatarScenarios } from './10-user-avatar.js';
 
 const ctx = createContext();
 
@@ -22,3 +23,4 @@ userProfileScenarios(ctx);
 adminAuditScenarios(ctx);
 emailTemplateScenarios(ctx);
 authLockoutScenarios(ctx);
+userAvatarScenarios(ctx);

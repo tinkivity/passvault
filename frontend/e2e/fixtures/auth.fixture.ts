@@ -112,6 +112,7 @@ export const test = base.extend<{
       loginEventId: d.loginEventId ?? null,
       expiresAt: d.expiresAt ?? null,
       accountExpired: false,
+      avatarBase64: (d.avatarBase64 as string) ?? null,
     });
 
     // Navigate to admin dashboard — React reads sessionStorage on mount

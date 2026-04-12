@@ -14,6 +14,7 @@ export interface AuthState {
   loginEventId: string | null;
   expiresAt: string | null;
   accountExpired: boolean;
+  avatarBase64: string | null;
 }
 
 interface AuthContextValue extends AuthState {
@@ -35,6 +36,7 @@ const initialState: AuthState = {
   loginEventId: null,
   expiresAt: null,
   accountExpired: false,
+  avatarBase64: null,
 };
 
 const SESSION_KEY = 'pv_session';

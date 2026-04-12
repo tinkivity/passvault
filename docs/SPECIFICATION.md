@@ -703,6 +703,19 @@ Protection Layers:
   - Used to calculate session duration on the Logins admin screen
   - If `eventId` is unknown or already has a `logoutAt`, the call is silently ignored
 
+### 4.3a Avatar Upload
+
+- **PUT /api/auth/avatar** (Requires user auth)
+  - Upload PNG/JPEG (max 1 MB raw). Server resizes to 256x256 JPEG q80 and stores as base64 in DynamoDB.
+  - Request body: `{ "imageBase64": "string", "mimeType": "image/png" | "image/jpeg" }`
+  - Response: `{ "avatarBase64": "string" }` (resized base64)
+
+- **DELETE /api/auth/avatar** (Requires user auth)
+  - Remove avatar. Reverts to default puppy fallback in the frontend.
+  - Response: `{ "success": true }`
+
+- Avatar is included in `LoginResponse.avatarBase64` on every login.
+
 ### 4.4 Vault Operations (Protected Endpoints)
 All endpoints require user authentication via Authorization header (Bearer token).
 

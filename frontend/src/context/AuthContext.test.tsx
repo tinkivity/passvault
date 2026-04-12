@@ -16,6 +16,7 @@ const sampleAuth = {
   loginEventId: null,
   expiresAt: null,
   accountExpired: false,
+  avatarBase64: null,
 };
 
 function Consumer() {
