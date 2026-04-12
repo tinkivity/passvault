@@ -35,13 +35,14 @@ PassVault is a privacy-focused, serverless password vault where:
 - ✅ **Offline recovery** - Decrypt your file without the application
 
 ### User Experience
-- ⏱️ **View mode** - Read-only with auto-logout (60s prod, 5min dev/beta)
-- ✏️ **Edit mode** - Explicit activation with auto-logout (120s prod, 10min dev/beta)
+- ⏱️ **Auto-lock timers** - Session auto-logout (5 min dev/beta, 10 min prod) and vault auto-lock (1 min dev/beta, 3 min prod) using wall-clock deadlines that survive browser tab throttling
 - 📋 **Copy to clipboard** - One-click copy with reveal/hide toggle on secret fields
 - 💾 **Download encrypted backup** - Full recovery package with metadata
 - 🔑 **Password generator** - Cryptographically random strong passwords inline in forms
 - ⚠️ **Password warnings** - Duplicate and weak password detection stored inside the encrypted vault (zero-knowledge)
 - 👤 **User lifecycle** - Admin can lock, unlock, expire, or retire accounts; email-as-username with optional verification (prod)
+- 📧 **Email notifications** - Invitation emails, vault export attachments (gzip), password reset, failed-login digests; 8 template types in 4 languages (en/de/fr/ru) with admin-customizable templates via S3
+- 🐶 **User avatars** - Upload a photo or get a deterministic puppy fallback from 20 bundled images
 
 ### Infrastructure
 - 🚀 **Serverless** - AWS Lambda + API Gateway + S3 + DynamoDB
