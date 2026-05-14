@@ -4,23 +4,27 @@ const { mockLambdaSend, mockSchedulerSend, mockDdbSend, MockPutCommand } = vi.ho
   mockLambdaSend: vi.fn(),
   mockSchedulerSend: vi.fn(),
   mockDdbSend: vi.fn(),
-  MockPutCommand: vi.fn().mockImplementation((input: unknown) => ({ input })),
+  MockPutCommand: vi.fn().mockImplementation(function (input: unknown) { return { input }; }),
 }));
 
+// vitest v4 enforces that a mocked constructor's implementation be
+// constructable. Arrow functions don't qualify, so the four mocks below
+// use `function` declarations — invokable with `new`, while still letting
+// `vi.fn()` track calls.
 vi.mock('@aws-sdk/client-lambda', () => ({
-  LambdaClient: vi.fn(() => ({ send: mockLambdaSend })),
+  LambdaClient: vi.fn(function () { return { send: mockLambdaSend }; }),
   PutFunctionConcurrencyCommand: vi.fn(),
   GetFunctionConcurrencyCommand: vi.fn(),
 }));
 
 vi.mock('@aws-sdk/client-scheduler', () => ({
-  SchedulerClient: vi.fn(() => ({ send: mockSchedulerSend })),
+  SchedulerClient: vi.fn(function () { return { send: mockSchedulerSend }; }),
   CreateScheduleCommand: vi.fn(),
   FlexibleTimeWindowMode: { OFF: 'OFF' },
 }));
 
 vi.mock('@aws-sdk/client-dynamodb', () => ({
-  DynamoDBClient: vi.fn(() => ({})),
+  DynamoDBClient: vi.fn(function () { return {}; }),
 }));
 
 vi.mock('@aws-sdk/lib-dynamodb', () => ({
