@@ -17,6 +17,12 @@ async function unlockVault(page: Page, vaultId: string, password: string): Promi
   await page.locator('#vault-password').fill(password);
   await page.locator('button[type="submit"]').click();
   await page.waitForURL(`**/ui/${vaultId}/items`, { timeout: 15000 });
+  // The unlock handler navigates the moment the password verifies, but the
+  // items page then has to fetch + AES-GCM-decrypt encryptedItems. Tests
+  // that interact with rows immediately would race that fetch (the search
+  // assertion sometimes hit `getByText` while the page still rendered
+  // "Loading…"). Wait for the loading indicator to clear.
+  await page.getByText(/^Loading…$/).waitFor({ state: 'hidden', timeout: 15000 }).catch(() => undefined);
 }
 
 test.describe.serial('Vault — Items', () => {
@@ -82,7 +88,12 @@ test.describe.serial('Vault — Items', () => {
     // dialog so we don't re-click the trigger.
     await adminPage.getByRole('alertdialog').getByRole('button', { name: /^Delete$/i }).click();
 
-    // Back on the items page; the row should be gone.
+    // handleDelete in VaultItemDetailPage runs Argon2id verifyPassword
+    // (~1–2s) + re-encrypt + PoW-HIGH PUT (~1–3s) + navigate. On dev that
+    // total can reach 5–10s. Wait for the dialog to close before checking
+    // the URL — both make this less flaky AND surface a clearer failure if
+    // verifyPassword returns false (dialog stays open with an error).
+    await expect(adminPage.getByRole('alertdialog')).not.toBeVisible({ timeout: 30000 });
     await adminPage.waitForURL(`**/ui/${seeded.vaultId}/items`, { timeout: 15000 });
     await expect(adminPage.getByText(ITEM_NAME)).not.toBeVisible({ timeout: 10000 });
   });
