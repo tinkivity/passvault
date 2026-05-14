@@ -1,0 +1,21 @@
+{
+  "encryptedIndex": "WHprtqcvqfwebg/EzNEyACfceDAmkJzQl18LqgGjluLrnhGyKT8+x0tkzdg6W+aoNJCyEI2VjnQT4Amv9wOViHmi+vH9O5iTTDb+t3NJ0knCTVKE2FNs7iQv7rIdwAfNIX6s7/gBWg49NivD3dDLYsBGOlmo013l6j64ZN+Pp0n/hriFVP3cEaA/7bynVQumPAE/V73fnD6edA1fP+n/JvksNvc2ceSZH7MLNLpbafa+VdMq3ASnEuM0N63b62+/P26G0pduYrITpQB1KCN9I5muJSo/9SnEczSqYLn3MDhRoLP32eC+n7eLHG/62M9ZPbHsS7u6UyDOlwOjxLOVIf0mLfOaTJiAoKVeYbZhU3WFqqvt7uSl2jMkNq4RJUjjWSryxEn9m8tgSkei5mhSyeZEHb0iLAq5xSB5/Ld1AbtK2Sf3lq4zLpud7Se8DtziHQcaKiN9zqfDo+SvmcZKmRQ6AGovqX8veEatWxn650JdEfwzWbu0",
+  "encryptedItems": "RcZ+xObb8nc74Qk6UcxSByMjL/7mIfH3R5q5axC+ouA/aHxxLn6IyFfAUOx4RX4ip5O6cUzILaw3DNPFoFeMGTjhbnwGB9BLdFXnjANVODkjNvElxlyAYEJ78OKPp2QCMzkVtYvikQfRnTTSO5eNQyr+X8fO4g3qbudJvCXQh0MnaoeQPWBpNM/zAUkbNwQvEoMPfeNaZphS2JIKLAUduiDLc4Eo4rH05jZCL9S1gsE2M32RDQlN4B9HeZn3qdXor2NrJ2IRimFHz2ElVYFIzzWrngpRlvkgV79/6RPxBZOce9lN3fDb3m2hESEVcpqSNx61riVmA178HOuZjCHNCuQYbDpYC5O12WWABzeAPKL2EjqBDmTEPvt0h8TdGfnEtmFOpQejcoYz4UFhqwT92x++5Lz4/peHyx/9qaZQyLgO8tR0nggU0BmI85Ow7WGv3X+aA9cx6Gs44wfneAoJJ0oclIM5diN8n+ONgCebXiMWlkXv2Ps17H9UXHwrUUK3h/4mx/dOS61kBYWGnqmJMo7BRzFccmOg2KL1SwmHKcT8VFCdcd6v4nTxKphImdPs3o1zjG7d07BesWEzH1AqL0q3+PtRaI2NL7b3WQvaL0eUIeXZSK3GfklORhTnLSNcj/GH8bSgicuDhpVKZ7czKF8L2/Yz6owBPKfg3u7y9hEA/gIS3mQjrZJu6uHkVx5S52hu4ZKAum90x4ssvJgj4pOJcghhJMvflcRnCxHGRSs=",
+  "encryptionSalt": "SdD5BZ08Y6oZyElBW8vVTf17Q9/0pzpIPbamFu9V1fY=",
+  "algorithm": "argon2id+aes-256-gcm",
+  "parameters": {
+    "argon2": {
+      "memory": 65536,
+      "iterations": 3,
+      "parallelism": 4,
+      "hashLength": 32
+    },
+    "aes": {
+      "keySize": 256,
+      "ivSize": 12,
+      "tagSize": 128
+    }
+  },
+  "lastModified": "2026-05-14T10:35:54.824Z",
+  "username": "fixture@e2e.local"
+}

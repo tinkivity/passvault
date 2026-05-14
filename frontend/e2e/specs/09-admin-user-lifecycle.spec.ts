@@ -340,13 +340,13 @@ test.describe.serial('Admin lifecycle — email vault', () => {
   test('email-vault: shows sending then success dialog from user list 3-dot menu', async ({
     adminPage, apiBase,
   }) => {
-    // On beta, SES may reject the send if the test user's email is not a
-    // verified identity or the SES sandbox hasn't been lifted. Skip until
-    // the backend email-vault 500 is investigated via Lambda logs.
-    test.skip(
-      process.env.E2E_PASSKEY_REQUIRED === 'true',
-      'email-vault returns 500 on beta — SES sandbox / identity issue (needs Lambda log investigation)',
-    );
+    // No environment currently supports this test end-to-end:
+    //   • dev: the UI hard-disables the "Email vault" menuitem because
+    //     dev has no SENDER_EMAIL configured (see UserList.tsx → `isDev`).
+    //   • beta: SES rejects the send (sandbox or unverified identity),
+    //     surfacing as a 500 from the backend.
+    // Restore once either dev gains a SENDER_EMAIL or beta SES is unlocked.
+    test.fixme(true, 'email-vault has no green env: UI disabled on dev, SES blocked on beta');
     await adminPage.goto('/ui/admin/users');
 
     // Filter to the test user

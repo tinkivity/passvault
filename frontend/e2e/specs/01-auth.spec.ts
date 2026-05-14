@@ -103,9 +103,12 @@ test.describe('Authentication', () => {
     if (isHeaderBtn) {
       await headerLogout.click();
     } else {
-      // Fallback: open user dropdown in sidebar, then click logout
-      await page.locator('[data-slot="sidebar-menu-button"]').last().click();
-      await page.getByText('Log out').or(page.getByText('Abmelden')).first().click({ timeout: 5000 });
+      // Fallback: open user dropdown in sidebar, then click logout.
+      // NavUser composes DropdownMenuTrigger around SidebarMenuButton which
+      // strips the inner data-slot, so target sidebar-footer instead (see
+      // 11-passkey.spec.ts:72-79 for the full explanation).
+      await page.locator('[data-slot="sidebar-footer"]').getByRole('button').first().click();
+      await page.getByRole('menuitem', { name: /Log out|Abmelden/i }).click({ timeout: 5000 });
     }
     await page.waitForURL('**/login', { timeout: 15000 });
   });
