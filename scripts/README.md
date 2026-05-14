@@ -216,6 +216,10 @@ Runs Playwright E2E browser tests against a deployed stack. Creates a temporary 
 # Keep test user for inspection
 ./scripts/e2etest.sh --env dev --keep
 
+# Re-run only the tests that failed last time (uses Playwright --last-failed;
+# reuses the existing admin user from a prior --keep run, no AWS calls)
+./scripts/e2etest.sh --rerun --env dev
+
 # Clean up a previous --keep run
 ./scripts/e2etest.sh --cleanup --env dev
 
@@ -236,6 +240,7 @@ Runs Playwright E2E browser tests against a deployed stack. Creates a temporary 
 | `--stack` | CloudFormation stack name override |
 | `--base-url` | API base URL override (skips CloudFormation lookup) |
 | `--keep` | Keep test user after run (writes state file for later cleanup) |
+| `--rerun [state-file]` | Re-run only the tests that failed in the last run (passes `--last-failed` to Playwright). Auto-discovers the state file for `--env` when no argument is given. Reuses the admin user; no AWS calls. |
 | `--cleanup` | Skip tests; only clean up from a previous `--keep` run |
 | `--headed` | Run with visible browser |
 | `--ui` | Run in Playwright UI mode (interactive debugging) |

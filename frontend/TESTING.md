@@ -90,13 +90,19 @@ See [docs/TESTING.md](../docs/TESTING.md#e2e-browser-tests-playwright) for full 
 
 | Spec | Tests | Status | What it covers |
 |------|-------|--------|---------------|
-| `e2e/specs/01-auth.spec.ts` | 6 | Active | Login via API injection, logout via header icon, invalid credentials, route guards for /ui and /ui/admin |
+| `e2e/specs/01-auth.spec.ts` | 7 | Active | Login via API injection, logout (header icon + sidebar fallback), invalid credentials, route guards for /ui and /ui/admin, sidebar never renders raw displayName ciphertext |
 | `e2e/specs/02-admin-users.spec.ts` | 6 | Active | Dashboard heading, users table, create user + OTP dialog, view user detail, edit user, delete user |
 | `e2e/specs/03-admin-templates.spec.ts` | 5 | Active | Email templates page, language tabs (EN/DE/FR/RU), preview in new tab, download, upload + edited badge |
 | `e2e/specs/04-vault-unlock.spec.ts` | 3 | Fixme | Vault unlock with password (needs vault data fixture) |
 | `e2e/specs/05-vault-items.spec.ts` | 3 | Fixme | Create/search/delete vault items (needs vault data fixture) |
 | `e2e/specs/06-notifications.spec.ts` | 3 | Fixme | Notification preferences (only available for `role=user`, not admin) |
 | `e2e/specs/07-language.spec.ts` | 2 | Active | Switch to German via globe icon, switch back to English |
+| `e2e/specs/08-vault-crud.spec.ts` | 3 | Active | Vault `displayName` round-trip: create (unicode), rename, delete via API + sidebar assertions |
+| `e2e/specs/09-admin-user-lifecycle.spec.ts` | 9 | 8 active, 1 fixme | Admin actions on users: lock/unlock, expire/reactivate, retire, reset login, refresh OTP. `email-vault` is fixme (UI disabled on dev, SES blocked on beta) |
+| `e2e/specs/10-user-onboarding.spec.ts` | 3 | Active | OTP login → onboarding → change-password flow for both user and admin roles; old OTP rejected after change |
+| `e2e/specs/11-passkey.spec.ts` | 6 | Active | Passkey registration + login, multi-passkey management in Security dialog, password-login blocked after passkey setup, admin two-step login, cleared-credential failure mode |
+| `e2e/specs/12-vault-import-gz.spec.ts` | 2 | Active | Import dialog accepts `.vault.gz` and plain `.json` (uses pre-baked encrypted fixture in `e2e/fixtures/known-vault.*`) |
+| `e2e/specs/13-user-avatar.spec.ts` | 3 | Active | Default puppy avatar in sidebar, AccountDialog renders large avatar, custom `avatarBase64` survives page reload |
 
 ### Auth fixture
 

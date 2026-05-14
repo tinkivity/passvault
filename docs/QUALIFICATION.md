@@ -205,7 +205,7 @@ Uses `scripts/pentest.sh --env <env> --keep` internally.
 Uses `scripts/e2etest.sh --env <env> --keep --base-url <api-url>` internally. The script handles the full lifecycle:
 - Creates a temporary admin user and onboards it (OTP login + password change)
 - Builds the frontend and starts a local `vite preview` server
-- Runs Playwright browser tests (auth, admin users, templates, language switching)
+- Runs Playwright browser tests (auth, admin user management, email templates, language switching, vault CRUD, admin user lifecycle, user onboarding, passkeys, vault import, user avatar)
 - Writes a state file (`.e2e-state-<env>-*.json`) for later cleanup
 
 **On failure:** Continues to next step. Stack and E2E state preserved for debugging.

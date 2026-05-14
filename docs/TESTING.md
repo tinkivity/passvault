@@ -164,56 +164,51 @@ The auth fixture (`frontend/e2e/fixtures/auth.fixture.ts`) authenticates via **d
 
 | Spec | Tests | Status | What it covers |
 |------|-------|--------|---------------|
-| 01-auth | 6 | Active | Login (API-based), logout (header icon), invalid creds, route guards |
+| 01-auth | 7 | Active | Login (API-based), logout (header icon + sidebar fallback), invalid creds, route guards, sidebar never leaks raw displayName ciphertext |
 | 02-admin-users | 6 | Active | Dashboard, users table, create user + OTP dialog, view/edit/delete user |
 | 03-admin-templates | 5 | Active | Template cards, language tabs, preview, download, upload + edited badge |
 | 04-vault-unlock | 3 | Fixme | Password entry, wrong password, successful unlock (needs vault fixture) |
 | 05-vault-items | 3 | Fixme | Create/search/delete items (needs vault fixture) |
 | 06-notifications | 3 | Fixme | Notification prefs (only available for `role=user`, not admin) |
 | 07-language | 2 | Active | Switch to German via globe icon, switch back to English |
-| 08-vault-crud | | Active | Vault CRUD: create, rename, delete via API + sidebar |
-| 09-admin-user-lifecycle | | Active | Admin user lifecycle management |
-| 10-user-onboarding | | Active | User onboarding flow |
-| 11-passkey | | Active | Passkey setup and login |
-| 12-vault-import-gz | | Active | Vault import from .vault.gz file |
-| 13-user-avatar | 3 | Active | Default puppy, account dialog avatar, session persistence |
+| 08-vault-crud | 3 | Active | Vault `displayName` round-trip: create (unicode), rename, delete via API + sidebar assertions |
+| 09-admin-user-lifecycle | 9 | 8 active, 1 fixme | Lock/unlock, expire/reactivate, retire, reset login, refresh OTP. `email-vault` is fixme (UI disabled on dev, SES blocked on beta) |
+| 10-user-onboarding | 3 | Active | OTP login → onboarding → change-password for both user and admin roles; old OTP rejected after change |
+| 11-passkey | 6 | Active | Passkey registration/login, multi-passkey management, password-login blocked after passkey setup, admin two-step login, cleared-credential failure mode |
+| 12-vault-import-gz | 2 | Active | Import dialog accepts `.vault.gz` and plain `.json` (uses pre-baked encrypted fixture in `e2e/fixtures/known-vault.*`) |
+| 13-user-avatar | 3 | Active | Default puppy, AccountDialog avatar, `avatarBase64` survives reload |
 
-**Current results:** 19 passed, 9 skipped (fixme), 0 failed.
+**Total declared:** 55 tests across 13 specs. **Currently runnable:** 45 (10 fixme/skip).
 
 ### Example output
 
 ```
-Running 28 tests using 1 worker
+Running 55 tests using 1 worker
 
-  ✓   1 01-auth.spec.ts › shows login page by default (315ms)
-  ✓   2 01-auth.spec.ts › error on invalid credentials (933ms)
-  ✓   3 01-auth.spec.ts › login with valid admin credentials (3.4s)
-  ✓   4 01-auth.spec.ts › logout redirects to login (3.3s)
-  ✓   5 01-auth.spec.ts › unauthenticated /ui redirects to login (295ms)
-  ✓   6 01-auth.spec.ts › unauthenticated /ui/admin redirects to login (277ms)
-  ✓   7 02-admin-users.spec.ts › navigate to dashboard (3.4s)
-  ✓   8 02-admin-users.spec.ts › navigate to users — table visible (3.3s)
-  ✓   9 02-admin-users.spec.ts › create user — OTP dialog appears (25.6s)
-  ✓  10 02-admin-users.spec.ts › view user detail (4.9s)
-  ✓  11 02-admin-users.spec.ts › edit user — save succeeds (4.6s)
-  ✓  12 02-admin-users.spec.ts › delete user — removed (8.0s)
-  ✓  13 03-admin-templates.spec.ts › navigate to email templates (3.3s)
+  ✓   1 01-auth.spec.ts › shows login page by default
+  ✓   2 01-auth.spec.ts › error on invalid credentials
   ...
-  ✓  27 07-language.spec.ts › switch to German (5.0s)
-  ✓  28 07-language.spec.ts › switch back to English (4.4s)
+  ✓  44 13-user-avatar.spec.ts › avatar persists after page reload
 
-  9 skipped
-  19 passed (1.6m)
+  10 skipped
+  45 passed (~4m)
 ```
+
+Concrete counts shift as specs are added; if these drift, regenerate from
+`grep -cE '^\s*test\s*\(' frontend/e2e/specs/*.spec.ts` (active) and
+`grep -cE '^\s*test\.(skip|fixme)\s*\(' frontend/e2e/specs/*.spec.ts`
+(skipped/fixme).
 
 ### What's NOT tested via E2E
 
-- **Passkeys**: WebAuthn requires hardware/platform authenticator — not automatable in headless Chromium
-- **Vault operations**: Need vault fixture with encryption keys (04-vault-unlock, 05-vault-items are fixme)
-- **Notifications**: Only available for `role=user`; current fixture creates admin users
+- **Vault unlock + item CRUD**: Need a seeded vault with encryption keys (04-vault-unlock, 05-vault-items are fixme until that fixture exists)
+- **User-role notifications dialog**: Only available for `role=user`; current fixture creates admin users (06-notifications is fixme)
+- **Admin email-vault flow**: UI disables it on dev (no `SENDER_EMAIL`) and SES sandbox blocks it on beta (09 — one fixme entry)
 - **Email delivery**: SES is AWS-internal
 - **CloudFront**: Dev doesn't use CloudFront
 - **Kill switch / digest**: EventBridge-triggered, not browser-triggerable
+
+Passkeys (WebAuthn) **are** tested — see spec 11. Playwright drives a virtual authenticator via CDP (`e2e/helpers/webauthn.ts`).
 
 ### Debugging E2E failures
 
@@ -469,7 +464,7 @@ flag reference.
 | Unit | vitest | 620+ | Local, CI, qualify | Component-level correctness |
 | SIT | vitest + HTTP | 70+ | Qualify | API integration against live stack |
 | Pentest | vitest + HTTP | 90+ | Qualify | Security verification (OWASP) |
-| E2E | Playwright | 28+ | Qualify | Browser-level user flows |
+| E2E | Playwright | 45+ | Qualify | Browser-level user flows |
 | Perf | vitest + HTTP | 19+ | Qualify | Response time and load baselines |
 
 ---
