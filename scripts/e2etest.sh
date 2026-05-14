@@ -570,7 +570,7 @@ echo "  Wrote frontend/.env.local"
 export E2E_API_PROXY_TARGET="$API_URL"
 
 echo "  Building frontend for E2E..."
-(cd "$REPO_ROOT/frontend" && npx vite build) || {
+(cd "$REPO_ROOT/frontend" && NODE_OPTIONS=--disable-warning=DEP0205 npx vite build) || {
   echo "Error: Frontend build failed." >&2
   exit 1
 }
@@ -608,7 +608,7 @@ if [[ ! -f "$VITE_BIN" ]]; then
   exit 1
 fi
 
-(cd "$REPO_ROOT/frontend" && exec node "$VITE_BIN" preview --port "$VITE_PORT" --strictPort >/dev/null 2>&1) &
+(cd "$REPO_ROOT/frontend" && NODE_OPTIONS=--disable-warning=DEP0205 exec node "$VITE_BIN" preview --port "$VITE_PORT" --strictPort >/dev/null 2>&1) &
 VITE_PID=$!
 
 for i in $(seq 1 30); do

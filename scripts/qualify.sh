@@ -378,7 +378,7 @@ if [[ "$CLEANUP" == "true" ]]; then
 
   # CDK destroy
   section "CDK destroy"
-  (cd "$REPO_ROOT/cdk" && npx cdk destroy "$STACK" $(cdk_ctx_args) --force \
+  (cd "$REPO_ROOT/cdk" && NODE_OPTIONS=--disable-warning=DEP0205 npx cdk destroy "$STACK" $(cdk_ctx_args) --force \
     ${PROFILE:+--profile "$PROFILE"}) || echo "  Warning: CDK destroy failed."
 
   # Post-destroy
@@ -571,7 +571,7 @@ STEP_START=$SECONDS
 CDK_ARGS="$STACK $(cdk_ctx_args) --require-approval never"
 [[ -n "$PROFILE" ]] && CDK_ARGS="$CDK_ARGS --profile $PROFILE"
 
-if (cd "$REPO_ROOT/cdk" && npx cdk deploy $CDK_ARGS); then
+if (cd "$REPO_ROOT/cdk" && NODE_OPTIONS=--disable-warning=DEP0205 npx cdk deploy $CDK_ARGS); then
   set_step STATUS deploy "pass"
   set_step EXIT deploy "0"
 else
@@ -581,7 +581,7 @@ else
   set_step DURATION deploy "$(( SECONDS - STEP_START ))"
   echo "  Deploy failed — attempting destroy + cleanup."
 
-  (cd "$REPO_ROOT/cdk" && npx cdk destroy "$STACK" $(cdk_ctx_args) --force \
+  (cd "$REPO_ROOT/cdk" && NODE_OPTIONS=--disable-warning=DEP0205 npx cdk destroy "$STACK" $(cdk_ctx_args) --force \
     ${PROFILE:+--profile "$PROFILE"}) 2>/dev/null || true
   "$REPO_ROOT/scripts/post-destroy.sh" --env "$ENV" \
     ${PROFILE:+--profile "$PROFILE"} --region "$REGION" 2>/dev/null || true
@@ -815,7 +815,7 @@ if [[ "$ANY_FAIL" == "false" ]]; then
   fi
 
   # CDK destroy
-  (cd "$REPO_ROOT/cdk" && npx cdk destroy "$STACK" $(cdk_ctx_args) --force \
+  (cd "$REPO_ROOT/cdk" && NODE_OPTIONS=--disable-warning=DEP0205 npx cdk destroy "$STACK" $(cdk_ctx_args) --force \
     ${PROFILE:+--profile "$PROFILE"}) || echo "  Warning: CDK destroy failed."
 
   # Post-destroy
