@@ -241,6 +241,15 @@ if ! (cd "$REPO_ROOT/frontend" && npx playwright --version &>/dev/null); then
   exit 1
 fi
 
+# Ensure Chromium browser binary matches the installed Playwright version.
+# `playwright install` is idempotent — it's a no-op when the right build is
+# already cached, and downloads silently when Playwright was just upgraded.
+if ! (cd "$REPO_ROOT/frontend" && npx playwright install chromium >/dev/null 2>&1); then
+  echo "Error: failed to install Playwright Chromium browser." >&2
+  echo "  cd frontend && npx playwright install chromium" >&2
+  exit 1
+fi
+
 # ── Rerun mode: load state from a prior --keep run, skip admin creation ─────
 if [[ "$RERUN" == "true" ]]; then
   if [[ -n "$RERUN_FILE" ]]; then
