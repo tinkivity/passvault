@@ -132,6 +132,28 @@ export async function getWithPoW(
 }
 
 /**
+ * PUT with PoW — convenience wrapper.
+ */
+export async function putWithPoW(
+  request: APIRequestContext,
+  apiBase: string,
+  path: string,
+  opts: {
+    data?: unknown;
+    headers?: Record<string, string>;
+    difficulty: number;
+  },
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const powHeaders = await solvePowChallenge(request, apiBase, opts.difficulty);
+  const res = await request.put(`${apiBase}${path}`, {
+    data: opts.data,
+    headers: { ...opts.headers, ...powHeaders },
+  });
+  const body = await res.json();
+  return { status: res.status(), body };
+}
+
+/**
  * DELETE with PoW — convenience wrapper.
  */
 export async function deleteWithPoW(

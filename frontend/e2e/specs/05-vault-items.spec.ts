@@ -1,100 +1,89 @@
+import type { Page } from '@playwright/test';
 import { test, expect } from '../fixtures/auth.fixture.js';
+import { seedVaultViaAPI, deleteSeededVault, type SeededVault } from '../helpers/vault.js';
 
 /**
- * Vault item CRUD tests — these depend on an unlocked vault, which requires
- * vault seeding and the unlock step. Skipped until the vault test
- * infrastructure is in place.
+ * Vault item CRUD — verifies create/search/delete through the UI against a
+ * freshly seeded empty vault. Tests run serially: test 1 creates the item,
+ * test 2 searches for it, test 3 deletes it. Each test navigates to the
+ * unlock page and re-derives the key (the in-memory key map doesn't survive
+ * Page recreations across tests).
  */
-test.describe('Vault — Items', () => {
-  // TODO: Implement vault seeding + unlock fixture so these tests can run.
+const VAULT_PASSWORD = 'E2eItemsTest42!Secure';
+const ITEM_NAME = 'E2E Test Login';
 
-  test.skip('create login item', async ({ adminPage }) => {
-    const vaultId = process.env.E2E_VAULT_ID ?? '';
-    const vaultPassword = process.env.E2E_VAULT_PASSWORD ?? '';
-    test.skip(!vaultId || !vaultPassword, 'E2E_VAULT_ID and E2E_VAULT_PASSWORD must be set');
+async function unlockVault(page: Page, vaultId: string, password: string): Promise<void> {
+  await page.goto(`/ui/${vaultId}`);
+  await page.locator('#vault-password').fill(password);
+  await page.locator('button[type="submit"]').click();
+  await page.waitForURL(`**/ui/${vaultId}/items`, { timeout: 15000 });
+}
 
-    // Unlock vault first
-    await adminPage.goto(`/ui/${vaultId}`);
-    await adminPage.locator('#password, input[type="password"]').first().fill(vaultPassword);
-    await adminPage.locator('button[type="submit"]').click();
-    await adminPage.waitForURL(`**/ui/${vaultId}/items`, { timeout: 15000 });
+test.describe.serial('Vault — Items', () => {
+  let seeded: SeededVault;
 
-    // Click new item
-    await adminPage.getByRole('link', { name: /New Item/i }).first().click();
-    await adminPage.waitForURL(`**/ui/${vaultId}/items/new`, { timeout: 10000 });
-
-    // Fill in item details
-    const nameInput = adminPage.locator('#name, input[name="name"]').first();
-    await nameInput.fill('E2E Test Login');
-
-    const usernameInput = adminPage.locator('#username, input[name="username"]').first();
-    if (await usernameInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await usernameInput.fill('testuser@example.com');
-    }
-
-    const passwordInput = adminPage.locator('input[name="password"], #itemPassword').first();
-    if (await passwordInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await passwordInput.fill('SecureTestPass123!');
-    }
-
-    // Save
-    await adminPage.getByRole('button', { name: /Save/i }).click();
-
-    // Should redirect back to items list or item detail
-    await expect(adminPage.getByText('E2E Test Login')).toBeVisible({ timeout: 15000 });
+  test.beforeAll(async ({ request, adminAuth, apiBase }) => {
+    seeded = await seedVaultViaAPI(request, apiBase, adminAuth.token, {
+      displayName: `E2E Items ${Date.now()}`,
+      password: VAULT_PASSWORD,
+      // Empty vault — test 1 creates the first item via the UI.
+    });
   });
 
-  test.skip('search filters results', async ({ adminPage }) => {
-    const vaultId = process.env.E2E_VAULT_ID ?? '';
-    const vaultPassword = process.env.E2E_VAULT_PASSWORD ?? '';
-    test.skip(!vaultId || !vaultPassword, 'E2E_VAULT_ID and E2E_VAULT_PASSWORD must be set');
+  test.afterAll(async ({ request, adminAuth, apiBase }) => {
+    if (seeded?.vaultId) await deleteSeededVault(request, apiBase, adminAuth.token, seeded.vaultId);
+  });
 
-    // Unlock and navigate
-    await adminPage.goto(`/ui/${vaultId}`);
-    await adminPage.locator('#password, input[type="password"]').first().fill(vaultPassword);
-    await adminPage.locator('button[type="submit"]').click();
-    await adminPage.waitForURL(`**/ui/${vaultId}/items`, { timeout: 15000 });
+  test('create login item', async ({ adminPage }) => {
+    await unlockVault(adminPage, seeded.vaultId, seeded.password);
 
-    // Search for the item we created
+    // "New Item" is a Button, not a link (VaultItemsPage.tsx:81).
+    await adminPage.getByRole('button', { name: /New Item/i }).click();
+    await adminPage.waitForURL(`**/ui/${seeded.vaultId}/items/new`, { timeout: 10000 });
+
+    await adminPage.locator('#name').fill(ITEM_NAME);
+    // Category defaults to 'login', so #username and #password are rendered.
+    await adminPage.locator('#username').fill('testuser@example.com');
+    await adminPage.locator('#password').fill('SecureTestPass123!');
+
+    // Submit label is t('common:create') = "Create" (VaultItemNewPage.tsx:129).
+    await adminPage.getByRole('button', { name: /^Create$/i }).click();
+
+    // Redirects to /items; row with the new name should be visible.
+    await adminPage.waitForURL(`**/ui/${seeded.vaultId}/items`, { timeout: 15000 });
+    await expect(adminPage.getByText(ITEM_NAME)).toBeVisible({ timeout: 10000 });
+  });
+
+  test('search filters results', async ({ adminPage }) => {
+    await unlockVault(adminPage, seeded.vaultId, seeded.password);
+
     const searchInput = adminPage.getByPlaceholder(/Search by name/i);
-    await searchInput.fill('E2E Test Login');
+    await searchInput.fill(ITEM_NAME);
+    await expect(adminPage.getByText(ITEM_NAME)).toBeVisible({ timeout: 5000 });
 
-    // The item should still be visible
-    await expect(adminPage.getByText('E2E Test Login')).toBeVisible({ timeout: 10000 });
-
-    // Search for something that does not exist
     await searchInput.fill('nonexistent-item-xyz');
-    await expect(
-      adminPage.getByText(/No items match/i),
-    ).toBeVisible({ timeout: 10000 });
+    // Empty-match copy is t('noItemsMatch'); en/vault.json renders it as
+    // "No items match…". Match the first few chars case-insensitively.
+    await expect(adminPage.getByText(/No items match/i)).toBeVisible({ timeout: 5000 });
   });
 
-  test.skip('delete item', async ({ adminPage }) => {
-    const vaultId = process.env.E2E_VAULT_ID ?? '';
-    const vaultPassword = process.env.E2E_VAULT_PASSWORD ?? '';
-    test.skip(!vaultId || !vaultPassword, 'E2E_VAULT_ID and E2E_VAULT_PASSWORD must be set');
+  test('delete item', async ({ adminPage }) => {
+    await unlockVault(adminPage, seeded.vaultId, seeded.password);
 
-    // Unlock and navigate
-    await adminPage.goto(`/ui/${vaultId}`);
-    await adminPage.locator('#password, input[type="password"]').first().fill(vaultPassword);
-    await adminPage.locator('button[type="submit"]').click();
-    await adminPage.waitForURL(`**/ui/${vaultId}/items`, { timeout: 15000 });
+    // Open the item by clicking its row.
+    await adminPage.getByRole('row').filter({ hasText: ITEM_NAME }).click();
 
-    // Click on the test item
-    await adminPage.getByText('E2E Test Login').click();
+    // ItemView delete button (VaultItemDetailPage.tsx:132).
+    await adminPage.getByRole('button', { name: /^Delete$/i }).click();
 
-    // Click delete
-    await adminPage.getByRole('button', { name: /Delete/i }).first().click();
+    // AlertDialog opens; fill the vault password and confirm.
+    await adminPage.locator('#delete-password').fill(seeded.password);
+    // The dialog's confirm action is also labeled "Delete" — scope to the
+    // dialog so we don't re-click the trigger.
+    await adminPage.getByRole('alertdialog').getByRole('button', { name: /^Delete$/i }).click();
 
-    // Confirm deletion (dialog asks for vault password)
-    const confirmPasswordInput = adminPage.locator('input[type="password"]').last();
-    if (await confirmPasswordInput.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await confirmPasswordInput.fill(vaultPassword);
-    }
-
-    await adminPage.getByRole('button', { name: /Delete|Confirm/i }).last().click();
-
-    // Item should be gone
-    await expect(adminPage.getByText('E2E Test Login')).not.toBeVisible({ timeout: 15000 });
+    // Back on the items page; the row should be gone.
+    await adminPage.waitForURL(`**/ui/${seeded.vaultId}/items`, { timeout: 15000 });
+    await expect(adminPage.getByText(ITEM_NAME)).not.toBeVisible({ timeout: 10000 });
   });
 });

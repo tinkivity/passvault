@@ -389,13 +389,58 @@ test.describe.serial('Admin lifecycle — email vault', () => {
 // ────────────────────────────────────────────────────────────────────────────
 // Group 7: download-vault
 // ────────────────────────────────────────────────────────────────────────────
-test.describe('Admin lifecycle — download vault', () => {
-  test.fixme('download-vault: file download event fires with expected filename', async ({
-    adminPage, request, adminAuth, apiBase,
-  }) => {
-    // TODO: Requires admin's own vault to exist with real content for the
-    // download to succeed. Factor the vault-create helper out of 08 so this
-    // test can reuse it, then assert on `page.waitForEvent('download')`
-    // suggestedFilename and byte length.
+test.describe.serial('Admin lifecycle — download vault', () => {
+  let testUser: { userId: string; username: string };
+
+  test.beforeAll(async ({ request, adminAuth, apiBase }) => {
+    const created = await createTestUser(request, apiBase, adminAuth.token, { usernamePrefix: 'e2e-dlvault' });
+    testUser = { userId: created.userId, username: created.username };
+    await onboardTestUserViaAPI(request, apiBase, created.username, created.oneTimePassword, ONBOARD_PASSWORD);
+    // Create a vault for the test user so vaultCount > 0 and the
+    // "Download vault" menuitem is visible (UserList.tsx:346).
+    const { body: loginBody } = await postWithPoW(request, apiBase, '/api/auth/login', {
+      data: { username: created.username, password: ONBOARD_PASSWORD },
+      difficulty: POW_DIFFICULTY.MEDIUM,
+    });
+    if (loginBody.success) {
+      const userToken = (loginBody.data as Record<string, string>).token;
+      await postWithPoW(request, apiBase, '/api/vaults', {
+        headers: { Authorization: `Bearer ${userToken}` },
+        data: { displayName: 'E2E Download Test Vault' },
+        difficulty: POW_DIFFICULTY.HIGH,
+      });
+    }
+  });
+
+  test.afterAll(async ({ request, adminAuth, apiBase }) => {
+    if (testUser?.userId) await deleteTestUser(request, apiBase, adminAuth.token, testUser.userId);
+  });
+
+  test('download-vault: file download event fires with expected filename', async ({ adminPage }) => {
+    await adminPage.goto('/ui/admin/users');
+
+    const filter = adminPage.getByRole('textbox', { name: /Filter by username/i });
+    await expect(filter).toBeVisible({ timeout: 45000 });
+    await filter.fill(testUser.username);
+
+    const row = adminPage.getByRole('row').filter({ hasText: testUser.username });
+    await expect(row).toBeVisible({ timeout: 45000 });
+
+    await adminPage.getByRole('button', { name: new RegExp(`Actions for ${testUser.username}`) }).click();
+
+    const downloadItem = adminPage.getByRole('menuitem', { name: /download vault/i });
+    await expect(downloadItem).toBeVisible({ timeout: 5000 });
+
+    // waitForEvent('download') must be armed *before* the click that
+    // triggers the programmatic <a download> in useAdmin.downloadUserVault.
+    const downloadPromise = adminPage.waitForEvent('download', { timeout: 30000 });
+    await downloadItem.click();
+    const download = await downloadPromise;
+
+    // Filename pattern from useAdmin.ts:
+    //   `passvault-backup-${username}-${YYYY-MM-DD}.json`
+    expect(download.suggestedFilename()).toMatch(
+      new RegExp(`^passvault-backup-${testUser.username.replace(/[.@+]/g, '\\$&')}-\\d{4}-\\d{2}-\\d{2}\\.json$`),
+    );
   });
 });

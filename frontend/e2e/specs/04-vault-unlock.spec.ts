@@ -1,38 +1,49 @@
 import { test, expect } from '../fixtures/auth.fixture.js';
+import { seedVaultViaAPI, deleteSeededVault, type SeededVault } from '../helpers/vault.js';
 
 /**
- * Vault unlock tests — these require a vault to already exist for the
- * logged-in admin user. Mark as skipped with TODO until vault seeding
- * is available in the E2E test environment.
+ * Vault unlock — verifies the password gate at /ui/{vaultId}.
+ *
+ * Seeds a fresh vault for the admin in `beforeAll` (with one encrypted item
+ * so the wrong-password assertion can actually fail decryption — an empty
+ * vault has no ciphertext to verify against, so it unlocks with any input).
+ * Cleans up the vault in `afterAll`.
  */
-test.describe('Vault — Unlock', () => {
-  // TODO: Implement vault seeding so these tests can run.
-  // Currently skipped because a vault must pre-exist for the admin user.
+const VAULT_PASSWORD = 'E2eUnlockTest42!Secure';
 
-  test.skip('shows unlock page with password input', async ({ adminPage }) => {
-    // Navigate to a vault — requires knowing the vault ID
-    const vaultId = process.env.E2E_VAULT_ID ?? '';
-    test.skip(!vaultId, 'E2E_VAULT_ID must be set');
+test.describe.serial('Vault — Unlock', () => {
+  let seeded: SeededVault;
 
-    await adminPage.goto(`/ui/${vaultId}`);
+  test.beforeAll(async ({ request, adminAuth, apiBase }) => {
+    seeded = await seedVaultViaAPI(request, apiBase, adminAuth.token, {
+      displayName: `E2E Unlock ${Date.now()}`,
+      password: VAULT_PASSWORD,
+      seedItem: {
+        name: 'E2E Seed Login',
+        username: 'seed@example.com',
+        password: 'seed-secret',
+      },
+    });
+  });
+
+  test.afterAll(async ({ request, adminAuth, apiBase }) => {
+    if (seeded?.vaultId) await deleteSeededVault(request, apiBase, adminAuth.token, seeded.vaultId);
+  });
+
+  test('shows unlock page with password input', async ({ adminPage }) => {
+    await adminPage.goto(`/ui/${seeded.vaultId}`);
 
     await expect(
       adminPage.getByText(/Enter the vault password/i),
     ).toBeVisible({ timeout: 15000 });
 
-    await expect(
-      adminPage.locator('#password, input[type="password"]').first(),
-    ).toBeVisible();
+    await expect(adminPage.locator('#vault-password')).toBeVisible();
   });
 
-  test.skip('wrong password shows error', async ({ adminPage }) => {
-    const vaultId = process.env.E2E_VAULT_ID ?? '';
-    test.skip(!vaultId, 'E2E_VAULT_ID must be set');
+  test('wrong password shows error', async ({ adminPage }) => {
+    await adminPage.goto(`/ui/${seeded.vaultId}`);
 
-    await adminPage.goto(`/ui/${vaultId}`);
-    await adminPage.waitForLoadState('networkidle');
-
-    await adminPage.locator('#password, input[type="password"]').first().fill('WrongVaultPass123!');
+    await adminPage.locator('#vault-password').fill('WrongVaultPass123!');
     await adminPage.locator('button[type="submit"]').click();
 
     await expect(
@@ -40,18 +51,13 @@ test.describe('Vault — Unlock', () => {
     ).toBeVisible({ timeout: 15000 });
   });
 
-  test.skip('correct password navigates to items', async ({ adminPage }) => {
-    const vaultId = process.env.E2E_VAULT_ID ?? '';
-    const vaultPassword = process.env.E2E_VAULT_PASSWORD ?? '';
-    test.skip(!vaultId || !vaultPassword, 'E2E_VAULT_ID and E2E_VAULT_PASSWORD must be set');
+  test('correct password navigates to items', async ({ adminPage }) => {
+    await adminPage.goto(`/ui/${seeded.vaultId}`);
 
-    await adminPage.goto(`/ui/${vaultId}`);
-    await adminPage.waitForLoadState('networkidle');
-
-    await adminPage.locator('#password, input[type="password"]').first().fill(vaultPassword);
+    await adminPage.locator('#vault-password').fill(seeded.password);
     await adminPage.locator('button[type="submit"]').click();
 
-    await adminPage.waitForURL(`**/ui/${vaultId}/items`, { timeout: 15000 });
+    await adminPage.waitForURL(`**/ui/${seeded.vaultId}/items`, { timeout: 15000 });
     expect(adminPage.url()).toContain('/items');
   });
 });
