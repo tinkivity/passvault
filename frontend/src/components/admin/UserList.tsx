@@ -74,7 +74,7 @@ function isPastDate(dateStr: string): boolean {
   return new Date(dateStr) < new Date();
 }
 
-interface UserListProps {
+export interface UserListProps {
   users: UserSummary[];
   loading: boolean;
   onDownload: (userId: string, username: string, vaultId?: string) => void;

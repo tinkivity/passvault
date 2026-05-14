@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi } from 'vitest';
 import type { UserSummary } from '@passvault/shared';
-import { UserList } from './UserList';
+import { UserList, type UserListProps } from './UserList';
 
 const mockUsers: UserSummary[] = [
   {
@@ -46,33 +46,26 @@ const mockUsers: UserSummary[] = [
   },
 ];
 
-function renderList(overrides?: {
-  onRefreshOtp?: ReturnType<typeof vi.fn>;
-  onDeleteUser?: ReturnType<typeof vi.fn>;
-  onLockUser?: ReturnType<typeof vi.fn>;
-  onUnlockUser?: ReturnType<typeof vi.fn>;
-  onExpireUser?: ReturnType<typeof vi.fn>;
-  onReactivateUser?: ReturnType<typeof vi.fn>;
-  onEmailVault?: ReturnType<typeof vi.fn>;
-  onOtpRefreshed?: ReturnType<typeof vi.fn>;
-  onRowClick?: ReturnType<typeof vi.fn>;
-  users?: UserSummary[];
-  loading?: boolean;
-}) {
+// vitest v4 typed `vi.fn()` so its return type no longer auto-matches
+// arbitrary function signatures. `as never` lets a fresh mock satisfy any
+// prop signature without per-call generics.
+const fn = () => vi.fn() as never;
+
+function renderList(overrides?: Partial<UserListProps>) {
   return render(
     <UserList
       users={overrides?.users ?? mockUsers}
       loading={overrides?.loading ?? false}
-      onDownload={vi.fn()}
-      onRefreshOtp={overrides?.onRefreshOtp ?? vi.fn()}
-      onResetUser={vi.fn()}
-      onDeleteUser={overrides?.onDeleteUser ?? vi.fn()}
-      onLockUser={overrides?.onLockUser ?? vi.fn()}
-      onUnlockUser={overrides?.onUnlockUser ?? vi.fn()}
-      onExpireUser={overrides?.onExpireUser ?? vi.fn()}
-      onReactivateUser={overrides?.onReactivateUser ?? vi.fn()}
-      onEmailVault={overrides?.onEmailVault ?? vi.fn().mockResolvedValue(undefined)}
-      onOtpRefreshed={overrides?.onOtpRefreshed ?? vi.fn()}
+      onDownload={fn()}
+      onRefreshOtp={overrides?.onRefreshOtp ?? fn()}
+      onResetUser={fn()}
+      onDeleteUser={overrides?.onDeleteUser ?? fn()}
+      onLockUser={overrides?.onLockUser ?? fn()}
+      onUnlockUser={overrides?.onUnlockUser ?? fn()}
+      onExpireUser={overrides?.onExpireUser ?? fn()}
+      onReactivateUser={overrides?.onReactivateUser ?? fn()}
+      onEmailVault={overrides?.onEmailVault ?? (vi.fn().mockResolvedValue(undefined) as never)}
+      onOtpRefreshed={overrides?.onOtpRefreshed ?? fn()}
       onRowClick={overrides?.onRowClick}
     />,
   );
