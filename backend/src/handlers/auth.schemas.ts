@@ -17,12 +17,12 @@ export const SelfChangePasswordSchema = z.object({
 });
 
 // Passkey body: require top-level fields; allow extra properties in nested response object
-const PasskeyBodySchema = z.object({
+const PasskeyBodySchema = z.looseObject({
   id: z.string(),
   rawId: z.string(),
   type: z.literal('public-key'),
-  clientExtensionResults: z.record(z.unknown()),
-}).passthrough();
+  clientExtensionResults: z.record(z.string(), z.unknown()),
+});
 
 export const PasskeyVerifySchema = z.object({
   challengeJwt: z.string(),
@@ -39,7 +39,7 @@ export const UpdateProfileSchema = z.object({
   firstName: z.string().nullable().optional(),
   lastName: z.string().nullable().optional(),
   displayName: z.string().nullable().optional(),
-  email: z.string().email().optional(),
+  email: z.email().optional(),
 });
 
 export const LogoutSchema = z.object({
@@ -47,13 +47,13 @@ export const LogoutSchema = z.object({
 });
 
 export const EmailChangeSchema = z.object({
-  newEmail: z.string().email(),
+  newEmail: z.email(),
 });
 
 export const VerifyEmailChangeSchema = z.object({
-  token: z.string().uuid(),
+  token: z.uuid(),
 });
 
 export const LockSelfSchema = z.object({
-  token: z.string().uuid(),
+  token: z.uuid(),
 });

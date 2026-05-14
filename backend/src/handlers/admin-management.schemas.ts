@@ -7,7 +7,7 @@ const NotificationPrefsSchema = z.object({
 });
 
 export const CreateUserSchema = z.object({
-  username: z.string().email(),
+  username: z.email(),
   firstName: z.string().optional(),
   lastName: z.string().optional(),
   displayName: z.string().optional(),
